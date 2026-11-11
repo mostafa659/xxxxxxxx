@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#F3F7FB" />
+    <title>ClinixStudy</title>
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <script>
+      /* theme BEFORE first paint (saved choice, else the phone's setting) */
+      try {
+        var t = localStorage.getItem("clinix:theme") || localStorage.getItem("nclex:theme");
+        if (t !== "dark" && t !== "light") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+    </script>
+    <style>
+      /* The page behind the native launch splash is the same white as the splash itself, so there is never a
+         pale / white frame at any point of start-up. The native splash (logo on white) is held by the Capacitor
+         plugin until the first real screen has painted; src/lib/splash.js then fades it out. */
+      html, body { margin: 0; background: #FFFFFF; }
+      #splash { position: fixed; inset: 0; z-index: 9999; background: #FFFFFF; }
+      #splash small { position: absolute; bottom: 14%; left: 0; right: 0; text-align: center; color: #0B1F4D; font: 600 14px system-ui, sans-serif; opacity: 0; transition: opacity .3s; padding: 0 24px; }
+      #splash.slow small { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="splash" aria-hidden="true">
+      <img src="./logo-full.webp" alt="" />
+      <small>التطبيق بياخد وقت أطول من المعتاد… لو فضل كده اقفله وافتحه تاني</small>
+    </div>
+    <div id="root"></div>
+    <script>setTimeout(function () { var s = document.getElementById("splash"); if (s) s.className += " slow"; }, 9000);</script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

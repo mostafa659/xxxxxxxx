@@ -1,0 +1,72 @@
+name: Deploy web (GitHub Pages)
+
+# v3.37 · the FAST way to try a change: every push builds the web app (about 1 minute) and publishes it on GitHub Pages.
+# Open the link on the phone (or the "installed" app): the newest version is there. No 160 MB download, no re-install.
+# One-time setup: repo → Settings → Pages → Source = "GitHub Actions".
+# SAFETY: this build contains NO provider key and NO gateway token (a public web page can be read by anyone).
+# Add your key once from the 🔑 button inside the app; it is kept on that device.
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate project folder
+        id: proj
+        shell: bash
+        run: |
+          DIR=""
+          for f in $(find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -not -path './.git/*' | awk '{print length, $0}' | sort -n | cut -d' ' -f2-); do
+            if grep -q '"name"[[:space:]]*:[[:space:]]*"clinixstudy"' "$f"; then DIR=$(dirname "$f"); break; fi
+          done
+          if [ -z "$DIR" ]; then echo "::error::package.json (name: clinixstudy) was not found"; exit 1; fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm install --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - name: Run tests
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm test
+
+      - name: Build web app (no keys)
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.proj.outputs.dir }}/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

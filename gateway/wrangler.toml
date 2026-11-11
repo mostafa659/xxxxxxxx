@@ -1,0 +1,22 @@
+# ClinixStudy AI gateway: a Cloudflare Worker (free plan is enough to start).
+# Deploy: GitHub → Actions → "Deploy AI gateway"  (see gateway/README.md), or from a terminal:  cd gateway && npx wrangler deploy
+name = "clinix-gateway"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+workers_dev = true
+
+[vars]
+DAILY_LIMIT = "500"            # generation calls per DEVICE per day (needs the LIMITS KV below; without it there is no limit)
+ALLOWED_MODELS = "^gemini-"    # a regex: which Gemini models the app may use through your key
+# UPSTREAM_URL = ""            # leave unset: only for a staging copy that must talk to a test server instead of Google
+
+# Optional daily limit per device. Create the store once and paste its id:
+#     npx wrangler kv namespace create LIMITS
+# (the Cloudflare free plan allows 1,000 KV writes a day: past that the limit simply stops counting, it never blocks a student)
+# [[kv_namespaces]]
+# binding = "LIMITS"
+# id = "PASTE_THE_ID_HERE"
+
+# Secrets are NEVER written here. Set them in GitHub (the deploy workflow sends them) or with:
+#     npx wrangler secret put GEMINI_API_KEY      ← your PAID Google key
+#     npx wrangler secret put ACCESS_CODES        ← one or more access codes, comma separated: code-one,code-two
