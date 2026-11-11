@@ -154,6 +154,8 @@ export default function ChatPanel({
   const [files, setFiles] = useState([]);        // pending attachments for the next message
   const [imgMode, setImgMode] = useState(false); // next message → draw a picture
   const [examMode, setExamMode] = useState(false); // next message → build an exam
+  const [optsOpen, setOptsOpen] = useState(false);       // the small options popover next to the composer
+  const optsRef = useRef(null);
   const [imgModel, setImgM] = useState(getImgModel);   // fast (default) | pro
   const [engine, setEng] = useState(getEngine);   // diagram | gemini
   /* reply level: which model answers and how hard it thinks (lib/chat.js → REPLY_LEVELS). Remembered; applies to the NEXT message. */
@@ -167,6 +169,13 @@ export default function ChatPanel({
   photoRef.current = photoOn;
   const photoCtl = useRef(new Set());
   const togglePhotos = () => { const v = !photoOn; setPhotoOn(v); savePhotosOn(v); if (v && !configuredSources().length) onNeedKey(); };
+  useEffect(() => {
+    if (!optsOpen) return undefined;
+    const away = (e) => { if (optsRef.current && !optsRef.current.contains(e.target)) setOptsOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOptsOpen(false); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [optsOpen]);
   const toggleSearch = () => { const v = !search; setSearch(v); setEnginePrefs({ search: v }); };
   const [wait, setWait] = useState("");
   const [stage, setStage] = useState(null);       // what a big answer is doing now: { kind: "plan" } | { kind: "write", n, done }
@@ -709,63 +718,59 @@ export default function ChatPanel({
         </div>
       )}
 
-      {imgMode && (
-        <div className="chat-opts">
-          <div className="opt-row">
-            <span className="opt-label">طريقة الرسم</span>
-            <div className="opt-seg" role="radiogroup" aria-label="طريقة الرسم">
-              {ENGINES.map((e) => (
-                <button key={e.id} type="button" role="radio" aria-checked={engine === e.id} data-on={engine === e.id} title={e.hint}
-                  onClick={() => { setEng(e.id); setEngine(e.id); }}>{e.label}</button>
-              ))}
-            </div>
-          </div>
-          {engine === "diagram" && (
-            <div className="opt-row">
-              <span className="opt-label">سرعة الرسم</span>
-              <div className="opt-seg" role="radiogroup" aria-label="سرعة الرسم">
-                {IMG_MODELS.map((m) => (
-                  <button key={m.id} type="button" role="radio" aria-checked={imgModel === m.id} data-on={imgModel === m.id} title={m.hint}
-                    onClick={() => { setImgM(m.id); setImgModel(m.id); }}>{m.label}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!imgMode && !examMode && (
-        <div className="chat-opts">
-          <div className="opt-row">
-            <span className="opt-label">مستوى الرد</span>
-            <div className="opt-seg" role="radiogroup" aria-label="مستوى الرد">
-              {UI_LEVELS.map((l) => (
-                <button key={l.id} type="button" role="radio" aria-checked={level === l.id} data-on={level === l.id} title={l.hint} onClick={() => pickLevel(l.id)}>
-                  <Icon name={l.icon} size={14} />
-                  <span>{l.label}</span>
-                  <small>{l.wait}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="opt-chips">
-            <button type="button" className="opt-chip" data-on={search} aria-pressed={search} onClick={toggleSearch}
-              title={search ? "بيبحث قبل ما يرد والمصادر بتظهر تحت الرد. دوس لتقفله" : "الرد من غير بحث ولا مصادر. دوس لتفتحه"}>
-              <span aria-hidden="true">🔎</span> بحث ومصادر <i>{search ? "شغّال" : "مقفول"}</i>
-            </button>
-            <button type="button" className="opt-chip" data-on={photoOn} aria-pressed={photoOn} onClick={togglePhotos}
-              title={photoOn ? "صور توضيحية بتظهر تحت الرد لما يحتاجها. دوس لتقفلها" : "الرد نص بس. دوس لتفتح الصور"}>
-              <span aria-hidden="true">🖼️</span> صور توضيحية <i>{photoOn ? "شغّال" : "مقفول"}</i>
-            </button>
-          </div>
-          {photoOn && !configuredSources().length && (
-            <button type="button" className="chat-photos-hint" onClick={onNeedKey}>ضيف مفتاح مصدر صور واحد على الأقل (Google / Unsplash / Pexels) من 🔑</button>
-          )}
-        </div>
-      )}
-
       <div className="chat-compose">
         <input ref={fileRef} type="file" multiple hidden onChange={onPick} />
+        {!examMode && (
+          <div className="opt-wrap" ref={optsRef}>
+          {optsOpen && !examMode && (
+            <div className="opt-pop" role="dialog" aria-label="خيارات الرد">
+              {imgMode ? (
+                <>
+                  <div className="opt-line"><span>طريقة الرسم</span>
+                    <div className="opt-seg" role="radiogroup" aria-label="طريقة الرسم">
+                      {ENGINES.map((e) => (
+                        <button key={e.id} type="button" role="radio" aria-checked={engine === e.id} data-on={engine === e.id} title={e.hint}
+                          onClick={() => { setEng(e.id); setEngine(e.id); }}>{e.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {engine === "diagram" && (
+                    <div className="opt-line"><span>سرعة الرسم</span>
+                      <div className="opt-seg" role="radiogroup" aria-label="سرعة الرسم">
+                        {IMG_MODELS.map((m) => (
+                          <button key={m.id} type="button" role="radio" aria-checked={imgModel === m.id} data-on={imgModel === m.id} title={m.hint}
+                            onClick={() => { setImgM(m.id); setImgModel(m.id); }}>{m.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="opt-line"><span>مستوى الرد</span>
+                    <div className="opt-seg" role="radiogroup" aria-label="مستوى الرد">
+                      {UI_LEVELS.map((l) => (
+                        <button key={l.id} type="button" role="radio" aria-checked={level === l.id} data-on={level === l.id} title={l.hint} onClick={() => pickLevel(l.id)}>
+                          <Icon name={l.icon} size={14} /> {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button type="button" className="opt-line opt-sw" role="switch" aria-checked={search} data-on={search} onClick={toggleSearch}
+                    title="بيبحث قبل ما يرد، والمصادر بتظهر تحت الرد"><span><Icon name="search" size={15} /> بحث ومصادر</span><i aria-hidden="true" /></button>
+                  <button type="button" className="opt-line opt-sw" role="switch" aria-checked={photoOn} data-on={photoOn} onClick={togglePhotos}
+                    title="صور توضيحية بتظهر تحت الرد لما يحتاجها"><span><Icon name="image" size={15} /> صور توضيحية</span><i aria-hidden="true" /></button>
+                  {photoOn && !configuredSources().length && (
+                    <button type="button" className="chat-photos-hint" onClick={onNeedKey}>ضيف مفتاح مصدر صور من 🔑</button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+            <button type="button" className="chat-tool" data-on={optsOpen} aria-pressed={optsOpen} aria-label="خيارات الرد" title="خيارات الرد"
+              onClick={() => setOptsOpen((v) => !v)}><Icon name="sliders" size={19} />{!imgMode && level === "quick" && <i className="opt-dot" aria-hidden="true" />}</button>
+          </div>
+        )}
         <button type="button" className="chat-tool" onClick={() => fileRef.current?.click()} aria-label="أرفق ملفات أو صور" title="أرفق ملفات أو صور"><Icon name="paperclip" size={19} /></button>
         <button type="button" className="chat-tool" data-on={imgMode} aria-pressed={imgMode} onClick={() => { setImgMode((v) => !v); setExamMode(false); }} aria-label="رسم صورة" title="الرسالة الجاية: ارسملي صورة"><Icon name="image" size={19} /></button>
         <button type="button" className="chat-tool" data-on={examMode} aria-pressed={examMode} onClick={() => { setExamMode((v) => !v); setImgMode(false); }} aria-label="امتحان" title="الرسالة الجاية: اعملي امتحان"><Icon name="clipboard" size={19} /></button>
