@@ -681,29 +681,21 @@ img { display: block; max-width: 100%; }
 
 .chat-gen-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .chat-gen-foot small { color: var(--ink-3); font-size: 11.5px; font-weight: 800; }
-.chat-engines { display: flex; gap: 6px; padding: 8px 14px 0; border-top: 1px solid var(--line-2); }
-.chat-engines button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 6px; border-radius: 14px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; line-height: 1.3; }
-.chat-engines button small { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-align: center; }
-.chat-engines button[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-ink, var(--teal)); }
-.chat-engines button[data-on="true"] small { color: inherit; opacity: .85; }
-
-/* reply level (v3.27): four steps; the dots show "more effort = more waiting" */
-.chat-level { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px 0; border-top: 1px solid var(--line-2); }
-.chat-level-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.chat-level-head b { font-size: 12.5px; font-weight: 900; color: var(--ink-2); }
-.chat-level-head small { font-size: 11px; font-weight: 800; color: var(--ink-3); }
-.chat-level-seg { display: flex; gap: 6px; }
-.chat-level-seg button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 7px; border-radius: 12px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 900; line-height: 1.2; white-space: nowrap; cursor: pointer; }
-.chat-level-seg button[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-ink, var(--teal)); }
-.lv-dots { display: inline-flex; gap: 3px; }
-.lv-dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .2; }
-.lv-dots i[data-f="1"] { opacity: .9; }
-.chat-level-note { margin: 0; font-size: 11.5px; line-height: 1.5; font-weight: 700; color: var(--ink-3); }
-.chat-level + .chat-compose { border-top: 0; padding-top: 8px; }
-
-/* search toggle + sources (v3.27) */
-.chat-search { align-self: flex-start; padding: 4px 10px; border-radius: 99px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink-3); font: inherit; font-size: 11.5px; font-weight: 800; cursor: pointer; }
-.chat-search[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-ink, var(--teal)); }
+/* v3.40 — one tidy options block above the composer: segmented controls + small status chips */
+.chat-opts { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 2px; border-top: 1px solid var(--line-2); }
+.opt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.opt-label { font-size: 12px; font-weight: 900; color: var(--ink-3); white-space: nowrap; }
+.opt-seg { display: flex; flex: 1; max-width: 270px; padding: 3px; gap: 3px; border-radius: 14px; background: var(--card-2, rgba(127,127,127,.12)); border: 1px solid var(--line-2); }
+.opt-seg button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 11px; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 900; line-height: 1.2; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+.opt-seg button small { font-size: 10.5px; font-weight: 700; color: var(--ink-3); }
+.opt-seg button[data-on="true"] { background: var(--teal-soft); color: var(--teal-ink, var(--teal)); box-shadow: 0 0 0 1.5px var(--teal) inset; }
+.opt-seg button[data-on="true"] small { color: inherit; opacity: .85; }
+.opt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.opt-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 99px; border: 1.5px solid var(--line-2); background: var(--card); color: var(--ink-3); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.opt-chip i { font-style: normal; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 99px; background: rgba(127,127,127,.15); }
+.opt-chip[data-on="true"] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-ink, var(--teal)); }
+.opt-chip[data-on="true"] i { background: var(--teal); color: #fff; }
+.chat-opts + .chat-compose { border-top: 0; padding-top: 8px; }
 .src-box { margin-top: 10px; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line-2); background: var(--card); display: flex; flex-direction: column; gap: 6px; }
 .src-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .src-head b { font-size: 13px; font-weight: 900; color: var(--ink-2); }
@@ -1267,7 +1259,7 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--teal-2) 
 .chat-hist-open small { color: var(--ink-3); font-size: 12px; font-weight: 700; }
 .chat-hist-del { flex: none; align-self: center; margin-inline-end: 8px; }
 .chat-hist-del[data-sure="true"] { background: var(--no-soft, #FDE6E6); border-color: var(--no, #D64545); }
-.chat[data-hist="true"] .chat-list, .chat[data-hist="true"] .chat-compose, .chat[data-hist="true"] .chat-pending, .chat[data-hist="true"] .chat-engines, .chat[data-hist="true"] .chat-level { display: none; }
+.chat[data-hist="true"] .chat-list, .chat[data-hist="true"] .chat-compose, .chat[data-hist="true"] .chat-pending, .chat[data-hist="true"] .chat-opts { display: none; }
 :root[data-theme="dark"] .chat-hist-row[data-on="true"] { background: rgba(14, 154, 167, .18); }
 :root[data-theme="dark"] .chat-bar-title, :root[data-theme="dark"] .chat-hist-open { color: var(--ink); }
 

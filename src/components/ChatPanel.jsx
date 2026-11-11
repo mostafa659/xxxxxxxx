@@ -10,11 +10,11 @@ import PhotoStrip from "./PhotoStrip.jsx";
 import { fetchPhotos, photosOn as readPhotosOn, setPhotosOn as savePhotosOn, configuredSources } from "../lib/photos.js";
 import { getEnginePrefs, setEnginePrefs } from "../lib/providers.js";
 import { Lightbox, StrokeLayer, inkKey, loadInk, inkOnBlob } from "./ImageInk.jsx";
-import { askChat, REPLY_LEVELS, DEFAULT_LEVEL, levelOf } from "../lib/chat.js";
+import { askChat, UI_LEVELS, DEFAULT_LEVEL, levelOf } from "../lib/chat.js";
 import { stripPending } from "../lib/chatflow.js";
 import { makeExam, wantsExam } from "../lib/exam.js";
 import { splitCites } from "../lib/library.js";
-import { makePicture, restyle, WANTS_AR, WANTS_REDO, WANTS_RESTYLE, ENGINES, getEngine, setEngine } from "../lib/imagegen.js";
+import { makePicture, restyle, WANTS_AR, WANTS_REDO, WANTS_RESTYLE, ENGINES, getEngine, setEngine, IMG_MODELS, getImgModel, setImgModel } from "../lib/imagegen.js";
 import { readFiles, sourceParts, MAX_ITEMS } from "../lib/docs.js";
 import { fixText } from "../lib/text.js";
 import { store, prefs } from "../lib/storage.js";
@@ -154,9 +154,10 @@ export default function ChatPanel({
   const [files, setFiles] = useState([]);        // pending attachments for the next message
   const [imgMode, setImgMode] = useState(false); // next message → draw a picture
   const [examMode, setExamMode] = useState(false); // next message → build an exam
+  const [imgModel, setImgM] = useState(getImgModel);   // fast (default) | pro
   const [engine, setEng] = useState(getEngine);   // diagram | gemini
   /* reply level: which model answers and how hard it thinks (lib/chat.js → REPLY_LEVELS). Remembered; applies to the NEXT message. */
-  const [level, setLevel] = useState(() => { const v = prefs.get("clinix:chat:level", DEFAULT_LEVEL); return REPLY_LEVELS.some((l) => l.id === v) ? v : DEFAULT_LEVEL; });
+  const [level, setLevel] = useState(() => { const v = prefs.get("clinix:chat:level", DEFAULT_LEVEL); return UI_LEVELS.some((l) => l.id === v) ? v : DEFAULT_LEVEL; });   // an old "deep"/"max" choice becomes "balanced"
   const pickLevel = (id) => { setLevel(id); prefs.set("clinix:chat:level", id); };
   /* Google Search before every answer (default ON): the answer is built from what is found and its sources are listed under it */
   const [search, setSearch] = useState(() => getEnginePrefs().search !== false);
@@ -709,39 +710,54 @@ export default function ChatPanel({
       )}
 
       {imgMode && (
-        <div className="chat-engines" role="radiogroup" aria-label="طريقة الرسم">
-          {ENGINES.map((e) => (
-            <button key={e.id} type="button" role="radio" aria-checked={engine === e.id} data-on={engine === e.id} title={e.hint}
-              onClick={() => { setEng(e.id); setEngine(e.id); }}>
-              {e.label}<small>{e.hint}</small>
-            </button>
-          ))}
+        <div className="chat-opts">
+          <div className="opt-row">
+            <span className="opt-label">طريقة الرسم</span>
+            <div className="opt-seg" role="radiogroup" aria-label="طريقة الرسم">
+              {ENGINES.map((e) => (
+                <button key={e.id} type="button" role="radio" aria-checked={engine === e.id} data-on={engine === e.id} title={e.hint}
+                  onClick={() => { setEng(e.id); setEngine(e.id); }}>{e.label}</button>
+              ))}
+            </div>
+          </div>
+          {engine === "diagram" && (
+            <div className="opt-row">
+              <span className="opt-label">سرعة الرسم</span>
+              <div className="opt-seg" role="radiogroup" aria-label="سرعة الرسم">
+                {IMG_MODELS.map((m) => (
+                  <button key={m.id} type="button" role="radio" aria-checked={imgModel === m.id} data-on={imgModel === m.id} title={m.hint}
+                    onClick={() => { setImgM(m.id); setImgModel(m.id); }}>{m.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {!imgMode && !examMode && (
-        <div className="chat-level">
-          <div className="chat-level-head">
-            <b>مستوى الرد</b>
-            <small>{levelOf(level).wait}</small>
+        <div className="chat-opts">
+          <div className="opt-row">
+            <span className="opt-label">مستوى الرد</span>
+            <div className="opt-seg" role="radiogroup" aria-label="مستوى الرد">
+              {UI_LEVELS.map((l) => (
+                <button key={l.id} type="button" role="radio" aria-checked={level === l.id} data-on={level === l.id} title={l.hint} onClick={() => pickLevel(l.id)}>
+                  <Icon name={l.icon} size={14} />
+                  <span>{l.label}</span>
+                  <small>{l.wait}</small>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="chat-level-seg" role="radiogroup" aria-label="مستوى الرد">
-            {REPLY_LEVELS.map((l, i) => (
-              <button key={l.id} type="button" role="radio" aria-checked={level === l.id} data-on={level === l.id} title={`${l.hint} · الوقت المتوقع: ${l.wait}`} onClick={() => pickLevel(l.id)}>
-                {l.label}
-                <span className="lv-dots" aria-hidden="true">{REPLY_LEVELS.map((_, j) => <i key={j} data-f={j <= i ? "1" : "0"} />)}</span>
-              </button>
-            ))}
+          <div className="opt-chips">
+            <button type="button" className="opt-chip" data-on={search} aria-pressed={search} onClick={toggleSearch}
+              title={search ? "بيبحث قبل ما يرد والمصادر بتظهر تحت الرد. دوس لتقفله" : "الرد من غير بحث ولا مصادر. دوس لتفتحه"}>
+              <span aria-hidden="true">🔎</span> بحث ومصادر <i>{search ? "شغّال" : "مقفول"}</i>
+            </button>
+            <button type="button" className="opt-chip" data-on={photoOn} aria-pressed={photoOn} onClick={togglePhotos}
+              title={photoOn ? "صور توضيحية بتظهر تحت الرد لما يحتاجها. دوس لتقفلها" : "الرد نص بس. دوس لتفتح الصور"}>
+              <span aria-hidden="true">🖼️</span> صور توضيحية <i>{photoOn ? "شغّال" : "مقفول"}</i>
+            </button>
           </div>
-          <p className="chat-level-note">{levelOf(level).hint} كل ما زاد المستوى زادت الدقة وزاد وقت الانتظار.</p>
-          <button type="button" className="chat-search" data-on={search} aria-pressed={search} onClick={toggleSearch}
-            title={search ? "الرد بيتبني على نتايج بحث، ومصادره بتظهر تحته" : "الرد من غير بحث ولا مصادر"}>
-            🔎 {search ? "بيبحث قبل ما يرد · المصادر تحت الرد" : "البحث مقفول · الرد من غير مصادر"}
-          </button>
-          <button type="button" className="chat-search" data-on={photoOn} aria-pressed={photoOn} onClick={togglePhotos}
-            title={photoOn ? "لو الرد محتاج توضيح بصري بتظهر تحته صور (5 كحد أقصى) بعد ما النص يوصل" : "الرد نص بس، من غير صور"}>
-            🖼️ {photoOn ? "صور توضيحية تلقائية · لما الرد يحتاجها" : "الصور مقفولة · الرد نص بس"}
-          </button>
           {photoOn && !configuredSources().length && (
             <button type="button" className="chat-photos-hint" onClick={onNeedKey}>ضيف مفتاح مصدر صور واحد على الأقل (Google / Unsplash / Pexels) من 🔑</button>
           )}

@@ -56,6 +56,8 @@ export const REPLY_LEVELS = [
   { id: "deep", label: "عميق", icon: "brain", wait: "حوالي 30 ثانية", hint: "نموذج أقوى بيفكّر قبل ما يرد. للمقارنات والاعتراضات والحالات." },
   { id: "max", label: "أقصى دقة", icon: "target", wait: "من دقيقة لدقيقتين", hint: "أقوى نموذج وأعمق تفكير، وبيراجع نفسه. للأسئلة الصعبة والمهمة." },
 ];
+/* v3.40 — the selector shows only the two everyday levels; deep/max stay in the engine (old saved choices are mapped to "balanced") */
+export const UI_LEVELS = REPLY_LEVELS.filter((l) => l.id === "quick" || l.id === "balanced");
 export const DEFAULT_LEVEL = "balanced";
 export const levelOf = (id) => REPLY_LEVELS.find((l) => l.id === id) || REPLY_LEVELS.find((l) => l.id === DEFAULT_LEVEL);
 

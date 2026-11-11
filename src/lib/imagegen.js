@@ -25,6 +25,20 @@ const LS_BLOCK = "clinix:imgblock:gemini";
 export const getEngine = () => { try { const e = window.localStorage.getItem(LS_ENGINE); return ENGINES.some((x) => x.id === e) ? e : "diagram"; } catch (e) { return "diagram"; } };
 export const setEngine = (id) => { try { window.localStorage.setItem(LS_ENGINE, id); } catch (e) { /* ignore */ } };
 
+/* v3.40 — which text model drafts the infographic: "fast" (default, a few seconds) or "pro" (only if the student picks it) */
+export const IMG_MODELS = [
+  { id: "fast", label: "سريع", hint: "ثواني · الأنسب لأغلب الرسومات" },
+  { id: "pro", label: "أدق", hint: "أبطأ شوية · لو الرسم معقّد" },
+];
+const LS_IMGMODEL = "clinix:imgmodel";
+export const getImgModel = () => { try { return window.localStorage.getItem(LS_IMGMODEL) === "pro" ? "pro" : "fast"; } catch (e) { return "fast"; } };
+export const setImgModel = (id) => { try { window.localStorage.setItem(LS_IMGMODEL, id === "pro" ? "pro" : "fast"); } catch (e) { /* ignore */ } };
+const imgModels = (lists) => {
+  const fast = (lists && lists.fast) || [], pro = (lists && lists.pro) || [];
+  const lite = fast.filter((m) => /lite/.test(m)), rest = fast.filter((m) => !/lite/.test(m));
+  return [...new Set(getImgModel() === "pro" ? [...pro, ...lite, ...rest] : [...lite, ...rest, ...pro])];
+};
+
 const abortError = () => Object.assign(new Error("aborted"), { name: "AbortError" });
 const cap = (s, n) => ((s || "").length > n ? (s || "").slice(0, n) + "…" : (s || ""));
 const toB64 = (str) => btoa(unescape(encodeURIComponent(str)));
@@ -97,7 +111,7 @@ async function runDiagram({ apiKey, ctx, request, atts, signal, prev, bilingual 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const j = await runTask({
-        apiKey, task: "lesson:diagram", signal, models: [...lists.fast, ...lists.pro],
+        apiKey, task: "lesson:diagram", signal, models: imgModels(lists),
         system: infoSystem({ bilingual: bi, avoidType: !redo && prev && prev.type ? prev.type : "" }) + (bad ? `\n\nYour previous reply could not be drawn (${bad}). Reply again with a valid JSON object that follows the rules.` : ""),
         parts: [...refs, { text: `CONTEXT — the question and lesson he is studying:\n${cap(ctx.question, 2000)}\n${cap(ctx.explanation, 3500)}\n\nSTUDENT REQUEST: ${request}${redoNote}` }],
         spec: { levels: ["low", "minimal"], budget: 512 }, maxOut: bi ? 6000 : 3500, hedgeMs: 6000, firstMs: 30000, idleMs: 25000,
@@ -113,7 +127,7 @@ async function runDiagram({ apiKey, ctx, request, atts, signal, prev, bilingual 
   let last = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const out = await runTask({
-      apiKey, task: "lesson:diagram", signal, models: [...lists.fast, ...lists.pro],
+      apiKey, task: "lesson:diagram", signal, models: imgModels(lists),
       system: DIAGRAM_SYSTEM + (last ? `\n\nYour previous SVG was not valid XML (${last}). Output a corrected, well-formed SVG.` : ""),
       parts: [...refs, { text: `CONTEXT — the question and lesson he is studying:\n${cap(ctx.question, 1800)}\n${cap(ctx.explanation, 1800)}\n\nSTUDENT REQUEST: ${request}\n\nDraw it as one SVG.` }],
       spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: 9000, hedgeMs: 15000, firstMs: 60000, idleMs: 45000,

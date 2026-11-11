@@ -1,7 +1,7 @@
 {
   "name": "clinixstudy",
   "productName": "ClinixStudy",
-  "version": "3.39.0",
+  "version": "3.40.0",
   "description": "ClinixStudy — NCLEX-RN study app (Android via Capacitor, Windows via Electron)",
   "author": "MOSTAFA HAMMAD",
   "private": true,
