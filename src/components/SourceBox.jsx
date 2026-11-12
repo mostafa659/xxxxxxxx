@@ -52,6 +52,16 @@ export default function SourceBox({ kind, items, imageUrl, onFiles, onText, onRe
         </div>
       )}
 
+      {/* v3.40: the single most effective accuracy measure that costs nothing: a given answer / explanation to lean on instead of the model's memory */}
+      <p className="src-trust">
+        <Icon name="lightbulb" size={16} />
+        <span>
+          <b>للدقة:</b>{" "}
+          {lesson ? "ارفع مرجعاً للشرح." : "ارفع إجابة السؤال أو شرحه من مرجعك."}
+          {" "}ولو مش معاك، لا تقلق، لكن قد تقل الدقة قليلاً في النقاط الصعبة.
+        </span>
+      </p>
+
       <div className="src-text">
         <label htmlFor="src-ta" className="label">{lesson ? "أو اكتب / الصق نص الشرح هنا" : "أو اكتب / الصق نص السؤال هنا"}</label>
         <textarea id="src-ta" dir="auto" rows={3} value={text} onChange={(e) => setText(e.target.value)}

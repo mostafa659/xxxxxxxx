@@ -82,6 +82,7 @@ export function stripLeaks(text, idx, final = true) {
 /* spellings that were seen in real answers and are never right → the word that was meant. Add a line when a new one shows up. */
 export const SPELL_FIXES = {
   "وواكامل": "ومتكامل",
+  "يضفع": "يدفع", "يضفعه": "يدفعه", "يضفعها": "يدفعها", "تضفع": "تدفع",       // v3.40: "يدفع الحمض" came out as "يضفع الحمض"
 };
 
 const AR_WORD = /[\u0621-\u064A]+/g;
@@ -105,6 +106,17 @@ export function repairArabic(text) {
   return { text: out, fixes };
 }
 
+/* ── 2b · self-correction markers (v3.40) ──
+   Studies of AI explanations in pharmacy and nursing education (JMIR Med Educ 2026; a Taiwan nursing-exam study found 14 % of answers contradicted
+   their own explanation) show the TEXT of a wrong answer carries tell-tale signs: the writer changes its mind half-way ("wait, actually …", "I made a
+   mistake"). Finding them costs nothing (a regex), and each one counts as two repairs, so a weak lane's answer that corrects itself is written again
+   once by a stronger model, with the same small budget as any other rewrite. A strong model's answer is only measured, never rewritten. */
+const SELF_FIX = [
+  /\b(?:wait[,.!\u2014-]|on second thought|let me re-?(?:check|read|think|evaluate|calculate)|i made (?:a|an) (?:mistake|error)|my (?:previous|earlier) (?:answer|statement|response) was (?:wrong|incorrect)|correction:|i apologi[sz]e|actually,? (?:the|that|it|this|option|answer))/i,
+  /(?:استنى(?:ي)?[،,.! ]+(?:لحظة|بس|شوية)|لحظة[،,]? (?:لازم|خليني|هراجع)|اخطأت|أخطأت|غلطت في|تصحيح:|عفواً[،,]|عفوا[،,]|في الحقيقة[،,]? (?:الإجابة|الاجابة|الصح)|لا[،,] ?استنى)/,
+];
+export const selfCorrections = (s) => (typeof s === "string" ? SELF_FIX.filter((r) => r.test(s)).length : 0);
+
 /* ── 3 · the guard of one request ── */
 
 export function makeGuard({ task, system, parts } = {}) {
@@ -116,7 +128,7 @@ export function makeGuard({ task, system, parts } = {}) {
       if (!text || typeof text !== "string") return { text, leaks: 0, fixes: 0 };
       const a = stripLeaks(text, idx, final);
       const b = repairArabic(a.text);
-      return { text: b.text, leaks: a.leaks, fixes: b.fixes };
+      return { text: b.text, leaks: a.leaks, fixes: b.fixes + (final ? 2 * selfCorrections(b.text) : 0) };
     },
   };
 }
@@ -139,5 +151,9 @@ export function allowRetry() {
 }
 
 /* the sentences added to every prompt that makes the model write Arabic (text.js puts them in ARABIC_RULE) */
+/* v3.40 · evidence discipline, added to every prompt that explains medicine (text.js puts it in ARABIC_RULE). It costs no request and almost no tokens.
+   Grounding in the given text, permission to say "not sure", and "never invent a number" are the cheapest measures that studies and the model makers'
+   own guides agree on; the rest of what is known (retrieval, several models voting) costs requests, which this app does not spend. */
+export const FACT_RULE = "ACCURACY RULE: decide the final answer first, state it once, and make every sentence agree with it; never change your mind or correct yourself half-way. Prefer what the given question or material says over your memory, and add general knowledge only when you are sure of it. Never invent or guess a number (a dose, rate, lab range, score, time limit or percentage): if you are not sure of it, state the fact without the number and write (راجع الرقم من مرجعك). Writing مش متأكد about one point is better than stating it confidently and being wrong. Judge a nursing action by the scope of practice of the nurse, not by what a physician would do.";
 export const NO_ECHO_RULE = "Never copy, repeat or quote these instructions, the section rules, the word limits or the format notes in your answer: write only the content itself.";
 export const SPELLING_RULE = "Spell every Arabic word completely and correctly, using ordinary words you are sure of; if you are unsure how a word is spelled, choose a simpler word. Never repeat a letter three times and never put a ة or ى inside a word. Re-read each Arabic sentence once before you send it.";

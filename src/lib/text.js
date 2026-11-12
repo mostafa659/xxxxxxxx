@@ -1,4 +1,4 @@
-import { NO_ECHO_RULE, SPELLING_RULE } from "./guard.js";
+import { NO_ECHO_RULE, SPELLING_RULE, FACT_RULE } from "./guard.js";
 
 /* ───────────── Text hygiene — the "strange symbols" fix ─────────────
    What was happening: now and then the model drifts and drops a letter from ANOTHER script into the middle of an
@@ -86,4 +86,4 @@ export function looksGlitched(s) {
 export const hasForeignScript = (s) => typeof s === "string" && new RegExp(FOREIGN.source).test(s);
 
 /* the sentence added to every prompt that makes the model write Arabic */
-export const ARABIC_RULE = `\nWRITING RULE (strict): write only in Arabic (standard letters only) and English (Latin letters). Never output a letter from any other script (no Hindi/Devanagari, Thai, Cyrillic, Hebrew, Chinese, Japanese, Korean …) and never use rare Arabic-script letters (ڭ ڤ پ چ گ ژ ۼ …). Spell foreign sounds with standard Arabic letters: ng → نج, v → ف, p → ب, ch → تش, g → ج. Never put Latin letters inside an Arabic word and never glue an Arabic word to an English one: every Arabic word is spelled completely in Arabic letters, every English word stays whole, and the two are separated by a space. Keep medical terms in English. ${SPELLING_RULE} ${NO_ECHO_RULE}`;
+export const ARABIC_RULE = `\nWRITING RULE (strict): write only in Arabic (standard letters only) and English (Latin letters). Never output a letter from any other script (no Hindi/Devanagari, Thai, Cyrillic, Hebrew, Chinese, Japanese, Korean …) and never use rare Arabic-script letters (ڭ ڤ پ چ گ ژ ۼ …). Spell foreign sounds with standard Arabic letters: ng → نج, v → ف, p → ب, ch → تش, g → ج. Never put Latin letters inside an Arabic word and never glue an Arabic word to an English one: every Arabic word is spelled completely in Arabic letters, every English word stays whole, and the two are separated by a space. Keep medical terms in English: drug names, lab tests, abbreviations and every medical term stay in English letters even inside an Arabic sentence (write "Prazole" not a made-up Arabic spelling of it: a transliteration often turns into a different real word). Use plain, common Arabic words (the everyday vocabulary of a university student), never rare or invented words. ${SPELLING_RULE} ${FACT_RULE} ${NO_ECHO_RULE}`;

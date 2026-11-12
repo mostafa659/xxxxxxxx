@@ -288,7 +288,7 @@ ${H.vary}
 
 TRICKS:
 - 2 to 4 bullets, each like "**Trap name:** short explanation" — tricky keywords, tempting distractors, look-alike words, common student mistakes. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its translation.
+- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
@@ -356,7 +356,7 @@ ${H.memo}
 
 TRICKS:
 - 2 to 4 bullets, each like "**Trap name:** short explanation" — tricky keywords, tempting distractors, look-alike words, common student mistakes. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its translation.
+- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
@@ -481,7 +481,7 @@ ${H.must}
 
 TRICKS:
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its translation.
+- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
@@ -530,7 +530,7 @@ ${H.memo}
 
 TRICKS:
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its translation.
+- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
 ${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
@@ -659,7 +659,7 @@ ${H.memo}
 > 3 to 5 short English sentences that sum up the key rules (one per line, each starting with "> "), each followed by its translation on the next line (a normal line, no marker).
 ===TRICKS===
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its translation.
+- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXAM===.`,

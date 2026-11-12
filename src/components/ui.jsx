@@ -8,6 +8,7 @@ import { testConnection, testExtProviders, warmExternal, ENV_KEY, addApiKey, onK
 import * as Ring from "../lib/keyring.js";
 import { GATEWAY_URL } from "../lib/config.js";
 import { getEnginePrefs, setEnginePrefs } from "../lib/providers.js";
+import { proofOn, setProofPref } from "../lib/proof.js";
 
 /* The ClinixStudy logo (emblem + two-tone wordmark). The emblem sits on a white chip so it reads in both themes. */
 export function Brand({ onClick }) {
@@ -90,6 +91,7 @@ function VoicePick() {
 
 /* the two switches that matter (v3.38: the "quality first" / "max speed" buttons were removed: the app always chooses by itself) */
 function EnginePanel({ prefs, setPrefs }) {
+  const [proof, setProof] = useState(proofOn);      // v3.40: the second reader (proof.js), saved at once, not with the engine preferences
   return (
     <div className="xeng">
       <label className="xeng-check" style={{ marginTop: 0 }}>
@@ -99,6 +101,10 @@ function EnginePanel({ prefs, setPrefs }) {
       <label className="xeng-check">
         <input type="checkbox" checked={prefs.slice} onChange={(e) => setPrefs({ ...prefs, slice: e.target.checked })} />
         <span>قسّم الردود الكبيرة على أكتر من كاتب في نفس الوقت <small>(أسرع كتير، بس بيستهلك طلبات أكتر)</small></span>
+      </label>
+      <label className="xeng-check">
+        <input type="checkbox" checked={proof} onChange={(e) => { setProof(e.target.checked); setProofPref(e.target.checked); }} />
+        <span>راجع الإملاء بقارئ تاني قبل ما يظهر لك الرد <small>(بيصلّح الكلمات المكتوبة غلط أو المخترعة، وبيزوّد طلب صغير وثانيتين تقريباً)</small></span>
       </label>
     </div>
   );

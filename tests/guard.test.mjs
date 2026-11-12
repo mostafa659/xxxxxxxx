@@ -140,3 +140,40 @@ test("dirFor: an Arabic sentence with English terms is RTL, an English sentence 
   assert.equal(dirFor("Heparin — مضاد للتجلط"), "rtl");
   assert.equal(dirFor("only English here"), "ltr");
 });
+
+test("v3.40 layout: a full English sentence keeps its closing ! inside the island, a short term still hands it to the Arabic side", () => {
+  assert.equal(flat(layout("💡 Tip: Prazole pumps acid down, Bismuth binds the bad bugs! — يدفع الحمض")), "💡 [Tip: Prazole pumps acid down, Bismuth binds the bad bugs!] — يدفع الحمض");
+  assert.equal(flat(layout("خد Heparin! وخلاص")), "خد [Heparin]! وخلاص");
+  assert.equal(repairArabic("برازول يضفع الحمض للأسفل").text, "برازول يدفع الحمض للأسفل");
+});
+test("v3.40 the study-material summary card is gone, the other three stay", async () => {
+  const { sectionsFor } = await import("../src/lib/config.js");
+  assert.deepEqual(sectionsFor("lesson").map((s) => s.key), ["new_words", "explanation", "tricks"]);
+  assert.equal(sectionsFor("question").length, 4);
+  assert.ok(ARABIC_RULE.includes("drug names"));
+});
+
+test("v3.40 accuracy rule: every Arabic prompt carries it, and a numbers rule is part of it", async () => {
+  const { FACT_RULE } = await import("../src/lib/guard.js");
+  assert.ok(ARABIC_RULE.includes(FACT_RULE));
+  assert.ok(/never invent or guess a number/i.test(FACT_RULE) && FACT_RULE.includes("(راجع الرقم من مرجعك)"));
+});
+
+test("v3.40 self-correction markers: a text that changes its mind half-way counts as two repairs, a clean one as none", async () => {
+  const { selfCorrections, makeGuard } = await import("../src/lib/guard.js");
+  assert.equal(selfCorrections("الإجابة B لأن الضغط بيقل. Wait, actually the answer is C."), 1);
+  assert.equal(selfCorrections("الإجابة B. استنى لحظة، أخطأت: الصح C. I apologize for the mistake"), 2);
+  assert.equal(selfCorrections("Actually the sodium level matters here because of ADH. الإجابة C."), 1);
+  assert.equal(selfCorrections("الحقنة بتتاخد في العضل. ABCs أول حاجة وبعدين الباقي."), 0);
+  const g = makeGuard({ task: "lesson:chat", system: "x", parts: [{ text: "q" }] });
+  assert.equal(g.scrub("الإجابة B. Wait, actually the answer is C.", true).fixes, 2);
+  assert.equal(g.scrub("الإجابة B. Wait, actually the answer is C.", false).fixes, 0, "never while streaming");
+});
+
+test("engine: a weak lane's answer that corrects itself is written again once by a stronger model", async () => {
+  fresh();
+  script(G("gemini-3.5-flash-lite"), { ok: "الإجابة B لأن ضغط الدم بيقل. Wait, actually the answer is C. عفواً، أخطأت." });
+  script(G("gemini-3.8-flash"), { ok: "الإجابة C لأن الصوديوم بيقل مع ADH الزايد." });
+  const res = await runTask(base({ models: ["gemini-3.5-flash-lite", "gemini-3.8-flash"] }));
+  assert.equal(res.text, "الإجابة C لأن الصوديوم بيقل مع ADH الزايد.");
+});

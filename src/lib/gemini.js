@@ -42,6 +42,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { MODEL_FAST, MODEL_PRO, GATEWAY_URL, GATEWAY_TOKEN, API_BASE_URL, NET, PAID, cap, SERVICE_TIER } from "./config.js";
 import { tierOf, taskClass, mediaOf, estimateTokens, tierStages, planLanes, hedgeDelayMs, nextReadyIn, readyLanes, begin as laneBegin, noteOk, noteBusy, noteDead, noteTooBig, noteSlow, clearDead as clearDeadLanes, clearCool as clearCoolLanes, coolFor, setBias, isDead, isCooling } from "./router.js";
 import { makeGuard, REWRITE_AT, allowRetry } from "./guard.js";
+import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS } from "./proof.js";
 import {
   PROVIDERS, getExtKeys, getExtLanes, refreshLanes, markExtDead, getEngineMode, answerBudget, buildBody,
   streamChat, nativeChat, bearer, headersFor, liveExtKeys, extKeyList, keysChanged as extKeysChanged,
@@ -803,7 +804,41 @@ async function guardedTask(args, trace) {
       /* the stronger model could not answer: keep the first (already repaired) answer */
     }
   }
+  /* v3.40 · the proofreader: a second, independent reader of the final text (proof.js). It fails open and never holds the answer longer than PROOF_MS. */
+  if (proofOn() && shouldProof(out.text) && !(args.signal && args.signal.aborted)) {
+    const pr = await proofread(out.text, args);
+    if (pr.applied.length) { out = { ...out, text: pr.text }; }
+    trace.guard = { ...(trace.guard || {}), proof: pr.applied.length, proofRan: pr.ran };
+  }
   return { ...res, text: out.text };
+}
+
+/* one request per chunk (in parallel), a different model from the author when possible (a stronger, non-lite one first), no thinking, a tiny JSON back */
+async function proofread(text, args) {
+  const none = { text, applied: [], ran: false };
+  try {
+    if (!allowProof()) return none;
+    const chunks = chunkForProof(text);
+    if (!chunks.length) return none;
+    const lists = getModelLists(args.apiKey);
+    const fast = lists.fast || [];
+    const models = [...new Set([...fast.filter((m) => !/lite/.test(m)), ...fast.filter((m) => /lite/.test(m))])];
+    if (!models.length) return none;
+    const ctl = new AbortController();
+    const stop = () => ctl.abort();
+    if (args.signal) args.signal.addEventListener("abort", stop, { once: true });
+    const timer = setTimeout(stop, PROOF_MS);
+    try {
+      const lists2 = await Promise.all(chunks.map((c) =>
+        runTaskInner({
+          apiKey: args.apiKey, task: "words:proof", signal: ctl.signal, models, system: PROOF_SYSTEM, parts: [{ text: c }],
+          spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: 700, hedgeMs: 3500, firstMs: 5000, idleMs: 4000,
+        }, { task: "words:proof", t0: Date.now(), slept: 0, attempts: [], hedges: 0 })
+          .then((r) => parseProof(r && r.text)).catch(() => [])));
+      const r = applyProof(text, lists2.flat());
+      return { ...r, ran: true };
+    } finally { clearTimeout(timer); if (args.signal) args.signal.removeEventListener("abort", stop); }
+  } catch (e) { return none; }                         // a proofreader problem must never become the student's problem
 }
 
 /* ── v3.34 · the key ring around the engine ──

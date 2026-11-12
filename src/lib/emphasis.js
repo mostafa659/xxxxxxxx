@@ -67,7 +67,11 @@ export function layout(src) {
     /* v3.37: punctuation that CLOSES an English phrase ("Heparin," "Warfarin." "Insulin:") belongs to the Arabic sentence, not to the English island.
        Inside the island an ASCII "," or "." is drawn on the English side (left of the word), i.e. the wrong side of an Arabic line. */
     let end = m.index + m[0].length;
-    while (end > m.index + 1 && /[.,;:!?]/.test(plain[end - 1])) end--;
+    /* v3.40: but a whole English SENTENCE (4+ words, e.g. a memory tip) keeps its closing . ! ? inside the island: otherwise the "!" is drawn at the
+       START of the English line ("! Tip: Prazole pumps …") */
+    const sentence = m[0].trim().split(/\s+/).length >= 4;
+    const hand = sentence ? /[,;:]/ : /[.,;:!?]/;
+    while (end > m.index + 1 && hand.test(plain[end - 1])) end--;
     if (m.index < last) continue;
     if (m.index > last) nodes.push({ run: false, parts: groups(last, m.index) });
     nodes.push({ run: true, parts: groups(m.index, end) });

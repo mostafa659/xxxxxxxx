@@ -70,10 +70,8 @@ export const SECTIONS = [
     wait: "بيدوّر على الفخاخ اللي ممكن تقع فيها…" },
 ];
 
-/* the "شرح" side: the same four cards, filled from study material instead of one exam question */
+/* the "شرح" side: three cards filled from study material (v3.40: the "ملخص المادة" card was removed; the material is still read in the background for the title, the chat and the library) */
 export const LESSON_SECTIONS = [
-  { key: "original_question_text", title: "ملخص المادة", sub: "عن إيه الملفات اللي رفعتها", icon: "fileText", rows: 6, cls: "sec-sky", rich: true, step: "read",
-    wait: "بنقرا المادة ونعمل لها خريطة…" },
   { key: "new_words", title: "كلمات جديدة", sub: "أهم المصطلحات والكلمات الصعبة في المادة", icon: "library", rows: 8, cls: "sec-violet", step: "words",
     wait: "بنلمّ المصطلحات الصعبة في المادة…" },
   { key: "explanation", title: "الشرح من الصفر", sub: "كل موضوع من الأساس + الإنجليزي", icon: "brain", rows: 14, cls: "sec-teal", step: "explain",

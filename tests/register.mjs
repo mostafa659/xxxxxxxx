@@ -1,3 +1,4 @@
+globalThis.__CLINIX_PROOF_OFF__ = true;   // v3.40: the proofreader (src/lib/proof.js) is off in the tests that count requests; tests/proof.test.mjs turns it on explicitly
 /* Test bootstrap: lets the app's modules run in plain Node (no Vite, no phone).
    • "@capacitor/core" → a tiny stub (never native)
    • window.localStorage → an in-memory Storage */

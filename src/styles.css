@@ -1470,3 +1470,8 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--teal-2) 
 .km-adv > summary small { font-weight: 600; color: var(--ink-3); }
 .km-adv .xeng { margin-top: 8px; }
 .km-foot { position: sticky; bottom: calc(-1 * max(22px, env(safe-area-inset-bottom))); display: flex; gap: 12px; margin-top: 16px; padding: 12px 0 2px; background: var(--card, var(--bg)); }
+
+/* v3.40 — the accuracy note under the upload box */
+.src-trust { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card-2, rgba(127,127,127,.08)); color: var(--ink-3); font-size: 12px; font-weight: 700; line-height: 1.7; }
+.src-trust svg { flex: none; margin-top: 3px; color: var(--teal); }
+.src-trust b { color: var(--ink-2); font-weight: 900; }
