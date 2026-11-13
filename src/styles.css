@@ -592,6 +592,8 @@ img { display: block; max-width: 100%; }
 .src-tag { flex: none; min-width: 44px; text-align: center; padding: 3px 8px; border-radius: 9px; font-size: 11px; font-weight: 900; letter-spacing: .3px; color: #fff; background: #0E7C8F; }
 .src-tag[data-t="image"] { background: #25A3DC; }
 .src-tag[data-t="pdf"] { background: #D64545; }
+.src-tag[data-l="AUDIO"] { background: #8A5CF6; }
+.src-busy { padding: 8px 14px; color: var(--ink-2, var(--ink-3)); }
 .src-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 800; }
 .src-list small { flex: none; color: var(--ink-3); font-size: 11.5px; font-weight: 700; }
 .src-text { display: flex; flex-direction: column; gap: 8px; }

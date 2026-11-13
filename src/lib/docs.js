@@ -1,6 +1,6 @@
 /* ───────────── Sources: everything the student can give the app ─────────────
    images (several pages / screenshots) · PDF · Word (.docx) · PowerPoint (.pptx) · Excel (.xlsx) · EPUB books ·
-   OpenDocument (.odt .odp .ods) · RTF · HTML · plain text / Markdown / CSV / JSON … · and TEXT TYPED OR PASTED directly.
+   OpenDocument (.odt .odp .ods) · RTF · HTML · plain text / Markdown / CSV / JSON … · AUDIO recordings (v3.41: turned into text ONCE, lib/audio.js) · and TEXT TYPED OR PASTED directly.
 
    A source is a list of ITEMS:
      { id, t:"image", name, size, url }            JPEG data-URL (compressed)
@@ -11,6 +11,7 @@
                          doc      = null for a single plain picture, otherwise { kind:"bundle", name, items:[…] } */
 
 import { fileToCompressedDataUrl } from "./image.js";
+import { isAudioFile } from "./audio-types.js";
 
 export const MAX_ITEMS = 12;
 export const MAX_PDF = 10 * 1024 * 1024;
@@ -24,6 +25,7 @@ const TEXT_EXT = ["txt", "text", "md", "markdown", "csv", "tsv", "json", "xml", 
 
 export const isImage = (f) => (f.type || "").startsWith("image/");
 export const isPdf = (f) => f.type === "application/pdf" || ext(f.name) === "pdf";
+export const isAudio = isAudioFile;
 
 function readAs(file, how) {
   return new Promise((resolve, reject) => {
@@ -182,7 +184,7 @@ async function extractText(file) {
     return { label: e === "md" || e === "markdown" ? "MD" : e === "csv" ? "CSV" : "TXT", text: String(await readAs(file, "readAsText")) };
   }
   if (["doc", "ppt", "xls"].includes(e)) throw new Error("صيغة Office القديمة (." + e + ") مش مدعومة. احفظها " + (e === "doc" ? ".docx" : e === "ppt" ? ".pptx" : ".xlsx") + " أو PDF.");
-  if ((file.type || "").startsWith("audio/") || (file.type || "").startsWith("video/")) throw new Error("ملفات الصوت والفيديو مش مدعومة حالياً.");
+  if ((file.type || "").startsWith("video/")) throw new Error("ملفات الفيديو مش مدعومة. ارفع الصوت بس (MP3 أو M4A أو WAV).");
   // unknown type: accept it only if it really is readable text
   if (file.size <= 3 * 1048576) {
     const t = String(await readAs(file, "readAsText"));
@@ -195,8 +197,15 @@ async function extractText(file) {
 const clean = (t) => String(t).replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{4,}/g, "\n\n\n").trim();
 
 /* ── one file → one item (throws a readable message) ── */
-export async function readItem(file) {
+export async function readItem(file, opts = {}) {
   const id = uid();
+  /* v3.41 · a recording is heard ONCE and becomes a plain text item: every later request (analysis, chat, exam) carries text, never the audio (lib/audio.js) */
+  if (isAudio(file)) {
+    const { transcribeAudio } = await import("./audio.js");
+    const r = await transcribeAudio(file, { apiKey: opts.apiKey, signal: opts.signal, onStatus: opts.onStatus });
+    const t = clean(r.text);
+    return { id, t: "text", name: file.name || "تسجيل صوتي", size: file.size, label: "AUDIO", text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT, audio: true };
+  }
   if (isImage(file)) {
     try { return { id, t: "image", name: file.name || "صورة", size: file.size, label: "IMG", url: await fileToCompressedDataUrl(file) }; }
     catch (e) { throw new Error("الصورة دي مش مقروءة (" + (ext(file.name) || "غير معروفة") + "). جرّب JPG أو PNG."); }
@@ -214,12 +223,12 @@ export async function readItem(file) {
 }
 
 /* ── many files → { items, errors } (a bad file never blocks the good ones) ── */
-export async function readFiles(files, current = []) {
+export async function readFiles(files, current = [], opts = {}) {
   const items = [...current];
   const errors = [];
   for (const f of [...files]) {
     if (items.length >= MAX_ITEMS) { errors.push(`الحد الأقصى ${MAX_ITEMS} ملفات في المرة.`); break; }
-    try { items.push(await readItem(f)); } catch (e) { errors.push(`${f.name || "ملف"}: ${e.message}`); }
+    try { items.push(await readItem(f, opts)); } catch (e) { errors.push(`${f.name || "ملف"}: ${e.message}`); }
   }
   const over = totalBytes(items) > MAX_TOTAL;
   if (over) errors.push(`الحجم الكلي كبير (${mb(totalBytes(items))} ميجا) والحد ${mb(MAX_TOTAL)} ميجا. شيل ملف أو اتنين.`);

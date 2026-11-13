@@ -6,6 +6,7 @@ import { WordCard } from "../components/rich.jsx";
 import { assignedSet, topicOf, kindOf } from "../lib/topics.js";
 import { prefs } from "../lib/storage.js";
 import { stampShort } from "../lib/time.js";
+import { snippetOf } from "../lib/text.js";
 import { useVocab, savedCount } from "../lib/vocab.js";
 import { useMistakes, summarize } from "../lib/mistakes.js";
 
@@ -33,7 +34,7 @@ function QCard({ q, onOpen, topic }) {
       </span>
       <span className="qbody">
         <h3>{q.title}</h3>
-        <span className="snip" dir="auto">{(q.original_question_text || "—").replace(/[#*>`]/g, "").replace(/\s+/g, " ")}</span>
+        <span className="snip" dir="auto">{snippetOf(q)}</span>
         <span className="qfoot">
           {q.kind === "lesson" && <span className="pill pill-lesson" style={{ padding: "1px 10px" }}>شرح 📖</span>}
           {topic && <span className="pill pill-topic" style={{ padding: "1px 10px" }} dir="auto">{topic.emoji} {topic.name}</span>}

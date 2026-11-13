@@ -149,7 +149,7 @@ test("v3.40 layout: a full English sentence keeps its closing ! inside the islan
 test("v3.40 the study-material summary card is gone, the other three stay", async () => {
   const { sectionsFor } = await import("../src/lib/config.js");
   assert.deepEqual(sectionsFor("lesson").map((s) => s.key), ["new_words", "explanation", "tricks"]);
-  assert.equal(sectionsFor("question").length, 4);
+  assert.deepEqual(sectionsFor("question").map((s) => s.key), ["new_words", "explanation", "tricks"], "v3.40.10: the \"نص السؤال\" card is gone for questions too");
   assert.ok(ARABIC_RULE.includes("drug names"));
 });
 

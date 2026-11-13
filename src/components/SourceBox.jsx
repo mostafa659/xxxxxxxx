@@ -5,7 +5,7 @@ const fmtSize = (n) => (!n ? "" : n >= 1048576 ? `${Math.round((n / 1048576) * 1
 
 /* The one place where the student gives the app a question (or study material):
    any number of files (pictures, PDF, Word, PowerPoint, Excel, EPUB, text …) AND/OR text typed / pasted right here. */
-export default function SourceBox({ kind, items, imageUrl, onFiles, onText, onRemove, onClear }) {
+export default function SourceBox({ kind, items, imageUrl, busy = "", onFiles, onText, onRemove, onClear }) {
   const lesson = kind === "lesson";
   const fileRef = useRef(null);
   const [over, setOver] = useState(false);
@@ -22,13 +22,14 @@ export default function SourceBox({ kind, items, imageUrl, onFiles, onText, onRe
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
       onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files); } }}>
       <input ref={fileRef} type="file" multiple hidden onChange={pick} />
+      {busy && <p className="doc-hint src-busy" role="status" aria-live="polite">⏳ {busy}</p>}
 
       {items.length === 0 ? (
         <button type="button" data-over={over} className="drop" onClick={() => fileRef.current?.click()}>
           <span className="drop-ico"><Icon name={lesson ? "bookOpen" : "imagePlus"} size={28} /></span>
           <b>{lesson ? "ارفع المادة: كتب، صور، ملفات…" : "ارفع السؤال: صورة أو أي ملف"}</b>
           <span className="hint">اضغط عشان تختار (ممكن أكتر من ملف)، أو اسحبهم هنا، أو الصق بـ Ctrl+V</span>
-          <span className="src-types">صور · PDF · Word · PowerPoint · Excel · EPUB · نص</span>
+          <span className="src-types">صور · PDF · Word · PowerPoint · Excel · EPUB · نص · صوت (MP3 · M4A · WAV…)</span>
         </button>
       ) : (
         <div className="card preview" data-over={over}>
@@ -36,7 +37,7 @@ export default function SourceBox({ kind, items, imageUrl, onFiles, onText, onRe
           <ul className="src-list">
             {items.map((it) => (
               <li key={it.id}>
-                <span className="src-tag" data-t={it.t}>{it.label || it.t}</span>
+                <span className="src-tag" data-t={it.t} data-l={it.label}>{it.label || it.t}</span>
                 <span className="src-name" dir="auto">{it.name}</span>
                 <small><bdi dir="ltr">{fmtSize(it.size)}</bdi></small>
                 <button type="button" className="iconbtn" aria-label={`شيل ${it.name}`} onClick={() => onRemove(it.id)}><Icon name="x" size={14} /></button>
@@ -47,6 +48,7 @@ export default function SourceBox({ kind, items, imageUrl, onFiles, onText, onRe
             <button type="button" onClick={() => fileRef.current?.click()} className="btn btn-ghost btn-sm"><Icon name="plus" size={16} /> أضف ملفات</button>
             <button type="button" onClick={onClear} className="btn btn-danger btn-sm"><Icon name="x" size={16} /> شيل الكل</button>
           </div>
+          {items.some((i) => i.audio) && <p className="doc-hint">🎧 الصوت اتحوّل لنص مرة واحدة، والتحليل والشات شغالين على النص (توكنز أقل بكتير). التطبيق بيفرّغ الكلام بس، مش الأصوات زي نبض القلب أو الموسيقى.</p>}
           {truncated && <p className="doc-hint">فيه ملف طويل اتقطع عند أول 150 ألف حرف. ارفع الجزء اللي عايز تذاكره بس لو محتاج.</p>}
           {!lesson && hasMulti && <p className="doc-hint">الملفات فيها أكتر من سؤال؟ افتح «عنوان وتعليمات إضافية» واكتب رقم السؤال أو الصفحة.</p>}
         </div>

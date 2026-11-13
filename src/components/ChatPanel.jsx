@@ -15,7 +15,7 @@ import { stripPending } from "../lib/chatflow.js";
 import { makeExam, wantsExam } from "../lib/exam.js";
 import { splitCites } from "../lib/library.js";
 import { makePicture, restyle, WANTS_AR, WANTS_REDO, WANTS_RESTYLE, ENGINES, getEngine, setEngine, IMG_MODELS, getImgModel, setImgModel } from "../lib/imagegen.js";
-import { readFiles, sourceParts, MAX_ITEMS } from "../lib/docs.js";
+import { readFiles, sourceParts, MAX_ITEMS, isAudio } from "../lib/docs.js";
 import { fixText } from "../lib/text.js";
 import { store, prefs } from "../lib/storage.js";
 import { loadIndex, loadConv, saveConv, removeConv, newConvId, convTitle } from "../lib/chathist.js";
@@ -284,13 +284,20 @@ export default function ChatPanel({
   const patch = (id, fn) => setMessages((cur) => cur.map((m) => (m.id === id ? fn(m) : m)));
 
   /* attachments */
+  /* v3.41: a recording is turned into text first (one request, lib/audio.js); the message cannot be sent before that finishes, or it would go without it */
+  const readingRef = useRef(false);
   const addFiles = useCallback(async (list) => {
     const arr = [...(list || [])];
     if (!arr.length) return;
-    const { items, errors } = await readFiles(arr, files);
-    setFiles(items.slice(0, MAX_ITEMS));
-    setNote(errors.length ? errors[0] : "");
-  }, [files]);
+    if (readingRef.current) { setNote("استنى لما الصوت يخلص تفريغ."); return; }
+    const hasAudio = arr.some(isAudio);
+    if (hasAudio) { readingRef.current = true; setNote("⏳ بيجهّز الصوت…"); }
+    try {
+      const { items, errors } = await readFiles(arr, files, { apiKey, onStatus: (m) => { if (hasAudio) setNote("⏳ " + m); } });
+      setFiles(items.slice(0, MAX_ITEMS));
+      setNote(errors.length ? errors[0] : "");
+    } finally { if (hasAudio) readingRef.current = false; }
+  }, [files, apiKey]);
   const onPick = (e) => { addFiles(e.target.files); e.target.value = ""; };
   const onPaste = (e) => {
     const fs = [...(e.clipboardData?.files || [])];
@@ -299,7 +306,7 @@ export default function ChatPanel({
 
   const send = useCallback(async (raw, opts = {}) => {
     const q = (raw ?? input).trim();
-    if ((!q && !files.length) || busy) return;
+    if ((!q && !files.length) || busy || readingRef.current) return;
     if (!apiKey) { onNeedKey(); return; }
     const base = opts.base || messages;
     const atts = opts.atts || files;

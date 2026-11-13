@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { useVoiceEngine, setVoiceEngine } from "../lib/speech.js";
 import Icon from "./Icon.jsx";
 import logoMark from "../assets/logo-mark.webp";
 import PhotoKeysPanel from "./PhotoKeys.jsx";
@@ -66,29 +65,6 @@ export function AutoTextArea({ value, onChange, rows = 4, ltr, placeholder }) {
   );
 }
 
-/* which American voice reads the words */
-function VoicePick() {
-  const v = useVoiceEngine();
-  const opts = [
-    ["google", "أمريكي سريع", "بدون حد يومي · صوت أنثوي"],
-    ["gemini", "أمريكي رجالي", "Gemini · أبطأ وله حد يومي"],
-  ];
-  return (
-    <div className="voicepick" role="radiogroup" aria-label="صوت النطق">
-      <b style={{ fontSize: 13.5, color: "var(--ink-2)" }}>صوت النطق</b>
-      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-        {opts.map(([id, name, sub]) => (
-          <button key={id} type="button" role="radio" aria-checked={v === id} onClick={() => setVoiceEngine(id)}
-            className={`btn ${v === id ? "btn-teal" : "btn-ghost"}`} style={{ flex: 1, flexDirection: "column", gap: 2, padding: "10px 8px", lineHeight: 1.3 }}>
-            <span style={{ fontWeight: 900, fontSize: 14 }}>{name}</span>
-            <small style={{ fontSize: 11.5, fontWeight: 600, opacity: .85 }}>{sub}</small>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* the two switches that matter (v3.38: the "quality first" / "max speed" buttons were removed: the app always chooses by itself) */
 function EnginePanel({ prefs, setPrefs }) {
   const [proof, setProof] = useState(proofOn);      // v3.40: the second reader (proof.js), saved at once, not with the engine preferences
@@ -104,7 +80,7 @@ function EnginePanel({ prefs, setPrefs }) {
       </label>
       <label className="xeng-check">
         <input type="checkbox" checked={proof} onChange={(e) => { setProof(e.target.checked); setProofPref(e.target.checked); }} />
-        <span>راجع الإملاء بقارئ تاني قبل ما يظهر لك الرد <small>(بيصلّح الكلمات المكتوبة غلط أو المخترعة، وبيزوّد طلب صغير وثانيتين تقريباً)</small></span>
+        <span>راجع الإملاء بقارئ تاني قبل ما يظهر لك الرد <small>(بيصلّح الكلمات المكتوبة غلط. بيشتغل تلقائياً بس لو حصة مفتاحك كبيرة، وعلى المفتاح المجاني بيقف عشان ما ياخدش من طلباتك)</small></span>
       </label>
     </div>
   );
@@ -240,7 +216,6 @@ export function KeyModal({ hasEnv, onKeysChanged: notifyApp, onClose }) {
         )}
 
         <section className="km-block">
-          <VoicePick />
         </section>
 
         <details className="km-adv">

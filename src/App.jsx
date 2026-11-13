@@ -21,12 +21,12 @@ import { store, prefs } from "./lib/storage.js";
 import { ENV_KEY, warmUp, warmConnection, currentApiKey } from "./lib/gemini.js";
 import * as Ring from "./lib/keyring.js";
 import { GATEWAY_URL } from "./lib/config.js";
+import { bodyLine } from "./lib/text.js";
 import { resizeDataUrl } from "./lib/image.js";
 import { wordLines, parseWord, studyStats } from "./lib/parse.js";
 import { saveCheer } from "./lib/motivation.js";
 import { learn } from "./lib/progress.js";
-import { setSpeechKey, stopSpeaking } from "./lib/speech.js";
-import { setTranslateKey } from "./lib/wordtr.js";
+import { stopSpeaking } from "./lib/speech.js";
 import { GOALS } from "./lib/config.js";
 import { hideSplash } from "./lib/splash.js";
 import { LinkCtx, LINK_HL_MS } from "./lib/linkctx.js";
@@ -197,7 +197,6 @@ export default function App({ boot }) {
   /* pronunciation: key for Gemini voice, error toast, and silence when the screen changes */
   const sayRef = useRef(say);
   sayRef.current = say;
-  useEffect(() => { setSpeechKey(apiKey); setTranslateKey(apiKey); }, [apiKey]);
   useEffect(() => {
     const h = (e) => sayRef.current(e.detail);
     window.addEventListener("clinix:speech-error", h);
@@ -263,7 +262,7 @@ export default function App({ boot }) {
       }
     }
     const q = {
-      id, kind: kind || "question", title: title.trim() || (kind === "lesson" ? lessonTitle(result.original_question_text) : titleFrom(result.original_question_text)), ...result, instructions, chips,
+      id, kind: kind || "question", title: title.trim() || (kind === "lesson" ? lessonTitle(result.original_question_text) : titleFrom(result.original_question_text || bodyLine(result.explanation))), ...result, instructions, chips,
       thumb, createdAt: existing?.createdAt || now, updatedAt: now,
     };
     const prevQ = qRef.current;

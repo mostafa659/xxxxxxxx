@@ -1,7 +1,7 @@
 {
   "name": "clinixstudy",
   "productName": "ClinixStudy",
-  "version": "3.40.6",
+  "version": "3.41.0",
   "description": "ClinixStudy — NCLEX-RN study app (Android via Capacitor, Windows via Electron)",
   "author": "MOSTAFA HAMMAD",
   "private": true,
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "desktop:build": "npm run build && electron-builder --win --x64 --publish never",
-    "test": "node --import ./tests/register.mjs --test tests/engine.test.mjs tests/chat.test.mjs tests/words.test.mjs tests/photos.test.mjs tests/mistakes.test.mjs tests/latency.test.mjs tests/gateway.test.mjs tests/paid.test.mjs tests/quota.test.mjs tests/free.test.mjs tests/keyring.test.mjs tests/reuse.test.mjs tests/speed.test.mjs tests/guard.test.mjs tests/proof.test.mjs",
+    "test": "node --import ./tests/register.mjs --test tests/engine.test.mjs tests/chat.test.mjs tests/words.test.mjs tests/photos.test.mjs tests/mistakes.test.mjs tests/latency.test.mjs tests/gateway.test.mjs tests/paid.test.mjs tests/quota.test.mjs tests/free.test.mjs tests/keyring.test.mjs tests/reuse.test.mjs tests/speed.test.mjs tests/guard.test.mjs tests/proof.test.mjs tests/health.test.mjs tests/google-only.test.mjs tests/audio.test.mjs",
     "sim:free": "node --no-warnings --import ./tests/register.mjs tests/sim/free-day.mjs ."
   },
   "dependencies": {

@@ -60,8 +60,7 @@ export const CHIPS = [
 /* cls = css class that sets the section accent (--acc / --acc-rgb / --acc-ink) in light + dark.
    wait = what the placeholder says while this section is still being written. */
 export const SECTIONS = [
-  { key: "original_question_text", title: "نص السؤال", sub: "اللي اتقرا من الصورة أو الملف", icon: "fileText", rows: 6, cls: "sec-sky", ltr: true, step: "read",
-    wait: "بنقرا السؤال من الصورة أو الملف…" },
+  /* v3.40.10: the "نص السؤال" card was removed. The question is already in the student's attachment, so reading it back (one more request + its output tokens) bought nothing. */
   { key: "new_words", title: "كلمات جديدة", sub: "الكلمات من مستوى B2 فما فوق + المصطلحات الطبية", icon: "library", rows: 8, cls: "sec-violet", step: "words",
     wait: "بنلمّ كل كلمة ممكن تكون غريبة عليك…" },
   { key: "explanation", title: "تفصيص السؤال", sub: "شرح من الصفر + الإنجليزي", icon: "brain", rows: 12, cls: "sec-teal", step: "explain",
@@ -80,6 +79,9 @@ export const LESSON_SECTIONS = [
     wait: "بيجهّز لك نقاط الحفظ والفخاخ…" },
 ];
 export const sectionsFor = (kind) => (kind === "lesson" ? LESSON_SECTIONS : SECTIONS);
+
+/* the model stages that run for one analysis. A question has NO "ocr" stage any more (v3.40.10); a lesson keeps it (it is the background study summary). */
+export const tasksFor = (kind) => (kind === "lesson" ? ["ocr", "reason", "words"] : ["reason", "words"]);
 
 export const EMPTY_RESULT = { original_question_text: "", new_words: "", explanation: "", tricks: "" };
 

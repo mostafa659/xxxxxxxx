@@ -95,3 +95,36 @@ test("engine: JSON tasks, short answers and a switched-off proofreader are never
   await runTask(base({ models: ["gemini-3.8-flash"] }));
   assert.equal(log.filter((l) => l.lane !== "list").length, 1);
 });
+
+/* ── v3.40.7: the proofreader never competes with the real work ── */
+import { __gateSmallKeys } from "../src/lib/proof.js";
+const requests = () => log.filter((l) => l.lane !== "list").length;
+
+test("a FREE (small) key is never given the extra request", async () => {
+  fresh(); __gateSmallKeys(true);                     // a fresh key is "small until proven otherwise"
+  script(G("gemini-3.8-flash"), { ok: TEXT2 });
+  const res = await runTask(base({ models: ["gemini-3.8-flash"] }));
+  assert.ok(res.text.includes("برازيل يسفع"));
+  assert.equal(requests(), 1, "only the answer itself was requested");
+});
+
+test("an answer that already struggled (a failed attempt) is not given more work", async () => {
+  fresh();
+  script(G("gemini-3.8-flash"), { status: 503, msg: "overloaded" });
+  script(G("gemini-3.5-flash-lite"), { ok: TEXT2 });
+  const before = log.length;
+  const res = await runTask(base({ models: ["gemini-3.8-flash", "gemini-3.5-flash-lite"] }));
+  assert.ok(res.text.includes("برازيل يسفع"), "not proofread");
+  const sent = log.slice(before).filter((l) => l.lane !== "list");
+  assert.equal(sent.length, 2, "one failed attempt + one answer, no proofreading request: " + sent.map((x) => x.lane).join(","));
+});
+
+test("two proofreadings never run at the same time", async () => {
+  fresh();
+  const { proofStart, proofEnd, proofBusy } = await import("../src/lib/proof.js");
+  proofStart();
+  script(G("gemini-3.8-flash"), { ok: TEXT2 });
+  await runTask(base({ models: ["gemini-3.8-flash"] }));
+  assert.equal(requests(), 1);
+  proofEnd(); assert.equal(proofBusy(), false);
+});

@@ -95,7 +95,12 @@ export function coolFor(id, ms) {
 }
 
 /* v3.33 · a nudge in loadScore points (0 = none): between equal lanes the one with more daily quota left goes first */
-export function setBias(id, points) { st(id).bias = Number(points) > 0 ? Number(points) : 0; }
+export function setBias(id, points, health = 0) {
+  const s = st(id);
+  s.bias = Number(points) > 0 ? Number(points) : 0;
+  s.health = Number(health) > 0 ? Number(health) : 0;       // v3.40.9: how often this model recently stalled / answered 503 on this key (quota.js healthBias), kept apart from the quota nudge
+}
+export const HEALTH_DEMOTE = 18;                              // from here (about 70 % of its recent answers failed) a model is not asked first whatever its quality
 
 /* a lane let a hedge start (it sent nothing for a long time): until it proves itself again, equal lanes are preferred over it */
 export function noteSlow(id, ms) {
@@ -132,6 +137,7 @@ export function noteTooBig(id, tokens) {
    quick  small structured jobs (words, topics, translation, diagrams) → any decent lane */
 export function taskClass(task) {
   const t = String(task || "");
+  if (/^audio/.test(t)) return "audio";          // v3.41: transcribing a recording (its first word comes late; it has its own timing so it never skews the other classes)
   if (/^(ocr|batch)/.test(t)) return "ocr";
   if (/^solve/.test(t)) return "solve";
   if (/^lesson:(chat|topic)/.test(t)) return "chat";
@@ -161,7 +167,7 @@ export function estimateTokens(system, parts, maxOut = 0) {
 const loadScore = (lane, index) => {
   const s = st(lane.id);
   const cool = s.coolUntil > _now() ? 1000 + (s.coolUntil - _now()) / 1000 : 0;
-  return cool + s.inflight * 10 + s.fails * 4 + Math.min(8, s.ttft / 2500) + index * 2 + (s.bias || 0);
+  return cool + s.inflight * 10 + s.fails * 4 + Math.min(8, s.ttft / 2500) + index * 2 + (s.bias || 0) + (s.health || 0);
 };
 
 /* same kind and (almost) same generation → interchangeable for quality purposes */
@@ -183,7 +189,13 @@ export function fits(lane, { media, tokens }) {
    Returns { lanes, hedge }  — hedge = the lanes a hedged second request may use (quality mode: Gemini only). */
 export function planLanes({ geminiModels, extLanes = [], cls = "write", mode = "auto", media = { any: false }, tokens = 0 }) {
   const seen = new Set();
-  const gem = (geminiModels || []).filter((m) => m && !seen.has(m) && seen.add(m)).map(geminiLane);
+  let gem = (geminiModels || []).filter((m) => m && !seen.has(m) && seen.add(m)).map(geminiLane);
+  /* v3.40.9: the first choice fails most of the time on this key (each failure cost ~19 s of silence in a measured run): the first healthy model goes first.
+     Without this the quality rule below keeps a stronger model on top even when it almost never answers. */
+  if (gem.length > 1 && (st(gem[0].id).health || 0) >= HEALTH_DEMOTE) {
+    const j = gem.findIndex((l, i) => i > 0 && (st(l.id).health || 0) < HEALTH_DEMOTE && !isDead(l.id));
+    if (j > 0) gem = [gem[j], ...gem.slice(0, j), ...gem.slice(j + 1)];
+  }
 
   /* 1 · balance the lanes that are as good as the caller's first choice by their live load; the rest keep the caller's order */
   let ordered = gem;
@@ -221,6 +233,7 @@ export const HEDGE_MS = {
   chat: { min: 4000, max: 9000 },
   quick: { min: 5000, max: 10000 },
   ocr: { min: 8000, max: 15000 },
+  audio: { min: 60000, max: 120000 },      // v3.41: (audio requests are also sent with noHedge, so this only matters for the measurements)
   write: { min: 10000, max: 20000 },
   solve: { min: 15000, max: 30000 },
   search: { min: 9000, max: 16000 },       // v3.27: an answer that searches first: the first word is later than a plain chat, but a lane that is stuck is still raced early
@@ -229,11 +242,16 @@ export const HEDGE_MS = {
 /* how long to wait for the FIRST sign of life (any streamed part, a thought summary included) before a second lane is started */
 export const FIRST_FLOOR_MS = { v: 20000 };          // a request silent this long after the key's measured typical time x 8 is given up on (tests lower it)
 export const HEDGE_FLOOR_MS = { v: 5000 };          // never hedge sooner than this after a MEASURED typical time (a hedge is a request; tests lower it)
-export function hedgeDelayMs(cls, lane, factor = 1, typical = 0) {
+export function hedgeDelayMs(cls, lane, factor = 1, typical = 0, slow = 0) {
   const h = HEDGE_MS[cls] || HEDGE_MS.write;
   /* v3.33: when this key's real typical first-answer time for the model is KNOWN (quota.js), "silent for too long" is 3 times that, within [floor, the class maximum]:
      a fast key stops waiting 15-30 s for a request that has plainly stalled; a slow key is not hedged by a number that was written for a fast one. */
-  if (typical > 0) return Math.round(Math.min(h.max, Math.max(HEDGE_FLOOR_MS.v, typical * 3)) * (factor > 0 ? Math.min(1, factor) : 1));
+  /* v3.40.8: it used to be 3 x the MEDIAN: on a key whose usual first answer takes 6 s (thinking included) a stuck request was waited on for 18 s before the second lane
+     started (one measured run lost 19 s that way). Now it is 1.2 x the slow end (85th percentile) of this key's own answers, and never less than 1.5 x the median. */
+  if (typical > 0) {
+    const want = slow > 0 ? Math.max(slow * 1.2, typical * 1.5) : typical * 2.2;
+    return Math.round(Math.min(h.max, Math.max(HEDGE_FLOOR_MS.v, want)) * (factor > 0 ? Math.min(1, factor) : 1));
+  }
   const t = lane ? st(lane.id).ttft : 0;
   const want = t ? t * 2.5 : h.min * 1.3;
   /* v3.32: `factor` < 1 is the PAID profile (config.js): a healthy paid backend starts to answer within seconds, so a lane that is silent for

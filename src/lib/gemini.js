@@ -42,7 +42,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { MODEL_FAST, MODEL_PRO, GATEWAY_URL, GATEWAY_TOKEN, API_BASE_URL, NET, PAID, cap, SERVICE_TIER } from "./config.js";
 import { tierOf, taskClass, mediaOf, estimateTokens, tierStages, planLanes, hedgeDelayMs, nextReadyIn, readyLanes, begin as laneBegin, noteOk, noteBusy, noteDead, noteTooBig, noteSlow, clearDead as clearDeadLanes, clearCool as clearCoolLanes, coolFor, setBias, isDead, isCooling } from "./router.js";
 import { makeGuard, REWRITE_AT, allowRetry } from "./guard.js";
-import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS } from "./proof.js";
+import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS, smallKeyGate, proofBusy, proofStart, proofEnd } from "./proof.js";
 import {
   PROVIDERS, getExtKeys, getExtLanes, refreshLanes, markExtDead, getEngineMode, answerBudget, buildBody,
   streamChat, nativeChat, bearer, headersFor, liveExtKeys, extKeyList, keysChanged as extKeysChanged,
@@ -51,7 +51,7 @@ import {
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 import { trackRequest, noteQuota, nextResetMs } from "./usage.js";
 import { FIRST_FLOOR_MS } from "./router.js";
-import { parseQuota, parseDuration, noteSend, refundSend, noteQuotaError, sameAs, paceMs, budgetBias, finishedToday, deadLeftMs, finishedMessage, noteTtft, typicalTtft } from "./quota.js";
+import { parseQuota, parseDuration, noteSend, refundSend, noteQuotaError, sameAs, paceMs, budgetBias, finishedToday, deadLeftMs, finishedMessage, noteTtft, typicalTtft, slowTtft, isSmallKey, pressure, noteHealth, healthBias } from "./quota.js";
 /* v3.32: behind a gateway (config.js) the "key" the app holds is the gateway's ACCESS CODE; the real (paid) Google key never leaves the server */
 export const ENV_KEY = GATEWAY_URL && GATEWAY_TOKEN ? GATEWAY_TOKEN : (ENV.VITE_GEMINI_API_KEY || "");
 export const API_BASE = API_BASE_URL;
@@ -805,8 +805,12 @@ async function guardedTask(args, trace) {
     }
   }
   /* v3.40 · the proofreader: a second, independent reader of the final text (proof.js). It fails open and never holds the answer longer than PROOF_MS. */
-  if (proofOn() && shouldProof(out.text) && !(args.signal && args.signal.aborted)) {
-    const pr = await proofread(out.text, args);
+  const clean = !(trace.slept > 0 || trace.hedges > 0 || (trace.attempts || []).some((a) => a.outcome === "fail"));     // an answer that already struggled is not given more work
+  if (proofOn() && clean && shouldProof(out.text) && !(args.signal && args.signal.aborted)
+      && !proofBusy() && !(smallKeyGate() && (isSmallKey(args.apiKey) || pressure(args.apiKey)))) {
+    proofStart();
+    let pr;
+    try { pr = await proofread(out.text, args); } finally { proofEnd(); }
     if (pr.applied.length) { out = { ...out, text: pr.text }; }
     trace.guard = { ...(trace.guard || {}), proof: pr.applied.length, proofRan: pr.ran };
   }
@@ -822,7 +826,8 @@ async function proofread(text, args) {
     if (!chunks.length) return none;
     const lists = getModelLists(args.apiKey);
     const fast = lists.fast || [];
-    const models = [...new Set([...fast.filter((m) => !/lite/.test(m)), ...fast.filter((m) => /lite/.test(m))])];
+    const room = (m) => !finishedToday(args.apiKey, m) && paceMs(args.apiKey, m) === 0;                  // never wake a model that is resting: that is how an extra request turns into a wait for the next real one
+    const models = [...new Set([...fast.filter((m) => !/lite/.test(m)), ...fast.filter((m) => /lite/.test(m))])].filter(room);
     if (!models.length) return none;
     const ctl = new AbortController();
     const stop = () => ctl.abort();
@@ -832,7 +837,7 @@ async function proofread(text, args) {
       const lists2 = await Promise.all(chunks.map((c) =>
         runTaskInner({
           apiKey: args.apiKey, task: "words:proof", signal: ctl.signal, models, system: PROOF_SYSTEM, parts: [{ text: c }],
-          spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: 700, hedgeMs: 3500, firstMs: 5000, idleMs: 4000,
+          spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: 700, hedgeMs: 3500, firstMs: 3500, idleMs: 3000,
         }, { task: "words:proof", t0: Date.now(), slept: 0, attempts: [], hedges: 0 })
           .then((r) => parseProof(r && r.text)).catch(() => [])));
       const r = applyProof(text, lists2.flat());
@@ -883,7 +888,7 @@ async function runTaskInner(args, trace) {
   throw last || needGeminiError();
 }
 
-async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSystem, parts, spec, maxOut, firstMs, idleMs, signal, onText, onNotice, engineMode, hedgeClass, search }, trace) {
+async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSystem, parts, spec, maxOut, firstMs, idleMs, signal, onText, onNotice, engineMode, hedgeClass, search, noHedge }, trace) {
   if (typeof onText !== "function") onText = () => {};
   if (!signal) signal = new AbortController().signal;
   if (signal.aborted) throw abortError();
@@ -927,7 +932,7 @@ async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSys
       if (gone > 0) noteDead(id, gone);                                    // finished for today: the router knows it too (also after a restart), so nothing is sent there
       const w = paceMs(apiKey, m);
       if (w > 0) coolFor(id, w);
-      setBias(id, budgetBias(apiKey, m));
+      setBias(id, budgetBias(apiKey, m), healthBias(apiKey, m));         // v3.40.9: a model that keeps stalling / answering 503 on THIS key goes down the order
     }
     return planLanes({ geminiModels: noGemini ? [] : (live.length ? live : order), extLanes: getExtLanes(), cls, mode, media, tokens });
   };
@@ -954,7 +959,11 @@ async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSys
         }
         return false;
       }
-      if (isTransient(err)) { noteBusy(lane.id, { status: err.status, retryAfterMs: err.retryAfterMs }); return false; }
+      if (isTransient(err)) {
+        if (err.timeout || [500, 502, 503, 504, 529].includes(err.status)) noteHealth(apiKey, lane.model, true);
+        noteBusy(lane.id, { status: err.status, retryAfterMs: err.retryAfterMs });
+        return false;
+      }
       return true;                                                             // any other Gemini error (bad request …): retrying cannot change it
     }
     /* an extra engine failing is never fatal for the task: the lane is put aside and the next lane answers */
@@ -977,13 +986,15 @@ async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSys
 
     const armHedge = (rec) => {
       clearTimeout(hedgeTimer);
+      if (noHedge) return;                                                         // v3.41: a recording is paid for in tokens per SECOND: a racing second lane would pay for the same audio twice (a real failure still fails over)
       if (winner || settled || running().length >= 2) return;                    // never more than two lanes at once
       const nxt = nextLane(hedgePool.filter((l) => ready.includes(l)));
       if (!nxt || starts >= MAX_STARTS) return;
-      const ms = hedgeDelayMs(cls, rec.lane, NET.hedge, rec.lane.provider === "gemini" ? typicalTtft(apiKey, rec.lane.model, cls) : 0);
+      const ms = hedgeDelayMs(cls, rec.lane, NET.hedge, rec.lane.provider === "gemini" ? typicalTtft(apiKey, rec.lane.model, cls) : 0, rec.lane.provider === "gemini" ? slowTtft(apiKey, rec.lane.model, cls) : 0);
       hedgeTimer = setTimeout(() => {
         if (winner || settled || signal.aborted) return;
         noteSlow(rec.lane.id, ms);
+        if (rec.lane.provider === "gemini") noteHealth(apiKey, rec.lane.model, true);          // silent until a backup had to start
         trace.hedges += 1;
         start(nxt);
       }, ms);
@@ -1013,6 +1024,7 @@ async function runTaskOnce({ apiKey, moreKeys, models, task, system, noSearchSys
         if (settled) return;
         if (!winner) winner = rec;
         noteOk(lane.id, rec.aliveAt ? rec.aliveAt - rec.t0 : Date.now() - rec.t0);
+        if (lane.provider === "gemini") noteHealth(apiKey, lane.model, false);
         winner = rec;
         show(lane, res.text);
         finish(resolve, { ...res, model: lane.model, provider: lane.provider });

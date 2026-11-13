@@ -6,22 +6,14 @@
      1. electron/main.cjs patches CORS for the translation hosts too (see there).
      2. Several independent FREE providers are tried (Google ×3, then MyMemory). The next one starts if the previous one fails,
         or is just slow (2.5 s) — the first valid answer wins, so a single blocked / rate-limited provider can no longer break it.
-     3. LAST RESORT only: if every free provider failed and a Gemini key exists, one tiny Gemini request translates it
-        (set ALLOW_GEMINI_LAST_RESORT to false to forbid that). Normal translations still cost zero tokens.
+     3. (v3.40.10) NO Gemini at all: the old "last resort" Gemini request was removed. Translating a word or a sentence costs zero tokens, always.
    Answers are cached (memory + localStorage), so the same word / sentence is never translated twice. */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { fixText } from "./text.js";
-import { getModelLists, runTask } from "./gemini.js";
-import { weakFirst } from "./router.js";
 
-const ALLOW_GEMINI_LAST_RESORT = true;
 const PROVIDER_TIMEOUT = 7000;     // one provider may take this long
 const HEDGE_AFTER = 1500;          // …but the next one starts in parallel after this long without an answer
-const TOTAL_TIMEOUT = 16000;       // the student never waits longer than this for a bubble
-
-let _key = "";
-export const setTranslateKey = (k) => { _key = k || ""; };
 
 const LS = "clinix:wtr:v2";
 const mem = new Map();
@@ -135,41 +127,12 @@ function freeTranslate(text, signal) {
   });
 }
 
-/* last resort: one tiny Gemini request (only when every free provider failed) */
-const GEM_SYS = "You translate English to Arabic for a nursing student. Output ONLY the Arabic translation, nothing else. For a single word or short term give its 1–3 most common meanings separated by «، » (put the medical meaning first when it is a medical term). For a sentence give a natural, accurate Arabic translation. Keep drug names and lab abbreviations in English. Use only Arabic letters and standard punctuation.";
-async function geminiTranslate(text, signal, isWord) {
-  if (!ALLOW_GEMINI_LAST_RESORT || !_key) throw new Error("no key");
-  const lists = getModelLists(_key);
-  const ctrl = new AbortController();
-  const link = () => ctrl.abort();
-  if (signal) signal.addEventListener("abort", link);
-  const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT - 2000);
-  try {
-    const res = await runTask({
-      apiKey: _key, models: weakFirst(lists.fast), task: "word:tr", system: GEM_SYS, parts: [{ text }],
-      spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: isWord ? 800 : 3000,
-      hedgeMs: 5000, firstMs: 12000, idleMs: 10000, signal: ctrl.signal,
-    });
-    const t = clean(res.text);
-    if (!t || !HAS_AR.test(t)) throw new Error("empty");
-    return t;
-  } finally {
-    clearTimeout(timer);
-    if (signal) signal.removeEventListener("abort", link);
-  }
-}
-
-async function translate(text, signal, isWord) {
-  let freeErr = null;
+async function translate(text, signal) {
   try { return await freeTranslate(text, signal); }
-  catch (e) { if (e && e.name === "AbortError") throw e; freeErr = e; }
-  try { return await geminiTranslate(text, signal, isWord); }
   catch (e) {
-    if (e && e.name === "AbortError") { if (signal && signal.aborted) throw e; }
+    if (e && e.name === "AbortError") throw e;
     const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-    throw Object.assign(new Error(offline ? "مفيش اتصال بالنت." : "خدمات الترجمة مش بترد دلوقتي."), {
-      detail: [freeErr && freeErr.detail, "gemini: " + ((e && e.message) || e)].filter(Boolean).join(" | "),
-    });
+    throw Object.assign(new Error(offline ? "مفيش اتصال بالنت." : "خدمات الترجمة مش بترد دلوقتي."), { detail: e && e.detail });
   }
 }
 
@@ -178,7 +141,7 @@ export async function translateWord({ word, signal, onQuick }) {
   const key = word.toLowerCase();
   const hit = cachedMeaning(word);
   if (hit) { mem.set(key, hit); return hit; }          // next time: no localStorage parse at all
-  const g = await translate(word, signal, true);
+  const g = await translate(word, signal);
   if (g) { mem.set(key, g); writeCache(key, g); if (onQuick && !(signal && signal.aborted)) onQuick(g); }
   return g;
 }
@@ -204,7 +167,7 @@ export async function translateSentence({ text, signal }) {
   const k = sKey(text);
   const hit = cachedSentence(text);
   if (hit) { smem.set(k, hit); return hit; }
-  const g = await translate(text.slice(0, MAX_SENTENCE), signal, false);
+  const g = await translate(text.slice(0, MAX_SENTENCE), signal);
   if (g) { smem.set(k, g); writeS(k, g); }
   return g;
 }

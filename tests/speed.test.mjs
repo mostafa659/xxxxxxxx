@@ -22,7 +22,7 @@ const analyse = () => new Promise((resolve) => {
   const done = {}; const t0 = Date.now();
   const a = createAnalysis({
     kind: "question", history: [], dataUrl: "data:image/png;base64,iVBORw0KGgo=", doc: null, extra: "", chips: [], apiKey: KEY, modeId: "balanced",
-    onUpdate() {}, onDone: (n) => { done[n] = Date.now() - t0; if (done.ocr !== undefined && done.words !== undefined && done.reason !== undefined) resolve({ a, done }); },
+    onUpdate() {}, onDone: (n) => { done[n] = Date.now() - t0; if (done.words !== undefined && done.reason !== undefined) resolve({ a, done }); },
     onError: (n, e) => resolve({ a, done, err: [n, e && e.message] }), onNotice() {},
   });
   a.start();

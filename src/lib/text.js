@@ -87,3 +87,16 @@ export const hasForeignScript = (s) => typeof s === "string" && new RegExp(FOREI
 
 /* the sentence added to every prompt that makes the model write Arabic */
 export const ARABIC_RULE = `\nWRITING RULE (strict): write only in Arabic (standard letters only) and English (Latin letters). Never output a letter from any other script (no Hindi/Devanagari, Thai, Cyrillic, Hebrew, Chinese, Japanese, Korean …) and never use rare Arabic-script letters (ڭ ڤ پ چ گ ژ ۼ …). Spell foreign sounds with standard Arabic letters: ng → نج, v → ف, p → ب, ch → تش, g → ج. Never put Latin letters inside an Arabic word and never glue an Arabic word to an English one: every Arabic word is spelled completely in Arabic letters, every English word stays whole, and the two are separated by a space. Keep medical terms in English: drug names, lab tests, abbreviations and every medical term stay in English letters even inside an Arabic sentence (write "Prazole" not a made-up Arabic spelling of it: a transliteration often turns into a different real word). Use plain, common Arabic words (the everyday vocabulary of a university student), never rare or invented words. ${SPELLING_RULE} ${FACT_RULE} ${NO_ECHO_RULE}`;
+
+
+/* v3.40.10 · a question no longer stores a transcript of itself ("نص السؤال"), so every place that used it as a title / one-line preview
+   now falls back to the first real sentence of the explanation (free: it is already saved). Items saved by older versions still have the text and keep using it. */
+export function bodyLine(text) {
+  const line = String(text || "").split("\n").map((l) => l.trim())
+    .find((l) => l && !/^#{1,6}\s/.test(l) && !/^[-*_=]{3,}$/.test(l) && !/^===/.test(l));
+  return line ? line.replace(/^[>\-*\s]+/, "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim() : "";
+}
+export const snippetOf = (q) => {
+  const raw = (q && q.original_question_text) || bodyLine(q && q.explanation) || "—";
+  return String(raw).replace(/[#*>`]/g, "").replace(/\s+/g, " ");
+};

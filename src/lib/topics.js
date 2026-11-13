@@ -141,7 +141,8 @@ export const dropItem = (state, qid) => tidy({
 const digest = (q, i) => {
   const terms = wordLines(q.new_words || "").slice(0, 7).map((l) => parseWord(l).term.replace(/[*=«»]/g, "").trim()).filter(Boolean).join(", ");
   const lead = flat(q.explanation).slice(0, 170);
-  return `i${i + 1} | ${q.kind === "lesson" ? "LESSON" : "QUESTION"} | ${cap(flat(q.title), 80)} | ${cap(flat(q.original_question_text), 240)}${terms ? ` | terms: ${terms}` : ""}${lead ? ` | ${lead}` : ""}`;
+  const qt = cap(flat(q.original_question_text), 240);   // items made since v3.40.10 have none: the explanation lead below carries the meaning
+  return `i${i + 1} | ${q.kind === "lesson" ? "LESSON" : "QUESTION"} | ${cap(flat(q.title), 80)}${qt ? ` | ${qt}` : ""}${terms ? ` | terms: ${terms}` : ""}${lead ? ` | ${lead}` : ""}`;
 };
 
 const orgSystem = (kind) => `You organize the study library of a nursing student preparing for the NCLEX-RN. ${kind === "lesson" ? "Every item here is a LESSON (study material: book chapter, slides, notes, photos)." : "Every item here is an exam QUESTION he practised."} Group items into TOPICS so that everything about the same subject sits together. The app keeps questions and lessons in separate sections, so all items in this request are of the same type: group them by subject only.
@@ -234,8 +235,7 @@ export function topicOverview({ apiKey, topic, items, signal, onText }) {
   const lists = getModelLists(apiKey);
   const models = [...lists.fast, ...lists.pro];
   const body = items.map((q) => `### «${cap(flat(q.title), 80)}» (${q.kind === "lesson" ? "study material" : "exam question"})
-${cap(String(q.original_question_text || ""), 1100)}
-EXPLANATION:
+${q.original_question_text ? cap(String(q.original_question_text), 1100) + "\n" : ""}EXPLANATION:
 ${cap(String(q.explanation || ""), 1700)}${q.tricks ? `\nTRAPS:\n${cap(String(q.tricks), 500)}` : ""}`).join("\n\n");
   return runTask({
     apiKey, models, task: "lesson:topic", system: OVERVIEW_SYSTEM + ARABIC_RULE,

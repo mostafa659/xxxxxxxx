@@ -251,8 +251,7 @@ export function WordList({ text, showCount = true, warm = false, src, onRemove }
   const counts = { 2: 0, 1: 0, "-1": 0, new: 0 };
   lines.forEach((l) => { const v = lvOf(l); if (v) counts[v] += 1; else counts.new += 1; });
   const shown = lines.filter((l) => f === "all" || (f === "new" ? !lvOf(l) : lvOf(l) === +f));
-  /* the shown words are loaded quietly in the background (free Google US voice, 2 at a time, remembered on the device), so a tap on a speaker is instant.
-     With the male Gemini voice nothing is fetched ahead (it has a daily quota): see warm() in lib/speech.js */
+  /* the shown words are loaded quietly in the background (free Google US voice, 2 at a time, remembered on the device), so a tap on a speaker is instant: see warm() in lib/speech.js */
   const warmKey = shown.map((l) => parseWord(l).term).join("\u0001");
   useEffect(() => {
     const id = setTimeout(() => warm(warmKey.split("\u0001")), 400);

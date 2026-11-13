@@ -191,6 +191,40 @@ export function typicalTtft(apiKey, model, cls = "_") {
   return med(cls) || med("_");
 }
 
+/* v3.40.8 · the SLOW END of this key's real first-answer times (about the 85th percentile of the last 12). "Silent for too long" is measured against THIS, not against the
+   median: a request that is still silent when 85 % of its kind have already answered is almost certainly stuck (Google answers 503 after 15-20 s of silence). */
+export function slowTtft(apiKey, model, cls = "_") {
+  const m = lane(state(apiKey), model);
+  const pick = (key) => { const a = ((m.tt && !Array.isArray(m.tt) && m.tt[key]) || []).slice().sort((x, y) => x - y); return a.length >= TTFT_MIN_SAMPLES ? a[Math.floor((a.length - 1) * 0.85)] : 0; };
+  return pick(cls) || pick("_");
+}
+
+/* v3.40.9 · HEALTH: how often this model, on THIS key, recently failed in the way that costs the most time: it stayed silent until a backup had to start, or answered
+   503 / 5xx / timed out. Remembered across restarts (the router itself forgets a failure the moment a lane answers once, so a model that fails every second request
+   was never ranked down). The newest answers weigh most; below 4 answers or below a 20 % failure rate it counts for nothing (noise). A 429 is NOT a health problem
+   (that is quota, and the pace is already handled), and neither is a bad request. */
+const HEALTH_KEEP = 16, HEALTH_TTL = 12 * 3600e3, HEALTH_MIN = 4;
+export function noteHealth(apiKey, model, bad) {
+  const st = state(apiKey), m = lane(st, model);
+  const a = (m.h = Array.isArray(m.h) ? m.h : []);
+  a.push([_now(), bad ? 1 : 0]);
+  while (a.length > HEALTH_KEEP) a.shift();
+  save(st);
+}
+export function healthRate(apiKey, model) {
+  const m = lane(state(apiKey), model), now = _now();
+  const a = (Array.isArray(m.h) ? m.h : []).filter((e) => now - e[0] < HEALTH_TTL);
+  if (a.length < HEALTH_MIN) return 0;
+  let w = 1, num = 0, den = 0;
+  for (let i = a.length - 1; i >= 0; i--) { num += w * a[i][1]; den += w; w *= 0.8; }
+  return num / den;
+}
+/* ranking points (the router's loadScore: one place in the preference order = 2 points): 0 for a healthy model, up to 26 for one that nearly always fails */
+export function healthBias(apiKey, model) {
+  const r = healthRate(apiKey, model);
+  return r < 0.2 ? 0 : clamp(Math.round(r * 26), 0, 26);
+}
+
 /* how many ms this model is still finished for (0 = available) */
 export function deadLeftMs(apiKey, model) {
   const m = lane(state(apiKey), model), now = _now();
@@ -261,7 +295,7 @@ export function isScarce(apiKey, models) {
   return known && sum <= SCARCE_AT;
 }
 
-const UTILITY = /^words/;
+const UTILITY = /^(words|audio)/;
 /* the caller's model order, adjusted for the quota budget: utility jobs (the word list) prefer Flash-Lite when Flash is scarce. Everything else is untouched. */
 export function orderForTask(apiKey, task, models) {
   if (!UTILITY.test(String(task || "")) || !isScarce(apiKey, models)) return models;

@@ -18,10 +18,11 @@ const fresh = (k, perf, now) => {
   return { start: now, end: null, chars: 0, expMs: p.ms, expChars: p.chars, state: "run" };
 };
 
-export function createTracker(modeId, perf = {}) {
+export function createTracker(modeId, perf = {}, taskList = ["ocr", "words", "reason"]) {
   const now = Date.now();
-  const mk = (task) => fresh(perfKey(task, modeId), perf, now);
-  return { t0: now, modeId, tasks: { ocr: mk("ocr"), words: mk("words"), reason: mk("reason") }, shown: 0 };
+  const tasks = {};
+  for (const t of taskList) tasks[t] = fresh(perfKey(t, modeId), perf, now);
+  return { t0: now, modeId, tasks, shown: 0 };
 }
 
 export function restartTask(tracker, task, perf = {}) {

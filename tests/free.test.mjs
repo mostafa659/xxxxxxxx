@@ -127,7 +127,7 @@ test("between equal models the one with more daily quota left goes first (the da
   assert.equal(r.text, "from FLASH2", "FLASH has 5 left, FLASH2 has 18");
 });
 
-test("QUESTION ANALYSIS: 5 requests on a small (free) key, 6 on a key that has proven to be big; the verified brief reaches every writer in both", async () => {
+test("QUESTION ANALYSIS: 4 requests on a small (free) key, 5 on a key that has proven to be big (no question-text request any more); the verified brief reaches every writer in both", async () => {
   const BRIEF = "ANSWER: B\nKEY: BRIEFMARK-7731 the verified reasoning";             // what the silent solve returns: cleanBrief accepts it, so the verified path runs
   const run = async () => {
     script(G("gemini-flash-latest"), { ok: BRIEF });
@@ -135,7 +135,7 @@ test("QUESTION ANALYSIS: 5 requests on a small (free) key, 6 on a key that has p
     await new Promise((resolve) => {
       const a = createAnalysis({
         kind: "question", history: [], dataUrl: "data:image/png;base64,iVBORw0KGgo=", doc: null, extra: "", chips: [], apiKey: KEY, modeId: "balanced",
-        onUpdate() {}, onDone: (name, m) => { done[name] = m; if (done.ocr && done.words && done.reason) resolve(a); }, onError: (n, e) => { done.err = [n, e && e.message]; resolve(a); }, onNotice() {},
+        onUpdate() {}, onDone: (name, m) => { done[name] = m; if (done.words && done.reason) resolve(a); }, onError: (n, e) => { done.err = [n, e && e.message]; resolve(a); }, onNotice() {},
       });
       a.start();
     });
@@ -145,14 +145,14 @@ test("QUESTION ANALYSIS: 5 requests on a small (free) key, 6 on a key that has p
   };
   fresh();
   const small = await run();
-  assert.deepEqual(small, { total: 5, withBrief: 1 }, "a key nothing is known about is treated as a free key: main + traps are ONE request, the verified brief is in it");
+  assert.deepEqual(small, { total: 4, withBrief: 1 }, "a key nothing is known about is treated as a free key: main + traps are ONE request, the verified brief is in it");
 
   fresh();
-  /* evidence of a big quota (a learned per-minute limit of a paid size) → the fully parallel design of old: 6 requests, brief in both writers */
+  /* evidence of a big quota (a learned per-minute limit of a paid size) → the fully parallel design of old: 5 requests, brief in both writers */
   Q.noteQuotaError(KEY, "gemini-flash-latest", Q.parseQuota({ details: quotaErr("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", 1000, "gemini-flash-latest", "5s").details }, ""));
   assert.equal(Q.isSmallKey(KEY), false);
   const big = await run();
-  assert.deepEqual(big, { total: 6, withBrief: 2 }, "big key: ocr · words · solve · A · B-main · B-traps, exactly as before");
+  assert.deepEqual(big, { total: 5, withBrief: 2 }, "big key: words · solve · A · B-main · B-traps (v3.40.10: no ocr)");
 });
 
 test("QUESTION ANALYSIS: when the strong models are nearly spent today, the word list goes to Flash-Lite and the strong model is kept for the rest", async () => {
@@ -167,13 +167,13 @@ test("QUESTION ANALYSIS: when the strong models are nearly spent today, the word
     const done = {};
     const a = createAnalysis({
       kind: "question", history: [], dataUrl: "data:image/png;base64,iVBORw0KGgo=", doc: null, extra: "", chips: [], apiKey: KEY, modeId: "balanced",
-      onUpdate() {}, onDone: (name) => { done[name] = true; if (done.ocr && done.words && done.reason) resolve(a); }, onError: () => resolve(a), onNotice() {},
+      onUpdate() {}, onDone: (name) => { done[name] = true; if (done.words && done.reason) resolve(a); }, onError: () => resolve(a), onNotice() {},
     });
     a.start();
   });
   const lanes = used();
-  /* v3.35: the question text and the word list are EASY jobs: Flash-Lite first, always (not only when the quota is scarce) */
-  assert.equal(lanes.filter((l) => l === G("gemini-flash-lite-latest")).length, 2, "the question text and the word list went to Flash-Lite");
+  /* v3.35: the word list is an EASY job: Flash-Lite first, always (not only when the quota is scarce). v3.40.10: the question text is not requested at all any more. */
+  assert.equal(lanes.filter((l) => l === G("gemini-flash-lite-latest")).length, 1, "the word list went to Flash-Lite");
   assert.ok(lanes.filter((l) => l === G("gemini-flash-latest")).length >= 2, "solve + the lesson parts stayed on the stronger model");
 });
 
@@ -240,7 +240,8 @@ test("ADAPTIVE HEDGE: without any measurement the old fixed delays are untouched
   const h = R.HEDGE_MS.write;
   const a = R.hedgeDelayMs("write", null, 1, 0);
   assert.ok(a >= h.min && a <= h.max);
-  assert.equal(R.hedgeDelayMs("write", null, 1, 3000), Math.min(h.max, Math.max(R.HEDGE_FLOOR_MS.v, 9000)));
+  assert.equal(R.hedgeDelayMs("write", null, 1, 3000), Math.min(h.max, Math.max(R.HEDGE_FLOOR_MS.v, 6600)), "v3.40.8: 2.2 x the median when only the median is known");
+  assert.equal(R.hedgeDelayMs("write", null, 1, 6200, 8000), Math.round(Math.min(h.max, Math.max(R.HEDGE_FLOOR_MS.v, 9600))), "1.2 x the slow end: a 6 s key hedges at 9.6 s, not at 18.6 s");
   assert.equal(R.hedgeDelayMs("write", null, 1, 100), R.HEDGE_FLOOR_MS.v, "never below the floor");
   assert.equal(R.hedgeDelayMs("write", null, 1, 60000), h.max, "never above the class maximum");
 });

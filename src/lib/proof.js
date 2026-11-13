@@ -22,7 +22,18 @@ export const proofOn = () => {
 };
 export const setProofPref = (on) => { try { window.localStorage.setItem(LS_PROOF, on ? "on" : "off"); } catch (e) { /* ignore */ } };
 
-export const PROOF_MS = 7000;                 // the proofreader never holds an answer longer than this
+export const PROOF_MS = 4500;                 // the proofreader never holds an answer longer than this
+/* v3.40.7 · the proofreader must NEVER compete with the real work for the key's quota. A free key is tiny (about 20 requests a day on a Flash model): a request per
+   answer used it up faster, put the models to sleep and made every following answer wait. So (gemini.js) it only runs when the key has shown a big quota, nothing
+   in this very answer went wrong or waited, the model it would use has room this minute, and no other proofreading is running. Tests may force it on. */
+export const proofForced = () => _force === true;
+let _gateSmall = null;
+export const __gateSmallKeys = (v) => { _gateSmall = v; };                                 // tests: apply the small-key gate even while forced on
+export const smallKeyGate = () => (_gateSmall !== null ? _gateSmall : !proofForced());
+let _busy = 0;
+export const proofBusy = () => _busy > 0;
+export const proofStart = () => { _busy += 1; };
+export const proofEnd = () => { _busy = Math.max(0, _busy - 1); };
 const MIN_WORDS = 8;                          // shorter texts are not worth a request
 const CHUNK = 4500, MAX_CHUNKS = 3;           // characters per request · requests per answer (they run in parallel)
 const MAX_FIXES = 12;
@@ -31,7 +42,7 @@ const MAX_FIXES = 12;
 const MAX_RUNS = 40, WINDOW_MS = 10 * 60e3;
 let _log = [], _now = () => Date.now();
 export const __proofClock = (fn) => { _now = fn || (() => Date.now()); };
-export const __resetProof = () => { _log = []; _force = null; };
+export const __resetProof = () => { _log = []; _force = null; _gateSmall = null; _busy = 0; };
 export function allowProof() {
   const t = _now();
   _log = _log.filter((x) => t - x < WINDOW_MS);

@@ -100,7 +100,7 @@ for (let i = 1; i <= N; i++) {
     const done = {};
     const a = A.createAnalysis({
       kind: "question", history: [], dataUrl: "data:image/png;base64,iVBORw0KGgo=", doc: null, extra: "", chips: [], apiKey: KEY, modeId: "balanced",
-      onUpdate() {}, onDone: (name, m) => { done[name] = true; if (m && m.lat && LAT) { (globalThis.__lat ||= {})[name] = LAT.describe(m.lat); } if (done.ocr && done.words && done.reason) resolve(); },
+      onUpdate() {}, onDone: (name, m) => { done[name] = true; if (m && m.lat && LAT) { (globalThis.__lat ||= {})[name] = LAT.describe(m.lat); } if (done.words && done.reason) resolve(); },
       onError: (name, e) => { outcome = "ERROR"; err = (e && e.message || "").slice(0, 60); resolve(); }, onNotice() {},
     });
     a.start();

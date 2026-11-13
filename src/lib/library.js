@@ -101,9 +101,7 @@ const detail = (it, per) => {
   const exp = String(it.q.explanation || "");
   const tricks = String(it.q.tricks || "");
   return `### ${it.code} — ${it.title} (${lesson ? "study material" : "exam question"}${it.topic ? `, topic: ${it.topic.name}` : ""})
-${lesson ? "SUMMARY" : "QUESTION"}:
-${cap(it.q.original_question_text, Math.round(per * 0.4))}
-EXPLANATION GIVEN TO THE STUDENT:
+${it.q.original_question_text ? `${lesson ? "SUMMARY" : "QUESTION"}:\n${cap(it.q.original_question_text, Math.round(per * 0.4))}\n` : ""}EXPLANATION GIVEN TO THE STUDENT:
 ${cap(exp, Math.round(per * 0.45))}${tricks ? `\nTRAPS / KEY POINTS:\n${cap(tricks, Math.round(per * 0.15))}` : ""}`;
 };
 

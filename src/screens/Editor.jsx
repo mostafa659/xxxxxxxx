@@ -5,10 +5,10 @@ import { Monitor } from "../components/Progress.jsx";
 import FontSizer from "../components/FontSizer.jsx";
 import { useTextScale, scaleStyle } from "../lib/textscale.js";
 import { RichText, QuestionView, WordList } from "../components/rich.jsx";
-import { CHIPS, MODES, sectionsFor, EMPTY_RESULT } from "../lib/config.js";
+import { CHIPS, MODES, sectionsFor, tasksFor, EMPTY_RESULT } from "../lib/config.js";
 import { createAnalysis, TASK_KEYS } from "../lib/analysis.js";
 import { createTracker, restartTask, snapshot, feed, settle, expectedMs, fmtRemaining } from "../lib/progress.js";
-import { readFiles, textItem, makeSource, itemsFromSaved, totalBytes, MAX_TOTAL } from "../lib/docs.js";
+import { readFiles, textItem, makeSource, itemsFromSaved, totalBytes, MAX_TOTAL, isAudio } from "../lib/docs.js";
 import ChatPanel from "../components/ChatPanel.jsx";
 import SourceBox from "../components/SourceBox.jsx";
 import { warmConnection } from "../lib/gemini.js";
@@ -23,7 +23,8 @@ import { describe as describeLat } from "../lib/latency.js";
 import { quotaNote } from "../lib/quota.js";
 
 const TASK_OF = { original_question_text: "ocr", new_words: "words", explanation: "reason", tricks: "reason" };
-const NULLS = { original_question_text: null, new_words: null, explanation: null, tricks: null };
+/* a fresh run: every part is "not written yet" (null). A question has no transcript part any more (v3.40.10), so that field is simply empty. */
+const nullsFor = (kind) => ({ original_question_text: kind === "lesson" ? null : "", new_words: null, explanation: null, tricks: null });
 const FLUSH_MS = 90; // streamed text is painted ~11×/s — smooth, and cheap for long explanations
 
 /* ───────── one result card ───────── */
@@ -312,13 +313,21 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
     const src = makeSource(next);
     setItems(next); setImageUrl(src.imageUrl); setDoc(src.doc); setImgRev((n) => n + 1);
   }, []);
+  /* v3.41: a recording takes a while to turn into text (one request): while it does, the screen says so and no second batch of files / the analysis can start (it would not include the recording) */
+  const [reading, setReading] = useState("");
+  const readingRef = useRef(false);
   const addFiles = useCallback(async (files) => {
     const list = [...(files || [])];
     if (!list.length) return;
+    if (readingRef.current) { setError({ msg: "استنى لما الصوت يخلص تفريغ، وبعدها أضف باقي الملفات." }); return; }
     const cur = itemsRef.current;
-    const { items: next, errors } = await readFiles(list, cur);
-    if (next.length !== cur.length) { applyItems(next); warmConnection(apiKey); }
-    setError(errors.length ? { msg: errors.slice(0, 3).join("\n") } : null);
+    const hasAudio = list.some(isAudio);
+    if (hasAudio) { readingRef.current = true; setReading("بيجهّز الصوت…"); }
+    try {
+      const { items: next, errors } = await readFiles(list, cur, { apiKey, onStatus: (m) => { if (hasAudio) setReading(m); } });
+      if (next.length !== cur.length) { applyItems(next); warmConnection(apiKey); }
+      setError(errors.length ? { msg: errors.slice(0, 3).join("\n") } : null);
+    } finally { if (hasAudio) { readingRef.current = false; setReading(""); } }
   }, [apiKey, applyItems]);
   const addText = useCallback((text) => {
     const next = [...itemsRef.current, textItem(text, isLesson ? "نص الشرح" : "نص السؤال")];
@@ -444,6 +453,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
 
   /* several files, or a note that picks questions → first find the questions (one small request), then analyse each one alone */
   const analyze = async () => {
+    if (readingRef.current) return;     // v3.41: a recording is still being turned into text
     if (!items.length) { setError({ msg: isLesson ? "ارفع المادة أو الصق نصها الأول." : "ارفع السؤال (صورة أو ملف) أو اكتب نصه الأول." }); return; }
     if (!apiKey) { setError({ msg: "محتاج تحط مفتاح Gemini الأول. دوس على أيقونة 🔑 فوق." }); onNeedKey(); return; }
     if (isLesson || (items.length < 2 && !instructions.trim())) return analyzeOne();
@@ -475,11 +485,11 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
     clearTimeout(timer.current); timer.current = 0; buf.current = {};
     clearTimeout(saveTimer.current); pendingSave.current = false; autoOK.current = false;
     prev.current = result;
-    tracker.current = createTracker(mode, perfRef.current);
+    tracker.current = createTracker(mode, perfRef.current, tasksFor(kind));
     setSnap(snapshot(tracker.current));
     setError(null); setErrors({}); setNotes({}); setModels({}); setLastRun(null); setTiming({});
-    setResult({ ...NULLS });
-    setStatus({ ocr: "run", words: "run", reason: "run" });
+    setResult({ ...nullsFor(kind) });
+    setStatus(Object.fromEntries(tasksFor(kind).map((t) => [t, "run"])));
     an.current = makeAnalysis(hint);
     setRunId((n) => n + 1);
     an.current.start();
@@ -529,7 +539,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
     return "wait";
   };
   const steps = [
-    { id: "read", label: isLesson ? "قراءة المادة" : "قراءة السؤال", s: lamp("ocr", has("original_question_text")) },
+    ...(isLesson ? [{ id: "read", label: "قراءة المادة", s: lamp("ocr", has("original_question_text")) }] : []),
     { id: "words", label: "الكلمات", s: lamp("words", has("new_words")) },
     { id: "explain", label: isLesson ? "الشرح" : "التفصيص", s: status.reason === "run" && result?.tricks != null ? "done" : lamp("reason", has("explanation")) },
     { id: "tricks", label: isLesson ? "نقاط الحفظ" : "التريكات", s: lamp("reason", result?.tricks != null && result.tricks !== "") },
@@ -578,7 +588,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
       <div className="stack ed-grid">
         <aside className="ed-side">
         {/* 1 · the source: any files and/or typed text */}
-        <SourceBox kind={kind} items={items} imageUrl={imageUrl} onFiles={addFiles} onText={addText} onRemove={removeItem} onClear={clearItems} />
+        <SourceBox kind={kind} items={items} imageUrl={imageUrl} busy={reading} onFiles={addFiles} onText={addText} onRemove={removeItem} onClear={clearItems} />
 
         {/* the note: tells the AI WHICH questions / pages to work on, and any extra instruction */}
         <div>
@@ -612,7 +622,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
             <div className="more-body">
               <label htmlFor="q-title" className="label">عنوان السؤال</label>
               <input id="q-title" value={title} onChange={(e) => setTitle(e.target.value)} className="input" dir="auto"
-                placeholder="سيبه فاضي وهنسمّيه من نص السؤال" />
+                placeholder="سيبه فاضي وهنسمّيه من شرح السؤال" />
               <div className="chips">
                 {CHIPS.map((c) => (
                   <button key={c.id} type="button" aria-pressed={chips.includes(c.id)} data-on={chips.includes(c.id)}
@@ -628,7 +638,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
         </div>
 
         {!started && (
-          <button onClick={analyze} disabled={!items.length || (batch && batch.phase !== "none")} className="btn btn-teal btn-go">
+          <button onClick={analyze} disabled={!items.length || !!reading || (batch && batch.phase !== "none")} className="btn btn-teal btn-go">
             <Icon name="sparkles" size={24} /> {isLesson ? "اشرحلي المادة" : "حلّل السؤال"}
           </button>
         )}

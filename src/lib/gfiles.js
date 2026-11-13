@@ -37,8 +37,8 @@ const b64ToBlob = (b64, type) => {
 const keyOf = (mime, data) => `${mime}:${data.length}:${data.slice(0, 48)}:${data.slice(-48)}`;
 
 /* the real network part: resumable upload exactly as in Google's documentation (start → upload + finalize → wait until ACTIVE) */
-export async function uploadToGoogle({ apiKey, mimeType, data, name, signal, fetchImpl = fetch }) {
-  const blob = b64ToBlob(data, mimeType);
+export async function uploadToGoogle({ apiKey, mimeType, data, blob: given, name, signal, fetchImpl = fetch }) {
+  const blob = given || b64ToBlob(data, mimeType);      // v3.41: a recording is uploaded straight from the File (no 33 % base64 copy in memory)
   const start = await fetchImpl(`${ORIGIN}/upload/v1beta/files`, {
     method: "POST", signal,
     headers: {

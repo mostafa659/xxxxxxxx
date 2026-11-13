@@ -7,7 +7,7 @@ import { RichText, WordList, Mixed } from "../components/rich.jsx";
 import { orderTopicItems, topicSig, topicOverview } from "../lib/topics.js";
 import { itemsFromSaved } from "../lib/docs.js";
 import { wordLines, parseWord } from "../lib/parse.js";
-import { fixText } from "../lib/text.js";
+import { fixText, snippetOf } from "../lib/text.js";
 import { store } from "../lib/storage.js";
 import { stampShort } from "../lib/time.js";
 
@@ -136,7 +136,7 @@ export default function TopicScreen({ topic, questions, apiKey, onNeedKey, onOpe
       <span className="qthumb">{q.thumb ? <img src={q.thumb} alt="" loading="lazy" /> : <Icon name={q.kind === "lesson" ? "bookOpen" : "fileText"} size={26} />}</span>
       <span className="qbody">
         <h3 dir="auto"><i className="trow-n">{n}</i> {q.title}</h3>
-        <span className="snip" dir="auto">{(q.original_question_text || "—").replace(/[#*>`]/g, "").replace(/\s+/g, " ")}</span>
+        <span className="snip" dir="auto">{snippetOf(q)}</span>
         <span className="qfoot">
           {q.kind === "lesson" && <span className="pill pill-lesson" style={{ padding: "1px 10px" }}>شرح 📖</span>}
           <span className="pill pill-violet" style={{ padding: "1px 10px" }}>{wordLines(q.new_words).length} كلمة</span>

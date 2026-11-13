@@ -287,14 +287,15 @@ test("ANALYSIS: every finished stage carries its latency summary (lat); a retrie
   const finished = new Promise((resolve) => {
     const a = createAnalysis({
       kind: "question", history: [], dataUrl: "data:image/png;base64,iVBORw0KGgo=", doc: null, extra: "", chips: [], apiKey: KEY, modeId: "balanced",
-      onUpdate() {}, onDone: (name, m) => { (done[name] = done[name] || []).push(m); if (done.ocr && done.words && done.reason) resolve(a); },
+      onUpdate() {}, onDone: (name, m) => { (done[name] = done[name] || []).push(m); if (done.words && done.reason) resolve(a); },
       onError: (name, e) => { errors.push([name, e && e.message]); resolve(a); }, onNotice() {},
     });
     a.start();
   });
   const a = await finished;
   assert.deepEqual(errors, []);
-  for (const stage of ["ocr", "words", "reason"]) {
+  assert.equal(done.ocr, undefined, "v3.40.10: a question never asks for a transcript of itself");
+  for (const stage of ["words", "reason"]) {
     const m = done[stage][0];
     assert.ok(m.lat, `${stage} must carry lat`);
     assert.equal(m.lat.ok, true);
@@ -303,7 +304,7 @@ test("ANALYSIS: every finished stage carries its latency summary (lat); a retrie
   }
   assert.ok(done.reason[0].lat.calls >= 3, "the lesson is several parallel calls (solve + parts): all of them are in its ledger");
   /* retry one stage: its ledger holds only the NEW run (1 call), not the old one on top */
-  const before = done.ocr.length;
-  await new Promise((resolve) => { const t = setInterval(() => { if (done.ocr.length > before) { clearInterval(t); resolve(); } }, 10); a.retry("ocr"); });
-  assert.equal(done.ocr[done.ocr.length - 1].lat.calls, 1);
+  const before = done.words.length;
+  await new Promise((resolve) => { const t = setInterval(() => { if (done.words.length > before) { clearInterval(t); resolve(); } }, 10); a.retry("words"); });
+  assert.equal(done.words[done.words.length - 1].lat.calls, 1);
 });

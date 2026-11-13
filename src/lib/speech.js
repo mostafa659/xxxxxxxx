@@ -1,44 +1,19 @@
 /* ───────────── Pronunciation (American English) ─────────────
-   Why this was slow and not always American (v3.23 and before): every word was ONE Gemini TTS request. Gemini's free TTS quota is
-   tiny, so after a few taps it answered "429 too many requests", the app then fell back to whatever voice the phone ships with
-   (often a non-US accent), and each tap first waited for the failed network round-trip.
-
-   Now (v3.24), in this order:
+   v3.40.10 — GOOGLE ONLY. The Gemini voice (and its voice switch in the settings) was removed: pronouncing a word must never spend a token or
+   a request of the student's Gemini quota. Order of play:
      0. Cache (memory → IndexedDB): a word you have heard once is instant, also offline. Nothing is ever downloaded twice.
      1. Google US-English voice (translate_tts, tl=en-US): about 0.3 s per word, no key and no daily quota, the same General-American
         voice for every word and every phone. The words of a list are loaded quietly in the background (warm()), so a tap is usually instant.
-     2. Gemini TTS (en-US, male prebuilt voice "Charon") → used when Google cannot be reached, or first if you choose the male voice
-        (setVoiceEngine("gemini")).
-     3. The phone's own voice, ONLY when it is a real en-US voice (a non-US voice is never used: no wrong accent, ever).
+     2. The phone's own voice, ONLY when it is a real en-US voice (a non-US voice is never used: no wrong accent, ever).
 
    Speed: in-flight requests are shared, playback speed is adjustable (pitch is kept), and a selected sentence is cut into
    short pieces that are fetched together and played one after the other.                                                       */
 
 import { useSyncExternalStore } from "react";
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { API_BASE, rawRequest } from "./gemini.js";
 import { store, prefs } from "./storage.js";
 
-/* Gemini: newest first; an unknown / retired model just falls through to the next one */
-const MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
-const VOICE = "Charon"; // Gemini prebuilt MALE voice. Other male options: "Orus", "Iapetus", "Puck", "Fenrir".
-const G_CACHE = `tts:v1:${VOICE}:`;   // (same key as before: words already downloaded keep working)
 const U_CACHE = "tts:us1:";            // Google US voice
-const SAMPLE_RATE = 24000; // Gemini TTS returns raw PCM, 16-bit, mono, 24 kHz
-
-let _key = "";
-export const setSpeechKey = (k) => { _key = k || ""; };
-
-/* ── which voice: "google" (default: fast, unlimited, American, female) or "gemini" (American male, slower, daily quota) ── */
-export const VOICE_ENGINES = ["google", "gemini"];
-let engine = (() => { const v = prefs.get("clinix:voice", "google"); return VOICE_ENGINES.includes(v) ? v : "google"; })();
-const engineSubs = new Set();
-export const getVoiceEngine = () => engine;
-export function setVoiceEngine(v) {
-  if (!VOICE_ENGINES.includes(v) || v === engine) return;
-  engine = v; prefs.set("clinix:voice", v); engineSubs.forEach((f) => f());
-}
-export const useVoiceEngine = () => useSyncExternalStore((f) => { engineSubs.add(f); return () => engineSubs.delete(f); }, () => engine, () => engine);
 
 /* ── what to say: English only (the Arabic gloss must never be read by the American voice) ── */
 export function speakable(s) {
@@ -75,7 +50,6 @@ let src = null;      // AudioBufferSource (fallback player)
 let el = null;       // <audio> element (main player: keeps the pitch when the speed changes)
 let elUrl = null;
 let token = 0;
-let goodModel = null;
 const mem = new Map();
 const inflight = new Map();
 
@@ -99,34 +73,6 @@ function getCtx() {
 function getEl() {
   if (!el && typeof Audio === "function") { try { el = new Audio(); el.preload = "auto"; } catch (e) { el = null; } }
   return el;
-}
-
-function pcmToBuffer(c, b64) {
-  const bin = atob(b64);
-  const n = bin.length >> 1;
-  const buf = c.createBuffer(1, n, SAMPLE_RATE);
-  const ch = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) {
-    let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
-    if (v >= 32768) v -= 65536;
-    ch[i] = v / 32768;
-  }
-  return buf;
-}
-
-/* raw PCM → a tiny WAV file the <audio> element can play */
-function pcmToWavUrl(b64) {
-  const bin = atob(b64);
-  const n = bin.length;
-  const u8 = new Uint8Array(44 + n);
-  const dv = new DataView(u8.buffer);
-  const tag = (o, t) => { for (let i = 0; i < t.length; i++) u8[o + i] = t.charCodeAt(i); };
-  tag(0, "RIFF"); dv.setUint32(4, 36 + n, true); tag(8, "WAVE"); tag(12, "fmt ");
-  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-  dv.setUint32(24, SAMPLE_RATE, true); dv.setUint32(28, SAMPLE_RATE * 2, true);
-  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); tag(36, "data"); dv.setUint32(40, n, true);
-  for (let i = 0; i < n; i++) u8[44 + i] = bin.charCodeAt(i);
-  return URL.createObjectURL(new Blob([u8], { type: "audio/wav" }));
 }
 
 function freeEl() {
@@ -239,81 +185,36 @@ async function fetchGoogle(text) {
   }
 }
 
-/* ── 2 · Gemini TTS ── */
-let geminiCool = 0;
-async function fetchGemini(text) {
-  if (!_key) throw Object.assign(new Error("no key"), { code: "nokey" });
-  if (Date.now() < geminiCool) throw Object.assign(new Error("gemini cooling down"), { status: 429 });
-  const order = goodModel ? [goodModel, ...MODELS.filter((m) => m !== goodModel)] : MODELS;
-  const body = {
-    contents: [{ parts: [{ text: `Say clearly in a General American accent: ${text}` }] }],
-    generationConfig: {
-      responseModalities: ["AUDIO"],
-      speechConfig: { languageCode: "en-US", voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
-    },
-  };
-  let last = new Error("tts failed");
-  for (const model of order) {
-    try {
-      const { status, json } = await rawRequest("POST", `${API_BASE}/${model}:generateContent`, body, Math.min(90000, 15000 + text.length * 70), _key);   // a selected sentence needs longer than one word
-      if (status >= 200 && status < 300) {
-        const part = (json?.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData && p.inlineData.data);
-        if (part) { goodModel = model; return { k: "pcm", b64: part.inlineData.data }; }
-        last = new Error("empty audio");
-        continue;
-      }
-      last = Object.assign(new Error(`HTTP ${status}`), { status });
-      if (status === 429) geminiCool = Date.now() + 60000;
-      if (status === 401 || status === 403 || status === 429) break; // another model will not help
-    } catch (e) { last = e; break; } // network problem
-  }
-  throw last;
-}
-
-/* ── cache (IndexedDB): "M|part|part" = Google mp3 pieces · plain base64 = Gemini PCM ── */
-const cacheKey = (eng, text) => (eng === "google" ? U_CACHE : G_CACHE) + text;
-async function cacheGet(eng, text) {
+/* ── cache (IndexedDB): "M|part|part" = Google mp3 pieces ── */
+async function cacheGet(text) {
   let v;
-  try { v = await store.get(cacheKey(eng, text)); } catch (e) { return null; }
-  if (!v || typeof v !== "string") return null;
-  if (eng === "google") return v.startsWith("M|") ? { k: "mp3", parts: v.slice(2).split("|") } : null;
-  return { k: "pcm", b64: v };
+  try { v = await store.get(U_CACHE + text); } catch (e) { return null; }
+  return v && typeof v === "string" && v.startsWith("M|") ? { k: "mp3", parts: v.slice(2).split("|") } : null;
 }
-function cachePut(eng, text, item) {
+function cachePut(text, item) {
   try {
-    const v = item.k === "mp3" ? "M|" + item.parts.join("|") : item.k === "pcm" ? item.b64 : null;
-    if (v) Promise.resolve(store.set(cacheKey(eng, text), v)).catch(() => {});
+    if (item.k === "mp3") Promise.resolve(store.set(U_CACHE + text, "M|" + item.parts.join("|"))).catch(() => {});
   } catch (e) { /* the cache is a bonus, never a reason to fail */ }
 }
 
-/* memory → IndexedDB (both voices, preferred first) → network (preferred first, the other as backup).
-   One shared promise per text, so a tap on a word that is being warmed up just waits for that same request. */
-const order = () => (engine === "gemini" ? ["gemini", "google"] : ["google", "gemini"]);
+/* memory → IndexedDB → Google. One shared promise per text, so a tap on a word that is being warmed up just waits for that same request. */
 function audioFor(text) {
   if (mem.has(text)) return Promise.resolve(mem.get(text));
   if (inflight.has(text)) return inflight.get(text);
   const p = (async () => {
-    for (const eng of order()) {
-      const hit = await cacheGet(eng, text);
-      if (hit) { mem.set(text, hit); return hit; }
-    }
-    let last = new Error("no voice available");
-    for (const eng of order()) {
-      try {
-        const item = eng === "google" ? await fetchGoogle(text) : await fetchGemini(text);
-        if (item.k !== "url") cachePut(eng, text, item);
-        mem.set(text, item);
-        return item;
-      } catch (e) { if (!(e && e.code === "nokey")) last = e; }   // "no Gemini key" says nothing useful when Google was the one that failed
-    }
-    throw last;
+    const hit = await cacheGet(text);
+    if (hit) { mem.set(text, hit); return hit; }
+    const item = await fetchGoogle(text);
+    if (item.k !== "url") cachePut(text, item);
+    mem.set(text, item);
+    return item;
   })().finally(() => inflight.delete(text));
   inflight.set(text, p);
   return p;
 }
 
 /* Read-ahead. warm(list): the words of a list are loaded quietly in the background (2 at a time), so the tap is instant.
-   Only with the free Google voice (it has no quota); silent on every error; stops by itself when Google starts refusing. */
+   Google voice has no quota; silent on every error; stops by itself when Google starts refusing. */
 const warmQueue = [];
 let warmRunning = 0;
 function warmPump() {
@@ -326,7 +227,7 @@ function warmPump() {
   }
 }
 export function warm(list) {
-  if (engine !== "google" || Date.now() < googleCool) return;
+  if (Date.now() < googleCool) return;
   const seen = new Set(warmQueue);
   (list || []).slice(0, 80).forEach((raw) => {
     const t = speakable(raw);
@@ -371,42 +272,11 @@ const fail = (msg) => {
   try { window.dispatchEvent(new CustomEvent("clinix:speech-error", { detail: msg })); } catch (e) { /* ignore */ }
 };
 
-/* play with the Web-Audio fallback (speed works, pitch follows the speed) */
-function playBuffer(c, b64, my, id) {
-  if (!c) throw new Error("no audio context");
-  const s = c.createBufferSource();
-  s.buffer = pcmToBuffer(c, b64);
-  s.playbackRate.value = speed;
-  s.connect(c.destination);
-  s.onended = () => { if (token === my) { src = null; setState(null, "idle"); } };
-  src = s;
-  s.start();
-  setState(id, "play");
-}
-
 const prep = (a) => {
   a.defaultPlaybackRate = speed;
   a.playbackRate = speed;
   for (const k of ["preservesPitch", "webkitPreservesPitch", "mozPreservesPitch"]) { try { a[k] = true; } catch (e) { /* ignore */ } }
 };
-
-async function playPcm(a, c, b64, my, id) {
-  if (!a) return playBuffer(c, b64, my, id);
-  freeEl();
-  elUrl = pcmToWavUrl(b64);
-  a.src = elUrl;
-  prep(a);
-  a.onended = () => { if (token === my) { freeEl(); setState(null, "idle"); } };
-  a.onerror = () => { if (token === my) { freeEl(); try { playBuffer(c, b64, my, id); } catch (e) { setState(null, "idle"); } } };
-  try {
-    await a.play();
-    if (token === my) setState(id, "play");
-  } catch (e) {
-    if (token !== my) return;
-    freeEl();
-    playBuffer(c, b64, my, id); // autoplay blocked or format problem → fallback player
-  }
-}
 
 /* mp3 pieces (Google) or plain URLs, one after the other */
 async function playSequence(a, sources, my, id, isUrl) {
@@ -448,7 +318,6 @@ async function playMp3Web(c, parts, my, id) {
 }
 
 async function playItem(a, c, item, my, id) {
-  if (item.k === "pcm") return playPcm(a, c, item.b64, my, id);
   if (item.k === "url") return playSequence(a, item.urls, my, id, true);
   try { await playSequence(a, item.parts, my, id, false); }
   catch (e) { if (token !== my) return; freeEl(); await playMp3Web(c, item.parts, my, id); }
@@ -473,6 +342,6 @@ export async function speak(raw, id = raw) {
     freeEl();
     if (systemSpeak(text, my, id)) return;
     setState(null, "idle");
-    fail("مقدرتش أجيب النطق الأمريكي دلوقتي. اتأكد من النت وجرّب تاني" + (_key ? "." : "، أو ضيف مفتاح Gemini (أيقونة 🔑) كصوت احتياطي."));
+    fail("مقدرتش أجيب النطق الأمريكي دلوقتي. اتأكد من النت وجرّب تاني.");
   }
 }

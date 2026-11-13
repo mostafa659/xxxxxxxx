@@ -1,7 +1,7 @@
 /* ───────────── Analysis orchestration ─────────────
    v3.23 — FEWER REQUESTS (Google's quota counts every one):
 
-     ocr      → original_question_text                     fast model, no thinking
+     ocr      → LESSONS only (v3.40.10): the background study summary. A question no longer asks for a transcript of itself.
      words    → new_words                                  fast model, no thinking
      reason   → explanation + tricks, by LESSON_MODE (config.js / VITE_LESSON_MODE):
                 "fast" (default): silent solve → part A ∥ part B-main ∥ part B-traps  (three short streams at once, 6 requests)
@@ -21,7 +21,7 @@ import { sourceParts, sourceNote } from "./docs.js";
 import { createFileCache, looksLikeFileError } from "./gfiles.js";
 import { stageOf, summarize } from "./latency.js";
 import { isSmallKey, orderForTask } from "./quota.js";
-import { PAID, SOLVE_BOX } from "./config.js";
+import { PAID, SOLVE_BOX, tasksFor } from "./config.js";
 
 export const TASK_KEYS = {
   ocr: ["original_question_text"],
@@ -422,7 +422,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   }
 
   return {
-    start() { ["ocr", "reason", "words"].forEach(run); }, // ocr first: it is what the student sees first
+    start() { tasksFor(kind).forEach(run); },   // v3.40.10: a question runs reason + words only (no transcript of the question: it is already in the attachment); a lesson also runs its background summary first
     retry(name) { if (TASK_KEYS[name]) run(name); },
     stop(name) { live[name]?.abort(); },
     cancel() { Object.values(live).forEach((c) => c.abort()); files.cancel(); },
