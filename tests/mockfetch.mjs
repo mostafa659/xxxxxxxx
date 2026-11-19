@@ -46,7 +46,7 @@ export function installFetch() {
       const payload = isGem ? { error: { code: st.status, message: st.msg || "x", details: st.details || (st.retry ? [{ retryDelay: st.retry + "s" }] : []) } } : { error: { message: st.msg || "x" } };
       return new Response(JSON.stringify(payload), { status: st.status, headers: st.retryHeader ? { "retry-after": String(st.retryHeader) } : {} });
     }
-    const text = st.ok;
+    const text = typeof st.ok === "function" ? st.ok(body) : st.ok;          // a step may answer according to the request (which stage is asking)
     const parts = text.match(/.{1,12}/gs) || [""];
     const chunks = isClaude
       ? [`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: {} })}\n\n`, ...parts.map((p) => `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: p } })}\n\n`), `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: st.finish || "end_turn" } })}\n\n`]

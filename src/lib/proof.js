@@ -141,3 +141,42 @@ export function applyProof(text, fixes) {
   }
   return { text: out, applied };
 }
+
+/* ───────────── v3.43 · F3: unresolved high-risk claims ride inside THIS request ─────────────
+   No new request. The claims take room FROM the text chunk (its tail is simply left unproofed, as it already is beyond MAX_CHUNKS), so the request is never
+   bigger than the one v3.42 sent for the same text. Small keys never reach here (smallKeyGate). Output: {"fixes":[…],"v":[[n,"T|F|U","correction only when F"]]}. */
+let _ground = false;
+export const setClaimsGrounding = (v) => { _ground = !!v; };     // OFF by default: whether grounding is free for the student's key was not testable in the build
+export const claimsGrounding = () => _ground;
+export const CLAIMS_SYSTEM_ADD = `\nSECOND TASK: after the text comes CLAIMS, numbered standalone sentences. Judge each from medical knowledge: T (true), F (false) or U (cannot tell; always allowed). Add "v":[[n,"T"|"F"|"U","corrected sentence, only for F"]] to the JSON.`;
+const MAX_CLAIM_CHARS = 1100, MAX_CLAIMS = 25;
+
+export function foldClaims(chunks, claims) {
+  const none = { chunks, claims: [], systemAdd: "" };
+  if (!claims || !claims.length || !chunks.length) return none;
+  const take = [];
+  let block = "\n\nCLAIMS:";
+  for (const c of claims.slice(0, MAX_CLAIMS)) {
+    const line = `\n${take.length + 1}. ${c.text}`;
+    if (block.length + line.length > MAX_CLAIM_CHARS) break;
+    block += line; take.push(c);
+  }
+  if (!take.length) return none;
+  const cost = block.length + CLAIMS_SYSTEM_ADD.length;
+  const c0 = chunks[0];
+  if (c0.length - cost < 400) return none;                                  // no room: the claims wait (verification is cut, the request never grows)
+  let cut = c0.slice(0, c0.length - cost);
+  const nl = cut.lastIndexOf("\n");
+  if (nl > 200) cut = cut.slice(0, nl);
+  return { chunks: [cut + block, ...chunks.slice(1)], claims: take, systemAdd: CLAIMS_SYSTEM_ADD };
+}
+
+export function parseVerdicts(raw) {
+  const s = String(raw || "").replace(/```[a-z]*\n?|```/gi, "");
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a < 0 || b <= a) return [];
+  try {
+    const j = JSON.parse(s.slice(a, b + 1));
+    return (Array.isArray(j.v) ? j.v : []).filter((x) => Array.isArray(x) && Number.isInteger(x[0]) && /^[TFU]$/.test(String(x[1]))).map((x) => ({ n: x[0], v: x[1], fix: typeof x[2] === "string" ? x[2].slice(0, 300) : "" }));
+  } catch (e) { return []; }
+}

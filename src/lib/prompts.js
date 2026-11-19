@@ -13,6 +13,7 @@
 
 import { CHIPS } from "./config.js";
 import { ARABIC_RULE } from "./text.js";
+import { profileLine } from "./profile.js";
 
 const has = (chipIds, id) => chipIds.includes(id);
 
@@ -22,7 +23,7 @@ const langRules = (chipIds) =>
 /* 1 ─ OCR */
 export function buildOcrPrompt() {
   return {
-    system: `You are a precise OCR engine for NCLEX-RN question screenshots, including Next-Generation NCLEX (NGN) items.
+    system: `You are a precise OCR engine for exam question screenshots, including multi-part and Next-Gen style items.
 
 Transcribe ALL the text in the image exactly as written. Do NOT translate, summarize, correct, explain or answer it.
 
@@ -48,17 +49,17 @@ export function buildWordsPrompt(chipIds, kind = "question") {
     ? "[MED] edema — swelling caused by extra fluid in the body tissues\n[ABBR] PRN — as needed (when the patient needs it)\n[B2] prioritize — decide what must be done first\n[B2] adverse — harmful and not wanted\n[B2] requires further teaching — the patient did not understand and needs more explanation\n[C1] exacerbation — a sudden worsening of a disease"
     : "[MED] edema — وذمة (تورّم بسبب تجمّع سوائل زيادة في الأنسجة)\n[ABBR] PRN — عند الحاجة (حسب طلب المريض)\n[B2] prioritize — يحدّد الأولوية (إيه اللي يتعمل الأول)\n[B2] adverse — ضارّ وغير مرغوب\n[B2] requires further teaching — محتاج شرح أكتر (المريض مفهمش كويس)\n[C1] exacerbation — تفاقم مفاجئ في المرض";
   const out = {
-    system: `You are a vocabulary coach for an Arabic-speaking nursing student whose English level is B1 (intermediate). He is preparing for the NCLEX-RN, which is 100% in English.
+    system: `You are a vocabulary coach for an Arabic-speaking health student (English level B1) preparing for an English-language exam.
 
-The image shows ONE NCLEX-style question. Read EVERY word in it: the stem, the patient data, any exhibit / table / lab values, and ALL the answer options (for Next-Gen items also every tab, drop-down choice and matrix row).
+The image shows ONE exam-style question. Read EVERY word in it: the stem, the patient data, any exhibit / table / lab values, and ALL the answer options (for Next-Gen items also every tab, drop-down choice and matrix row).
 
-TASK: list the words and short phrases in the image whose CEFR level is REALLY B2 or higher (B2, C1, C2), plus every medical / nursing term. The levels A1, A2 and B1 are all left out: he already knows them.
+TASK: list the words and short phrases in the image whose CEFR level is REALLY B2 or higher (B2, C1, C2), plus every medical / clinical term. The levels A1, A2 and B1 are all left out: he already knows them.
 
 HOW TO JUDGE THE LEVEL (most important rule): use the official CEFR levels of the Oxford 3000 / Oxford 5000 lists and the English Vocabulary Profile. Do NOT judge by how "hard" a word feels. If a general word is A1, A2 or B1 there, it is KNOWN: never list it. List a general (non-medical) word only when you are CONFIDENT that its CEFR level is B2 or higher (upper-intermediate, advanced, or academic / formal vocabulary). If you are unsure, if it is a B1/B2 borderline word, or if it is a common everyday word that an intermediate learner already knows, LEAVE IT OUT. A shorter list of real B2+ words is far better than a long list padded with easier ones. Silently check every general word against this rule before you write it.
 There is no fixed maximum, but never pad the list: a typical question gives about 5 to 25 entries.
 
 INCLUDE:
-• medical, nursing and anatomy terms that a layperson would not know; diseases, symptoms, procedures, tests and lab names; drug names (add the drug class inside the meaning when you know it)
+• medical, clinical and anatomy terms that a layperson would not know; diseases, symptoms, procedures, tests and lab names; drug names (add the drug class inside the meaning when you know it)
 • abbreviations and symbols (NPO, PRN, BID, IV, I&O, mmHg …) — give the full form too
 • general English words that are truly B2, C1 or C2 (e.g. appropriate, adverse, subsequent, impaired, deteriorate, intervene, contraindicated, exacerbation, refrain, cessation, prioritize, comply, reinforce, impending, ensue, mitigate, exhibit, manifest, concurrent, adhere, ambulate), plus phrasal verbs and idioms that are not obvious (rule out, carry out, cut back on, bring about)
 • exam keywords: EXCEPT, FIRST, BEST, NEXT, MOST, PRIORITY, "requires further teaching" …
@@ -68,7 +69,7 @@ HOW TO WORK: go through the text sentence by sentence, then option by option, in
 
 LEVEL TAG (mandatory, it is how the app checks you): start EVERY line with the CEFR level of the entry in square brackets, decided from the Oxford 3000 / 5000 / English Vocabulary Profile, never from how the word feels:
 [B2]  [C1]  [C2]  = a general English word or phrase of that level
-[MED]  = a medical / nursing / anatomy / drug / lab term a layperson would not know (a body part, symptom or plain health word that a 12-year-old knows — fever, kidney, pain, blood pressure — is NOT [MED]: skip it)
+[MED]  = a medical / clinical / anatomy / drug / lab term a layperson would not know (a body part, symptom or plain health word that a 12-year-old knows — fever, kidney, pain, blood pressure — is NOT [MED]: skip it)
 [ABBR] = an abbreviation or symbol
 The app throws away every line tagged A1, A2 or B1, and every line whose words are all everyday English, so never write such a line: if you are about to write [B1] or lower, skip that word. Never tag a plain everyday word [MED] to keep it in.
 Before you write each general word ask yourself: "is this in the Oxford 3000 at A1, A2 or B1?" If yes, or if you are not sure, skip it.
@@ -87,7 +88,7 @@ ${sample}`,
 function asStudy(p) {
   return {
     system: p.system
-      .replace(/The image shows ONE NCLEX-style question\. Read EVERY word in it:[^\n]*/, "The files contain STUDY MATERIAL (book pages, lecture notes, slides, tables, pasted text). Read ALL of it.")
+      .replace(/The image shows ONE exam-style question\. Read EVERY word in it:[^\n]*/, "The files contain STUDY MATERIAL (book pages, lecture notes, slides, tables, pasted text). Read ALL of it.")
       .replace("in the image whose CEFR level", "in the material whose CEFR level")
       .replace(/There is no fixed maximum, but never pad the list: a typical question gives about [^\n]*/, "There is no fixed maximum, but never pad the list. For long material keep the most useful entries (up to about 90): medical and nursing terms first, then the B2+ exam English.")
       .replace("go through the text sentence by sentence, then option by option, in reading order", "go through the material in reading order")
@@ -97,32 +98,34 @@ function asStudy(p) {
 }
 
 /* 3 ─ SOLVE: the only stage that has to think hard. It writes a compact brief, nothing else. */
-export function buildSolvePrompt() {
+export function buildSolvePrompt(profile) {
+  const line = profileLine(profile, "solve");
   return {
-    system: `You are a senior NCLEX-RN item analyst (NCSBN test plan and Clinical Judgment Model). Your ONLY job is to find the correct answer with maximum accuracy and write a compact, verified analysis in English. Another tutor turns it into a lesson, so be precise, not chatty.
+    system: `You are a senior item analyst for health-professions exams. Your ONLY job: find the correct answer of the question in the image with maximum accuracy and write a compact analysis in English. Another tutor turns it into a lesson, so be precise, not chatty.
 
-The image is ONE NCLEX-style question: standard multiple choice, select-all-that-apply, or a Next-Gen item (case study, drop-down, matrix, bow-tie, highlight, drag-and-drop, ordered response).
+The image is ONE exam question: single best answer, select-all-that-apply, or a multi-part item (case study, drop-down, matrix, bow-tie, highlight, drag-and-drop, ordered response).
 
-THINK FIRST, in this order:
-1. Read every word: stem, patient data, labs, exhibits, every option. What exactly is asked? Find the decisive keyword (FIRST, BEST, PRIORITY, NEXT, MOST, EXCEPT, "further teaching is needed", "requires follow-up") and decide whether the polarity is NEGATIVE (the wrong statement or action is the answer).
-2. Recognize the cues: what is the real problem? Is the patient stable or unstable? Is the problem actual or only potential?
-3. Pick the right framework: airway–breathing–circulation; acute before chronic; unstable before stable; actual before potential; Maslow and safety; the nursing process (assess before you intervene, and before you call the provider); delegation and scope of practice (assessment, teaching, evaluation and unstable patients stay with the RN; stable routine tasks may go to an LPN/VN or UAP); infection-control precautions; medication safety (side effects, antidotes, monitoring labs, interactions); normal lab and vital-sign ranges; therapeutic communication (feelings first, open-ended, no false reassurance).
-4. Judge EVERY option on its own: right or wrong, and the exact reason. For select-all-that-apply each option is independent. For Next-Gen items answer every blank, row and part.
-5. Work the question TWICE, independently: (a) cover the options, predict the answer from the stem alone, then match it; (b) eliminate option by option. If the two passes disagree, find out why before answering.
-6. Verify: re-read the decisive keyword and test your answer against the stem again. Check the usual traps: absolutes (always, never), an action that is correct but not FIRST, a true statement that does not answer the question, real-life shortcuts. NCLEX assumes ideal conditions and uses only the information given.
+THINK FIRST (reasoning comes BEFORE the answer, never after it):
+1. Read every word: stem, patient data, labs, exhibits, every option. Find the decisive keyword (FIRST, BEST, PRIORITY, NEXT, MOST, EXCEPT, NOT, "further teaching is needed") and decide whether its polarity is NEGATIVE.
+2. Recognize the cues: what is the real problem; stable or unstable; actual or potential.
+3. Judge EVERY option on its own, with the exact reason. Multi-part items: answer every blank, row and part.
+4. Work it TWICE: predict the answer from the stem alone, then eliminate option by option. If they disagree, find out why before answering.
+5. Use only the information given. Never invent a fact, dose or range.
+6. Write PREMISE (your reasoning, compressed) and only THEN commit to ANSWER.
 
-OUTPUT — plain text, English only, no markdown headings, no code fences, exactly these lines:
-ANSWER: <letter(s), e.g. B or A, C, E — for Next-Gen items one line per blank, row or part>
-TYPE: <priority | delegation | safety | pharmacology | lab values | SATA | therapeutic communication | NGN cloze | NGN matrix | NGN bow-tie …>
-KEYWORD: <the decisive keyword and what it demands, max 12 words>
-CONCEPTS: <2 to 4 core concepts the student must understand, separated by ";">
+OUTPUT — plain text, English only, no markdown, no code fences, exactly these lines in this order:
+PREMISE: <the clinical core in 1-2 short clauses, max 20 words: the real problem and the cue that decides it>
+ANSWER: <letter(s), e.g. B or A, C, E; multi-part items: one line per blank, row or part>
+TYPE: <priority | safety | pharmacology | lab values | SATA | calculation | matrix | cloze | bow-tie …>
+KEYWORD: <the decisive keyword and what it demands, max 10 words>
+CONCEPTS: <2 to 4 core concepts separated by ";">
+DATA: <the decisive numbers, labs with units, ages, times and findings, copied verbatim from the image, max 24 words (max 10 when CALC is used)>
 OPTIONS:
-A) ✅ or ❌ <why, max 18 words>
-B) ✅ or ❌ <why, max 18 words>
+A) ✅ or ❌ <why, max 15 words>
 (one line for EVERY option)
-RATIONALE: <official-style rationale, max 45 words>
-CONFIDENCE: <high | medium | low> — if not high, add one short reason (unreadable detail, missing information, two defensible options).`,
-    user: "Analyze the question in the image and output the verified analysis.",
+CALC: <ONLY for a calculation, dose or unit item, max 25 words: steps separated by ";" , e.g. 15 mg/kg × 70 kg = 1050 mg; 1050 mg = 1.05 g>
+CONFIDENCE: <high | medium | low> — if not high, one short reason (unreadable detail, missing information, two defensible options).${line ? "\n\n" + line : ""}`,
+    user: "Analyze the question in the image and output the analysis.",
   };
 }
 
@@ -151,14 +154,13 @@ const HEADINGS = {
   },
 };
 
-const QUALITY = `QUALITY BAR — this is what separates an expert tutor from a generic answer:
-• Depth: explain the MECHANISM (what happens inside the body, step by step) before the rule. A student who understands the mechanism can answer a question he has never seen.
-• Specificity: concrete numbers, ranges, drug names, antidotes, lab values, positions, timings and thresholds. Never write "monitor the patient" when you can say WHAT to monitor and which value triggers action.
-• NCLEX lens: say what the examiner is testing (the test-plan category and the Clinical Judgment step: recognize cues → analyze cues → prioritize hypotheses → generate solutions → take action → evaluate outcomes) and why each wrong option is tempting.
-• Transfer: show how a small change in the situation would change the answer, so he learns the rule and not just this question.
-• Honesty: when two answers look defensible, say which one the NCLEX prefers and why. Never invent a fact, dose or range. If the source itself contains an outdated or wrong fact, say so in one line and give the correct, current standard.
-• Economy: every line must add information. No filler, no repetition, no generic encouragement.
-BEFORE YOU OUTPUT, silently verify: (1) every medical fact is correct and current (NCSBN and standard nursing references); (2) every number is exact; (3) nothing contradicts the verified answer; (4) every section follows the format exactly.`;
+const QUALITY = `QUALITY BAR:
+• Depth: explain the MECHANISM (what happens inside the body, step by step) before the rule.
+• Specificity: concrete numbers, ranges, drug names, antidotes, lab values, positions and thresholds, never "monitor the patient" when you can say WHAT to monitor and which value triggers action.
+• Exam lens: say what the examiner is testing and why each wrong option is tempting.
+• Transfer: show how a small change in the situation would change the answer.
+• Honesty: when two answers look defensible, say which one the exam prefers and why.
+• Economy: every line adds information. No filler, no repetition.`;
 
 /* the student's saved questions → the model links the new question to them, inside the sentence it belongs to */
 export function linkBlock(history, what = "question") {
@@ -167,10 +169,15 @@ export function linkBlock(history, what = "question") {
   return `\n\nEARLIER ITEMS THE STUDENT HAS ALREADY STUDIED (use them ONLY to connect ideas):\n${lines}\n\nCONNECTION RULE: if — and only if — this ${what} truly shares a disease, drug, lab value, trap, priority rule or decision logic with one of them, say so INLINE: inside the exact sentence or bullet where that piece of information appears, add ONE short clause wrapped in double equals signs, for example ==🔗 نفس فخ سؤال «Digoxin toxicity» اللي ذاكرته قبل كده== or ==🔗 مرتبط بسؤال «Cushing syndrome» (نفس العلامة)==. Copy the title exactly as written inside « ». Put every connection right beside the fact it belongs to; never in a separate section, heading or list, never gathered in one place, at most 4 in total, never invent a connection, and add none when nothing is truly related. Write the clause in the language of the surrounding text.`;
 }
 
-const STUDENT = `STUDENT PROFILE — read carefully, it decides everything:
-• Egyptian Arabic speaker. English level: A2 (beginner).
-• He knows NOTHING about this topic. He has never studied it. He is NOT revising — he is learning it for the first time. Never assume prior knowledge, never skip a "small" step, and define every medical term the first time you use it, in plain words, with an everyday analogy when it helps.
-• The real NCLEX-RN exam is 100% English. So teach the CONTENT and the EXAM ENGLISH together, with a very, very heavy focus on English: every key term, keyword, option and rationale appears in English in **bold**, and you teach him how to read and decode the English of the question itself (chunk by chunk). He should finish the lesson able to read this question in English without translating it.`;
+const ROLE = `You are an elite health-professions educator and clinical-reasoning coach, acting as a patient private tutor.`;
+
+const STUDENT = `STUDENT: an Egyptian Arabic speaker, English level A2, who knows NOTHING about this topic and is learning it for the first time. Never assume prior knowledge or skip a "small" step; define every medical term the first time you use it, in plain words.
+Health-professions exams are in English, so teach the CONTENT and the EXAM ENGLISH together: every key term, keyword, option and rationale appears in English in **bold**, and teach him to decode the English of the material chunk by chunk.`;
+
+/* the ONE static rule block every lesson request starts with (identical text → implicit-cache friendly); the variable parts (profile line, style, links) come last */
+const RULES_SRC = `CLOSED WORLD: explain ONLY what the source contains, in the student's dialect. Never enumerate or invent standard facts the source does not state (part lists, counts, functions, doses, frameworks, mnemonics): the app adds verified reference cards for them. If the source lacks it, write nothing. Never call a title "complete" or "from scratch". If the source itself is wrong, say so in one line.`;
+const RULES_Q = `ACCURACY: state a standard fact (range, dose, antidote, rule, count) only if you are sure; never invent a framework, mnemonic or number. The app checks facts against a verified reference and labels what it cannot confirm.`;
+const CORE = (q) => `${ROLE}\n\n${STUDENT}\n\n${q ? RULES_Q : RULES_SRC}`;
 
 const TEACH = `TEACH, DON'T TRANSCRIBE:
 • Never just translate or repeat the question or the options back. Every line must add something the student does not already have: a definition, the mechanism (the "why" inside the body), a rule, a comparison, or a memory hook.
@@ -187,31 +194,30 @@ const LAYOUT = `The text is displayed by a custom renderer, so follow this layou
 - No tables, no HTML.`;
 
 /* the part that changes with the student's chips / notes goes LAST, so the long static head stays cacheable */
-function styleTail(chipIds, extra) {
+function styleTail(chipIds, extra, profile) {
   const english = has(chipIds, "en");
   const rules = langRules(chipIds);
   const defaultLang = english
     ? ""
     : "- Teaching language: simple, warm Arabic (a light Egyptian tone is welcome) used only as the glue between ideas. English must DOMINATE the content: every medical term, option, keyword, definition and rationale sentence is written in English first, and the Arabic comes right after it.\n";
   const note = extra && extra.trim() ? `Extra instructions from the student (follow them): ${extra.trim()}\n` : "";
-  return `Style rules:\n${defaultLang}${rules ? rules + "\n" : ""}${note}`;
+  const pl = profile ? profileLine(profile, "study") : "";
+  return `Style rules:\n${defaultLang}${rules ? rules + "\n" : ""}${note}${pl ? pl + "\n" : ""}`;
 }
 
 const headings = (chipIds) => (has(chipIds, "en") ? HEADINGS.en : HEADINGS.ar);
 
 /* 4 ─ LESSON A — needs no answer, so it starts together with SOLVE */
-export function buildLessonAPrompt({ history, extra, chips, words }) {
+export function buildLessonAPrompt({ profile, history, extra, chips, words }) {
   const H = headings(chips);
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(true)}
 
 YOU WRITE PART 1 OF 2. A second tutor writes part 2 (step-by-step thinking, every option, the answer, memory sentences, tricks) at the same moment from the same image.
 • Write ONLY the three sections below, nothing before them and nothing after them.
 • Do NOT say or hint which option is correct. Do NOT analyse the options one by one.
 
-The image is a screenshot of ONE NCLEX-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
 
 ${TEACH}
 
@@ -222,16 +228,16 @@ ${LAYOUT}
 
 SECTIONS — exactly these headings, in this order:
 ${H.ask}
-- One bullet: the question type in English (**priority**, **delegation**, **safety**, **pharmacology**, **SATA**, **lab values** …) and, in one line, what the examiner wants from the student.
-- One more bullet: the NCLEX test-plan category and the Clinical Judgment step this item tests (in English, with a short Arabic gloss).
+- One bullet: the question type in English (for example **priority**, **safety**, **pharmacology**, **lab values** …) and, in one line, what the examiner wants from the student.
+- One more bullet: the exam topic category this item tests (in English, with a short Arabic gloss).
 ${H.decode}
 - Split the stem into 3 to 6 short English chunks. One bullet per chunk: **English chunk** — its meaning.
 - One bullet for the decisive keyword (**FIRST**, **BEST**, **EXCEPT**, **NEXT**, **priority**, **further teaching** …) and what it changes.
 ${H.basics}
-- For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, nursing actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
+- For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, clinical actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
 
 Length: aim for about ${words} words — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra)}${linkBlock(history, "question")}`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question")}`,
     user: "Write part 1 of the lesson for the question in the image.",
   };
 }
@@ -240,7 +246,7 @@ ${styleTail(chips, extra)}${linkBlock(history, "question")}`,
 /* part: undefined = steps · options · answer · vary · memo · tricks (one request)
          "main"  = steps · options · answer · vary          (v3.23 "fast" mode: runs in parallel with "traps")
          "traps" = memory sentences + tricks                 (short, runs in parallel with "main") */
-export function buildLessonBPrompt({ history, brief, extra, chips, words, part }) {
+export function buildLessonBPrompt({ profile, history, brief, extra, chips, words, part }) {
   const H = headings(chips);
   const hasMain = part !== "traps", hasTraps = part !== "main";
   const scope = part === "main"
@@ -249,16 +255,14 @@ export function buildLessonBPrompt({ history, brief, extra, chips, words, part }
       ? "\nA third tutor writes the step-by-step thinking, every option and the answer at the same moment. Do NOT write them: you write ONLY the memory sentences and the traps described below."
       : "";
   const ground = brief
-    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. If its CONFIDENCE is not high, start the answer section with one bullet beginning with "⚠️" that says, in one short line, what is uncertain.`
+    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. Its TIER line says how far the analysis can be trusted: if it is MEDIUM or LOW write the answer as the most likely one (the app adds the warning itself).`
     : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else) and double-check it against every option. Then teach.`;
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(true)}
 
 YOU WRITE PART 2 OF 2. A first tutor writes part 1 (what the question asks, decoding the English, the basics) at the same moment. Do NOT repeat those; write ONLY the sections below.${scope}
 
-The image is a screenshot of ONE NCLEX-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
 
 ${ground}
 
@@ -275,7 +279,7 @@ ${LAYOUT}
 
 EXPLANATION — use exactly these headings, in this order:
 ${hasMain ? `${H.steps}
-1. 2 to 5 numbered steps that apply the right framework (ABCs, Maslow, nursing process "assess before you intervene", safety first, scope of practice, acute before chronic …) and show HOW to think, not only what to pick.
+1. 2 to 5 numbered steps that apply the reasoning framework that fits this item type and show HOW to think, not only what to pick.
 ${H.options}
 - One bullet per option, EVERY option: **A) option text in English** ✅ or ❌ — what the option means in simple words, then why it is right or wrong, and (for wrong ones) when it would be right. For select-all-that-apply, judge each option separately. For Next-Gen items, go blank by blank or row by row.
 > one simple English rationale sentence for that option (optional, use it for the important ones)
@@ -291,7 +295,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
     user: brief
       ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite part 2 of the lesson for the question in the image.`
       : "Write part 2 of the lesson for the question in the image.",
@@ -304,19 +308,17 @@ ${styleTail(chips, extra)}${linkBlock(history, "question")}Start directly with =
        ===EXPLANATION=== … ===TRICKS=== …
    (marker lines instead of JSON on purpose: they stream token by token, so the student still sees the text while it is written,
    and one broken quote can never throw the whole answer away.) */
-export function buildLessonPrompt({ history, brief, extra, chips, words }) {
+export function buildLessonPrompt({ profile, history, brief, extra, chips, words }) {
   const H = headings(chips);
   const ground = brief
-    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. If its CONFIDENCE is not high, start the answer section with one bullet beginning with "⚠️" that says, in one short line, what is uncertain.`
+    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. Its TIER line says how far the analysis can be trusted: if it is MEDIUM or LOW write the answer as the most likely one (the app adds the warning itself).`
     : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else): work it twice (predict from the stem alone, then eliminate option by option), check the decisive keyword (FIRST, BEST, EXCEPT, NEXT …) and its polarity, and double-check against every option. Then teach.`;
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(true)}
 
 YOU WRITE THE WHOLE LESSON IN ONE ANSWER: the explanation AND the traps. Write ONLY the sections below.
 
-The image is a screenshot of ONE NCLEX-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
 
 ${ground}
 
@@ -335,15 +337,15 @@ ${LAYOUT}
 
 EXPLANATION — use exactly these headings, in this order:
 ${H.ask}
-- One bullet: the question type in English (**priority**, **delegation**, **safety**, **pharmacology**, **SATA**, **lab values** …) and, in one line, what the examiner wants from the student.
-- One more bullet: the NCLEX test-plan category and the Clinical Judgment step this item tests (in English, with a short Arabic gloss).
+- One bullet: the question type in English (for example **priority**, **safety**, **pharmacology**, **lab values** …) and, in one line, what the examiner wants from the student.
+- One more bullet: the exam topic category this item tests (in English, with a short Arabic gloss).
 ${H.decode}
 - Split the stem into 3 to 6 short English chunks. One bullet per chunk: **English chunk** — its meaning.
 - One bullet for the decisive keyword (**FIRST**, **BEST**, **EXCEPT**, **NEXT**, **priority**, **further teaching** …) and what it changes.
 ${H.basics}
-- For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, nursing actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
+- For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, clinical actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
 ${H.steps}
-1. 2 to 5 numbered steps that apply the right framework (ABCs, Maslow, nursing process "assess before you intervene", safety first, scope of practice, acute before chronic …) and show HOW to think, not only what to pick.
+1. 2 to 5 numbered steps that apply the reasoning framework that fits this item type and show HOW to think, not only what to pick.
 ${H.options}
 - One bullet per option, EVERY option: **A) option text in English** ✅ or ❌ — what the option means in simple words, then why it is right or wrong, and (for wrong ones) when it would be right. For select-all-that-apply, judge each option separately. For Next-Gen items, go blank by blank or row by row.
 > one simple English rationale sentence for that option (optional, use it for the important ones)
@@ -359,7 +361,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
     user: brief
       ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite the whole lesson for the question in the image.`
       : "Write the whole lesson for the question in the image.",
@@ -386,10 +388,10 @@ const studyH = (chipIds) => (has(chipIds, "en") ? STUDY_H.en : STUDY_H.ar);
 const MATERIAL = `The files contain STUDY MATERIAL — book pages, lecture notes, slides, a table, an article or text the student pasted — NOT a single exam question. Read ALL of it before writing, in the order given.`;
 
 /* the short map of the material (fills the first card) */
-export function buildStudySummaryPrompt(chipIds, extra) {
+export function buildStudySummaryPrompt(chipIds, extra, profile) {
   const H = studyH(chipIds);
   return {
-    system: `You are a study-material analyst for an Arabic-speaking nursing student (English level A2) who is preparing for the NCLEX-RN.
+    system: `You are a study-material analyst for an Arabic-speaking health-professions student (English level A2) who studies for English-language exams.
 
 ${MATERIAL}
 
@@ -400,23 +402,21 @@ ${LAYOUT}
 
 SECTIONS — exactly these headings, in this order:
 ${H.map}
-- One bullet: the topic in English (**bold**) and, in one line, why it matters for the NCLEX.
+- One bullet: the topic in English (**bold**) and, in one line, why it matters for the exam.
 ${H.parts}
 - One bullet per main part / chapter / slide group, in the order of the material (at most 10): **English title** — what it covers, in one short line.
 ${H.kind}
 - One bullet: what kind of material it is (book chapter, lecture slides, notes, table …) and roughly how long it takes to study.
-${styleTail(chipIds, extra)}${ARABIC_RULE}`,
+${styleTail(chipIds, extra, profile)}${ARABIC_RULE}`,
     user: "Write the map of the study material.",
   };
 }
 
 /* part 1 of the lesson */
-export function buildStudyAPrompt({ history, extra, chips, words }) {
+export function buildStudyAPrompt({ profile, history, extra, chips, words }) {
   const H = studyH(chips);
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 YOU WRITE PART 1 OF 2. A second tutor writes part 2 (how it appears on the exam, must-memorize list, memory sentences, traps) at the same moment from the same material. Do NOT repeat or preview it. Write ONLY the three sections below.
@@ -430,21 +430,21 @@ ${LAYOUT}
 
 SECTIONS — exactly these headings, in this order:
 ${H.big}
-- 2 to 4 bullets: what the material is about and why it matters for the NCLEX; key English terms in **bold**.
+- 2 to 4 bullets: what the material is about and why it matters for the exam; key English terms in **bold**.
 ${H.basics}
-- Go through the material in ITS OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, nursing actions) — each fact on its own line, English first.
+- Go through the material in ITS OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, clinical actions) — each fact on its own line, English first.
 - If the material has tables, lists or numbers, keep every number exactly and explain what it means in practice.
 ${H.english}
 - 6 to 12 bullets: an important English phrase or sentence pattern that the material uses — **the phrase** — its meaning, and when the exam uses it.
 
 Length: aim for about ${words} words — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}`,
     user: "Write part 1 of the lesson for the study material.",
   };
 }
 
 /* part 2 of the lesson (+ the traps) */
-export function buildStudyBPrompt({ history, extra, chips, words, part }) {
+export function buildStudyBPrompt({ profile, history, extra, chips, words, part }) {
   const H = studyH(chips);
   const hasMain = part !== "traps", hasTraps = part !== "main";
   const scope = part === "main"
@@ -453,9 +453,7 @@ export function buildStudyBPrompt({ history, extra, chips, words, part }) {
       ? "\nA third tutor writes how it appears on the exam and the must-memorize list at the same moment. Do NOT write them: you write ONLY the memory sentences and the traps described below."
       : "";
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 YOU WRITE PART 2 OF 2. A first tutor writes part 1 (the big idea, the topics explained from zero, English from the material) at the same moment. Do NOT repeat those; write ONLY the sections below.${scope}
@@ -472,7 +470,7 @@ ${LAYOUT}
 
 EXPLANATION — use exactly these headings, in this order:
 ${hasMain ? `${H.exam}
-- 3 to 6 bullets: how the NCLEX tests this content (question types: priority, delegation, safety, pharmacology, SATA, lab values, Next-Gen …) and what the examiner wants.
+- 3 to 6 bullets: how exams test this content (question types) and what the examiner wants.
 1. 3 to 5 numbered steps: a small decision framework (ABCs, Maslow, assess before you intervene, safety first, scope of practice, acute before chronic …) applied to THIS content.
 ${H.must}
 - A compact checklist of everything worth memorizing from the material (ranges, signs, drugs and antidotes, actions, priorities): one fact per line, **English term** first, then its meaning.
@@ -484,18 +482,16 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
     user: "Write part 2 of the lesson for the study material.",
   };
 }
 
 /* the whole study lesson + traps in ONE request (v3.23: replaces the separate part 1 / part 2 calls) */
-export function buildStudyLessonPrompt({ history, extra, chips, words }) {
+export function buildStudyLessonPrompt({ profile, history, extra, chips, words }) {
   const H = studyH(chips);
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 YOU WRITE THE WHOLE LESSON IN ONE ANSWER: the explanation AND the traps. Write ONLY the sections below.
@@ -514,14 +510,14 @@ ${LAYOUT}
 
 EXPLANATION — use exactly these headings, in this order:
 ${H.big}
-- 2 to 4 bullets: what the material is about and why it matters for the NCLEX; key English terms in **bold**.
+- 2 to 4 bullets: what the material is about and why it matters for the exam; key English terms in **bold**.
 ${H.basics}
-- Go through the material in ITS OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, nursing actions) — each fact on its own line, English first.
+- Go through the material in ITS OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, clinical actions) — each fact on its own line, English first.
 - If the material has tables, lists or numbers, keep every number exactly and explain what it means in practice.
 ${H.english}
 - 6 to 12 bullets: an important English phrase or sentence pattern that the material uses — **the phrase** — its meaning, and when the exam uses it.
 ${H.exam}
-- 3 to 6 bullets: how the NCLEX tests this content (question types: priority, delegation, safety, pharmacology, SATA, lab values, Next-Gen …) and what the examiner wants.
+- 3 to 6 bullets: how exams test this content (question types) and what the examiner wants.
 1. 3 to 5 numbered steps: a small decision framework (ABCs, Maslow, assess before you intervene, safety first, scope of practice, acute before chronic …) applied to THIS content.
 ${H.must}
 - A compact checklist of everything worth memorizing from the material (ranges, signs, drugs and antidotes, actions, priorities): one fact per line, **English term** first, then its meaning.
@@ -533,7 +529,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
     user: "Write the whole lesson for the study material.",
   };
 }
@@ -551,12 +547,10 @@ export const studyHeadings = (chips) => studyH(chips);
 const wordsFor = (n, min) => Math.max(min, Math.round(n));
 
 /* part 1 · the plan (first thing in the answer) + big idea + English */
-export function buildStudyHeadPrompt({ history, extra, chips, words }) {
+export function buildStudyHeadPrompt({ profile, history, extra, chips, words }) {
   const H = studyH(chips);
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 You write the FIRST PART of a lesson. Other tutors write the topics, the exam part and the traps at the same moment from the same material. Do NOT write those.
@@ -578,27 +572,25 @@ ${LAYOUT}
 
 SECTIONS — exactly these headings, in this order:
 ${H.big}
-- 2 to 4 bullets: what the material is about and why it matters for the NCLEX; key English terms in **bold**.
+- 2 to 4 bullets: what the material is about and why it matters for the exam; key English terms in **bold**.
 ${H.english}
 - 6 to 12 bullets: an important English phrase or sentence pattern that the material uses — **the phrase** — its meaning, and when the exam uses it.
 
 Length: aim for about ${words} words for the two sections together. Never pad.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===PLAN===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===PLAN===.`,
     user: "Plan the study material and write the first part of the lesson.",
   };
 }
 
 /* part 2 · one slice: the topics assigned to this tutor, explained from zero + their must-memorize checklist */
-export function buildStudySlicePrompt({ history, extra, chips, topics, all, words, mustWords, single }) {
+export function buildStudySlicePrompt({ profile, history, extra, chips, topics, all, words, mustWords, single }) {
   const list = all.map((t) => `${t.n}. ${t.title}${t.where ? ` — ${t.where}` : ""}`).join("\n");
   const mine = topics.map((t) => `${t.n}. ${t.title}${t.where ? ` — ${t.where}` : ""}`).join("\n");
   const scope = single
     ? "You write ALL the topics of the material."
     : `The material is divided into these topics:\n${list}\n\nOther tutors write the other topics at the same moment (and the big idea, the English phrases, the exam part, the memory sentences and the traps). YOU WRITE ONLY THESE TOPICS:\n${mine}\nDo NOT write about any other topic, do NOT repeat or preview what others write, no introduction, no conclusion: start directly with your first topic. The rest of the material is context only. Write each of your topics at the full depth you would give it if it were the only topic: never shorten it because others write the rest.`;
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 YOU WRITE ONE SLICE OF THE LESSON.
@@ -616,22 +608,20 @@ OUTPUT FORMAT — plain text, exactly two parts separated by marker lines, nothi
 
 ${LAYOUT}
 
-===BASICS=== — go through your topics in THEIR OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, nursing actions) — each fact on its own line, English first. If the material has tables, lists or numbers in your topics, keep every number exactly and explain what it means in practice.
+===BASICS=== — go through your topics in THEIR OWN ORDER, topic by topic. For each topic: **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts (signs and symptoms, causes, normal ranges, drugs, clinical actions) — each fact on its own line, English first. If the material has tables, lists or numbers in your topics, keep every number exactly and explain what it means in practice.
 ===MUST=== — a compact checklist of everything worth memorizing from YOUR topics (ranges, signs, drugs and antidotes, actions, priorities): one fact per line, a "- " bullet, **English term** first, then its meaning.
 
 Length: aim for about ${words} words in ===BASICS=== and about ${mustWords} words in ===MUST=== — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===BASICS===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===BASICS===.`,
     user: single ? "Write the lesson topics for the study material." : "Write your slice of the lesson for the study material.",
   };
 }
 
 /* part 3 · how it appears on the exam + memory sentences + traps */
-export function buildStudyTailPrompt({ history, extra, chips, words }) {
+export function buildStudyTailPrompt({ profile, history, extra, chips, words }) {
   const H = studyH(chips);
   return {
-    system: `You are an elite NCLEX-RN educator and clinical-reasoning coach, acting as a patient private tutor.
-
-${STUDENT}
+    system: `${CORE(false)}
 
 ${MATERIAL}
 YOU WRITE THE LAST PART OF A LESSON. Other tutors write the big idea, the topics explained from zero and the must-memorize checklist at the same moment. Do NOT write or repeat those: write ONLY the sections below.
@@ -652,7 +642,7 @@ ${LAYOUT}
 
 ===EXAM=== — use exactly this heading and structure:
 ${H.exam}
-- 3 to 6 bullets: how the NCLEX tests this content (question types: priority, delegation, safety, pharmacology, SATA, lab values, Next-Gen …) and what the examiner wants.
+- 3 to 6 bullets: how exams test this content (question types) and what the examiner wants.
 1. 3 to 5 numbered steps: a small decision framework (ABCs, Maslow, assess before you intervene, safety first, scope of practice, acute before chronic …) applied to THIS content.
 ===MEMO=== — use exactly this heading and structure:
 ${H.memo}
@@ -662,7 +652,7 @@ ${H.memo}
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXAM===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXAM===.`,
     user: "Write the exam part, the memory sentences and the traps for the study material.",
   };
 }

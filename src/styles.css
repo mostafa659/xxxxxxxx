@@ -1477,3 +1477,17 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--teal-2) 
 .src-trust { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card-2, rgba(127,127,127,.08)); color: var(--ink-3); font-size: 12px; font-weight: 700; line-height: 1.7; }
 .src-trust svg { flex: none; margin-top: 3px; color: var(--teal); }
 .src-trust b { color: var(--ink-2); font-weight: 900; }
+
+/* v3.43 · trust panel */
+.trust{display:flex;flex-direction:column;gap:10px;margin:10px 0;font-size:.92rem}
+.trust-banner{border:1px solid #d97706;background:rgba(217,119,6,.1);border-radius:12px;padding:10px 12px}
+.trust-banner.t-low{border-color:#dc2626;background:rgba(220,38,38,.1)}
+.trust-banner ul{margin:6px 0;padding-inline-start:18px}
+.trust-per span{display:inline-block;margin-inline-end:8px;padding:1px 6px;border-radius:8px;background:rgba(127,127,127,.15)}
+.trust-per .hi{background:rgba(22,163,74,.2)}
+.trust-card,.trust-box,.trust-conf,.trust-data,.trust-foot{border:1px solid rgba(127,127,127,.3);border-radius:12px;padding:8px 12px}
+.trust-card ul{margin:4px 0;padding-inline-start:18px}
+.trust button{font:inherit;cursor:pointer;background:none;border:0;color:inherit;text-decoration:underline}
+.exam-trust{margin:4px 0 0;font-size:.82rem;opacity:.9}
+.exam-trust[data-t="verified"]{color:#16a34a}.exam-trust[data-t="pending"]{color:#d97706}.exam-trust[data-t="unverified"]{color:#dc2626}
+.exam-trust summary{cursor:pointer;font-size:.82rem}.exam-trust[data-t="verified"]{color:#16a34a}.exam-trust[data-t="grounded"]{color:#2563eb}.exam-trust[data-t="reference"]{color:#d97706}.exam-trust[data-t="conflict"]{color:#dc2626}.exam-trust[data-t="ungrounded"]{color:#6b7280}.exam-snippet{font-size:.8rem;opacity:.85;margin:.3rem 0}

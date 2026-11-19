@@ -1,7 +1,18 @@
-import React from "react";
+import React, { useEffect } from "react";
 import Icon from "./Icon.jsx";
 import { RichText } from "./rich.jsx";
-import { recordAnswer } from "../lib/mistakes.js";
+import { recordAnswer, removeMistake, mistakeId } from "../lib/mistakes.js";
+import { tagExamItem } from "../lib/examtrust.js";
+import { normalizeTrust } from "../lib/mistakes.js";
+import { ensureKb } from "../lib/trust.js";
+import { inferProfile } from "../lib/profile.js";
+
+/* v3.43.1 · the tag of an exam item: ✓ verified · ⚠ reference (source check pending) · ؟ unverified */
+const TAG = {
+  verified: ["✓", "متحقق من مرجع"], grounded: ["📄", "من مصدرك"], reference: ["🔎", "مرجع — المصدر لسه بيتراجع"],
+  conflict: ["⚠", "تعارض — راجع الإجابة"], ungrounded: ["؟", "مش مبني على مصدر"],
+};
+const where = (p) => (p ? `${{ pdf: "الـ PDF", image: "الصورة", audio: "التسجيل", lesson: "درسك المحفوظ", text: "ملاحظاتك" }[p.sourceType] || "مصدرك"}${p.page ? " · ص " + p.page : p.block ? " · فقرة " + p.block : ""}` : "");
 
 /* An interactive exam inside the chat. The whole state lives in `exam` (saved with the message), so closing the chat or the app
    never loses progress:  { title, intro, questions:[{type,stem,options,correct,rationale,topic}], answers:{ [i]:{sel:[],checked} }, cur, done } */
@@ -24,6 +35,13 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
   const q = qs[cur];
   const a = ans[cur] || { sel: [], checked: false };
   const set = (patch) => onChange({ ...exam, ...patch });
+  /* an exam saved before v3.43.1 has untagged items: they are evaluated once, here, with the same code as new ones (never left untagged) */
+  useEffect(() => {
+    if (exam.loading || !qs.some((x) => !x.trust)) return undefined;
+    let dead = false;
+    ensureKb(inferProfile(qs.map((x) => x.stem).join(" "))).catch(() => {}).then(() => { if (!dead) onChange({ ...exam, questions: qs.map((x) => (x.trust ? x : tagExamItem({ ...x }))) }); });
+    return () => { dead = true; };
+  }, [exam.loading, qs.length]);        // eslint-disable-line react-hooks/exhaustive-deps
   const setAns = (i, patch) => set({ answers: { ...ans, [i]: { sel: [], checked: false, ...(ans[i] || {}), ...patch } } });
 
   const pick = (i) => {
@@ -34,8 +52,13 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
   /* confirming an answer: a wrong one is saved to «غلطاتي» automatically (a right one only counts when that question was a mistake before) */
   const confirm = () => {
     if (!a.sel.length || a.checked) return;
-    recordAnswer(q, a.sel, { exam: exam.title });
-    setAns(cur, { checked: true });
+    const tq = q.trust ? q : tagExamItem({ ...q });                    // a wrong answer is saved only when the key itself was not left "unverified"
+    const saved = recordAnswer(tq, a.sel, { exam: exam.title });
+    setAns(cur, { checked: true, saved: saved || undefined });
+  };
+  const saveAnyway = () => {                                           // the student's own decision, never the default
+    recordAnswer(q.trust ? q : tagExamItem({ ...q }), a.sel, { exam: exam.title, force: true });
+    setAns(cur, { saved: "new" });
   };
   const askAbout = (idx) => {
     const k = qs[idx];
@@ -95,6 +118,13 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
       <div className="exam-q" dir="ltr">
         {q.topic && <span className="exam-tag">{q.topic}</span>}
         <p className="exam-stem">{q.stem}</p>
+        {q.trust && TAG[normalizeTrust(q.trust)] && (
+          <details className="exam-trust" data-t={normalizeTrust(q.trust)} dir="rtl">
+            <summary>{TAG[normalizeTrust(q.trust)][0]} {normalizeTrust(q.trust) === "grounded" ? `من مصدرك · ${where(q.trustProv)}` : TAG[normalizeTrust(q.trust)][1]}</summary>
+            {q.trustProv && <p dir="ltr" className="exam-snippet">«{q.trustProv.snippet}»</p>}
+            {(q.trustWhy || []).length > 0 && <ul>{q.trustWhy.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+          </details>
+        )}
         {q.type === "multi" && <p className="exam-hintline">Select all that apply — اختار كل الإجابات الصح</p>}
       </div>
 
@@ -116,7 +146,9 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
         <div className="exam-why" data-ok={right}>
           <b>{right ? "✅ إجابة صح" : "❌ إجابة غلط"}{!right && <small dir="ltr"> · الصح: {q.correct.map((j) => L[j]).join(", ")}</small>}</b>
           {q.rationale && <RichText text={q.rationale} />}
-          {!right && <small className="exam-saved"><Icon name="bookmark" size={13} /> اتحفظ السؤال ده في «غلطاتي»{onOpenMistakes && <> · <button type="button" className="linkbtn" onClick={onOpenMistakes}>افتحها</button></>}</small>}
+          {!right && a.saved === "skipped" && <small className="exam-saved" data-skipped="1">ما اتحفظش في «غلطاتي» تلقائيًا: {normalizeTrust(q.trust) === "conflict" ? "فيه تعارض مع مصدرك أو المرجع" : "الإجابة مش مبنية على مصدر"} (ممكن المفتاح نفسه غلط). <button type="button" className="linkbtn" onClick={saveAnyway}>احفظه على أي حال</button></small>}
+          {!right && a.saved && a.saved !== "skipped" && <small className="exam-saved-undo"> <button type="button" className="linkbtn" onClick={() => { removeMistake(mistakeId(q.stem)); setAns(cur, { saved: "removed" }); }}>شيله من غلطاتي</button></small>}
+          {!right && a.saved && a.saved !== "skipped" && a.saved !== "removed" && <small className="exam-saved"><Icon name="bookmark" size={13} /> اتحفظ السؤال ده في «غلطاتي»{onOpenMistakes && <> · <button type="button" className="linkbtn" onClick={onOpenMistakes}>افتحها</button></>}</small>}
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => askAbout(cur)}><Icon name="chat" size={15} /> اشرحلي أكتر</button>
         </div>
       )}

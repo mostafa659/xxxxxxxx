@@ -1,3 +1,131 @@
+## v3.44.0 — Calibrated Citation-First Trust · High-Yield KB (542 concepts)
+
+**Frozen contracts, unchanged:** `tests/baseline/v3.42-budget.json` and `tests/baseline/v3.42-solve-output.json` are untouched; every prompt is still at or below v3.42; no request, token or wait was added (the exam still makes exactly the 2 requests v3.42 makes with an attached file — measured on the v3.42 code — and 1 without). Everything below is local, on-device code.
+
+### Pillar 1 — Citation-first calibrated trust
+**One tag per exam item (and per lesson sentence), strongest evidence first:**
+
+| tag | meaning | saved mistakes | memorize |
+|---|---|---|---|
+| ✓ `verified` | a verified, current KB reference agrees | saves smoothly | yes |
+| 📄 `grounded` | the key / sentence is anchored in **the student's own source**: «From your PDF · p. 3» + the snippet | saves smoothly | yes — unless it is safety-critical (dose, contraindication): then it needs an official reference |
+| 🔎 `reference` | a KB rule agrees, its source check is pending (was `pending`) — or the key is anchored only in the student's **saved AI-written lessons** | saves smoothly | no |
+| ⚠ `conflict` | the reference contradicts the item · the student's notes differ (a number or a negation) · **the source itself contradicts the reference** («source says X, reference says Y») | held back + one-tap «save anyway» | no |
+| ؟ `ungrounded` | nothing anchors the key (the generator's own claim), or the item is defective, or a safety-critical statement is unresolved | held back + one-tap «save anyway» | no |
+
+Precedence: conflict > defect > ✓ > 📄 > 🔎 > ؟. Legacy tags map: `pending → reference`, `unverified → ungrounded`. «Act, then review»: anything anchored in the KB or in the student's own file saves without friction, carries its badge (with page for a PDF) and can be removed in one tap («شيله من غلطاتي»); only conflict / ungrounded items are held back, because for them the key itself may be wrong.
+
+**How grounding works (`provenance.js groundSentence`)**, zero tokens: an inverted index word → sentence over the source model (typed text, Word/PowerPoint/EPUB, audio transcripts, a PDF's text layer by page, a *complete* OCR transcript). A claim is grounded when one source sentence (or two adjacent ones) holds ≥ 75 % of its anchor words **and** three guards pass: every number is in the source sentence (else *contradiction: number*), the negation agrees (else *contradiction: polarity*), every ALL-CAPS token appears (else *not grounded*: the acronym is the invention). For an exam item the key is grounded through (1) the rationale sentences about the key option, (2) the option itself, (3) stem + option as one proposition. Model-written text (a study "map", the solve brief) is **never** searched: it can fill a gap in the index but cannot ground a claim; scanned PDFs / unread images ground nothing. Unknown origin is never promoted.
+Also fixed on the way: a word-boundary bug where *nutrient* / *patient* ended in "-nt" and were read as negations (explicit negation list now).
+
+### Pillar 2 — the KB: 542 concepts, lazy, indexed, audited
+**489 concept rules + 38 reference ranges + 15 anatomy / scope / framework facts.** Domain breakdown of the rules: **antidotes 29 · drug classes 66 · drug effects & safety 81 · physiology (acid–base, electrolytes, autonomic, endocrine, cardiac, renal) 51 · clinical (rhythms, shock, emergencies, neuro, GI, renal, haematology) 85 · nursing (isolation, safety, maternal–child, paediatrics, mental health) 67 · anatomy (counts, heart, brain, cranial nerves, glands) 70 · microbiology / immunology 40.** By form: 214 sign rules, 81 effect, 66 class, 57 treatment, 29 antidote, 23 physiology, 17 counts, 2 cord, 3 136 truth terms and ~15 600 wrong-term checks (slot-derived). Arabic: 25 rules carry Arabic subject aliases and the cue lists have Arabic words; the *truth / wrong terms are mostly English* because medical terms in Arabic notes are written in English.
+
+**Anti-collision design** (`kb/rules.js`) instead of 489 regexes or free-text triggers:
+- a rule is data: **subject** (required anchor) · optional **cue** (context) · **truth** · **wrong** (explicit list, or `@` = the truths of the other rules of the same slot — «antidote for heparin is vitamin K» is caught because vitamin K is warfarin's antidote, authored once) · per-rule **skip** words (withdrawal, bridging, second-line…);
+- a conflict fires only if: subject ∧ cue ∧ a wrong term *near* the subject and *outside* the subject phrase ∧ no truth term ∧ **no negation anywhere between them** ∧ no skip word ∧ **the wrong term's owner is not also in the sentence** (a comparison) — for slot lists and explicit lists alike;
+- numeric rules conflict only when numbers sit next to the noun and **none** equals the value (a range like «3 to 15» is not a count);
+- lab ranges: sex/age strata, SI + conventional units, directional words («hypokalemia (K 6.1)»), unit-less pH / INR / K / Na, and a **10 %-of-range boundary tolerance** so a dispute about a limit is never an error;
+- lookup: token → rule-ids inverted index, so a sentence touches ~2–3 % of the rules. Verb forms, plural «-es», the article «the» and the Arabic «ال» are normalised the same way for rule terms and sentences.
+
+**The audit (`npm run kb:audit`, in the suite) — what it proves:** 0 duplicate / colliding rules (a subject has one antidote / one class; no truth is another rule's wrong term for the same subject); **a generated sentence for every rule — its truth never conflicts with ANY rule, and one of its wrong terms is caught by that rule — 0 unreachable rules**; the negated / compared / "and"-joined version of every wrong claim never fires; **84 hand-written correct statements (comparisons, negations, withdrawal, second-line, massive-bleed…) → 0 false conflicts and 0 range conflicts, no patches**; **75 hand-written classic errors → 75 caught** and patched in place. Writing the audit found and fixed ~25 rule bugs (truth words hiding in subject names, comparative sentences, stray `;` in fix texts that had been corrupting skip lists, `lower` as a skip word, …).
+
+**Medical rigor, honestly:** I removed rules I could not call universal (labetalol/carvedilol as "beta blockers", sotalol, diphenhydramine as non-anticholinergic, furosemide's sulfonamide status, amiodarone class, phenobarbital's two classes…). **Every rule is still `source.verified:false`** — written from standard textbook knowledge, no quotes extracted, so they back a statement as 🔎 *reference*, never ✓, and `build-kb.mjs` is the only path to ✓. The 2 CPR-figure rules sit in a `-guideline` domain (AHA/ERC; may change). **I am not a substitute for clinical review: have a clinician read `src/lib/kb/modules/r-*.js` before relying on any rule.**
+
+### Pillar 3 — measured (this VM: ONE vCPU, Node 22; your phone will differ)
+- **Tests:** 333 (238 original + 43 v3.43 + 30 v3.43.1 + 8 KB audit + 14 citation). `npm test` now runs files one at a time (`--test-concurrency=1`): on one vCPU the parallel runner starves the timing tests.
+- **Bundle (esbuild, minified, split):** every rule pack is its own lazy chunk — antidotes 3.9 KB, classes 8.3, drugs 29.4, physiology 26.5, clinical 39.9, nursing 26.0, anatomy 20.2, micro 14.1, ranges 13.6, digestive 14.4, scope 2.6 → **~199 KB raw, ~62 KB gzip, none in `main.js`** (grep-verified). The v3.43.1 KB was ~19 KB raw.
+- **Load (background, off the first-render path):** ~100–160 ms in total, in tasks of ≤ ~35 ms with a yield between packs; the index build was 141 ms → 33 ms after making owner look-ups token-indexed.
+- **Matching:** 1–5 µs per sentence (p95 ≈ 3 µs). Whole verification pass on a 2 343-word, 271-sentence lesson (a stress case: most sentences are high-risk): **warm median 9.5–11.6 ms, min 5.5 ms; cold first pass 59–89 ms** (hidden by the background warm-up). p95 of single runs on this VM is 27–33 ms because of GC spikes on one vCPU; the unit test judges the calmest of three 40-run batches and prints all three. So: **median < 20 ms yes, p95 < 20 ms not on this VM.**
+- Tagging one exam item against a 40-page PDF-sized source: see the `# tag one exam item…` line of `tests/citation.test.mjs`.
+
+### What is still unverified
+- **Medical correctness of the 489 rules** beyond my own review and the self-consistency audit: no clinician reviewed them and no rule has a verified source quote. A rule that is wrong in a way the audit cannot see (a plausible but false textbook claim) would patch a *correct* sentence. Several rules (e.g. oral-bisphosphonate administration, ESI / START triage wording, tPA-in-hemorrhage, lithium sodium advice, CPR figures, ranges) are standard but **vary by guideline, country or lab**; they are labelled 🔎 reference, not ✓.
+- **Real student material.** Grounding was tested on generated PDFs, typed text and mocked OCR text, not on a corpus of real lecture notes; paraphrase-heavy notes (a source that says the fact in different words than the item) will usually come out *ungrounded*, not wrongly grounded — the 75 % anchor threshold and the three guards are deliberately conservative, and the threshold was not tuned on data.
+- **Distractors are not checked against the source** (a bag-of-words match cannot tell "liver makes bile" from "gallbladder … bile"), so an item with two defensible answers in the notes can still be tagged grounded. KB-side, a distractor the reference supports *is* flagged.
+- Exam items are grounded against attached files and the saved lessons the exam was built from; **images attached to an exam have no text** and ground nothing unless an OCR transcript exists.
+- Arabic: aliases and cue words exist for a quarter of the rules; Arabic-only sentences with Arabic wrong-terms are mostly **not** covered. The Arabic PDF order repair is a heuristic.
+- The UI (ExamCard badges / snippet / remove, TrustPanel counts) parses and bundles with esbuild but was never rendered in a browser; Vite / Android / Electron builds were not run.
+- `logprobs`, grounding in the proof request, calibration (no profile is calibrated, so nothing reaches HIGH), licences of any corpus, and the effect of the `PREMISE` line on accuracy: unchanged from v3.43.x and still untested.
+- The 20 ms target is for matching and a typical lesson; see the p95 note above.
+
+
+## v3.43.1 — the three accuracy gaps closed (PDF/image sources · exam generator · reasoning before the answer)
+
+All three are active in the app and covered by tests (311 pass: the 238 original + 43 for v3.43 + 30 for v3.43.1). The frozen v3.42 budget baseline (`tests/baseline/v3.42-budget.json`) was **not modified**; every prompt is still at or below it.
+
+### 1 · Part A for PDFs and images — one pipeline, no bypass
+- **Provenance is attached at extraction time** (`lib/provenance.js`): every item gets `prov = {sourceType: text|audio|pdf|image, extracted, pages, chars, confidence, reason}` when it is read (`docs.js`); segments carry `page`, `block`, a running `index` and sentence boundaries normalised by the same splitter the output pass uses. Each checked sentence that comes from the source knows where (`item.prov = {sourceType, page, block, index}`).
+- **PDFs: the text layer is read on the device** (`lib/pdftext.js`, no network, no tokens, ≤ 2.5 s, while the student adds the file): Flate / ASCII85 / ASCIIHex stream chains, compressed object streams, the page tree, text operators, `/ToUnicode` CMaps, NFKC, and Arabic visual-order repair. Tested on real PDFs made with reportlab (standard and embedded TrueType fonts), LibreOffice (Arabic + English) and qpdf (object streams), plus a scanned PDF. Gemini still receives the PDF natively; the token count is unchanged.
+- **One source model for every type**: typed text, Word/PowerPoint/Excel/EPUB, audio transcripts, a PDF's text layer, an OCR transcript all enter `verifyText()` as the same `sourceModel`. A test feeds identical content as text, as a PDF and as an OCR transcript and asserts identical cleanup, stripping and KB patches, for all 20 seeded errors.
+- **No unknown-means-source loophole**: the old code treated "no source text" as "everything is from the source". Now origin stays *unknown*; an invented mnemonic/framework is removed, nothing is memorize-eligible without ✓, and the model is flagged `strict`. Scanned PDFs and unread images run in this mode. KB patches, the analogy box, residue cleanup and reference cards run regardless.
+- A bug the end-to-end test found and fixed: a mnemonic that copied the source's wording but swapped the acronym (`CFBP` → `QQZZ`) scored as "from the source". For mnemonics and frameworks the acronym tokens must now appear in the source. Also: the extraction stage's text is model-written, so it only fills a gap and is never added next to real source text.
+- **Extracted text is cleaned like any other** (`cleanResidue` on the OCR text and on the study "map" shown to the student). The *source* is checked against the KB for every type and part («source says X, reference says Y»); it is **not silently rewritten** — patching what an OCR transcript says would falsify what the image said.
+- Limits (reported, never guessed): scanned pages and images have no text layer, so for them the source is the OCR transcript when that stage ran (a full source), otherwise the solve brief or the study map (partial → strict). Fonts without a `ToUnicode` map, encrypted files, LZW/other filters and text drawn in XObject forms are not read (confidence drops, strict mode applies). The Arabic order repair is a heuristic (word-start «ال» vs word-end «لا»). The extractor was verified on generated fixtures, **not on a corpus of real-world PDFs**.
+
+### 2 · The exam generator is inside the accuracy layer (`lib/examtrust.js`)
+- Every item is evaluated **and tagged before the student sees it**, synchronously, with zero extra requests (a test counts them: one batch = one request): residue cleanup; KB patches in the stem and rationale (before → after kept in `trustPatches`); lab range by sex/age; other-profession and other-country rules; structure checks (distinct options, valid key, one key for single / ≥ 2 for multi, "select N" = N); the key against the KB; a "wrong" option the reference says is true; unresolved safety-critical statements; expired references.
+- Tag `q.trust`: `verified` (a verified, current fact agrees with the key) · `pending` (= «reference — source check pending») · `unverified` (nothing resolved the key, or something is contradicted / unresolved). The reason list is in `q.trustWhy`. An item that was shown is never rewritten later (tested). Exams saved before this version are tagged once when opened.
+- **Saved mistakes** skip `unverified` automatically (`recordAnswer` → `"skipped"`; the card says why and offers «احفظه على أي حال» as the student's own choice). `verified` and `pending` are saved. Memorize stays ✓-only. This is a deliberate difference from the v3.43 note «✓ only»: a saved mistake needs a key some reference agreed with, memorize needs a verified one.
+- Unresolved high-risk claims of exam items go to the KB gap list. The F3 claims-in-the-proof-request check is **not** applied to exams: items are final when shown, so a late verdict could not change them.
+- Consequence to know: with the current seed KB almost every generated item will be `unverified` or `pending` (the KB covers little), so «saved mistakes» from the exam generator will mostly need the manual override until the KB grows.
+
+### 3 · Reasoning before the answer (the budget kept)
+- The solve brief is now `PREMISE` (≤ 20 words, 1–2 clauses) → `ANSWER` → `TYPE` → `KEYWORD` → `CONCEPTS` → `DATA` → `OPTIONS` → `CALC` → `CONFIDENCE`. The prompt says reasoning comes before the commitment. `parse.js` is unchanged; `parseBrief` reads the premise, cuts it at 24 words, and knows whether it came first; the lesson writers receive it with the `TIER`. The thinking budget (`MODES[*].solve.budget`) and `maxOut` are unchanged (tested).
+- A brief with no premise, or one written after the answer, is capped at MEDIUM even for a calibrated profile. The logprob search for the `ANSWER` token is anchored to a line start, so premise text cannot be mistaken for it.
+- **Budget, measured** (`tests/solveorder.test.mjs`): prompt tokens v3.42 1022 → 935 (NCLEX profile line included) / 758 (generic). Worst-case *output words* (read from the caps in the prompt, against the v3.42 caps frozen in `tests/baseline/v3.42-solve-output.json`): 5 options 147 → 129 (140 with CALC), 6 options 165 → 144 (155 with CALC). To pay for the premise the option reasons were cut from 18 to 15 words, the keyword from 12 to 10, DATA to 24 words (10 when CALC is used).
+- **What is NOT known**: whether the premise actually improves accuracy on multi-step priority questions, and whether the answer-token probability stays as well calibrated after a premise. Both need the golden-set A/B (`scripts/calibrate.mjs`) that no profile has yet. It was implemented as specified and is not claimed to be better.
+
+### Verified in this build
+- 311 tests pass. All JSX parses and the whole app bundles with esbuild (imports resolve; the KB modules land in separate lazy chunks, none in the startup bundle).
+- Deterministic layer: warm median ≈ 5–8 ms on a ~2000-word lesson; the p95 is judged on the calmest of three 40-run batches because this build VM has one vCPU and the first batch spikes (24–34 ms) while the JIT warms. The app warms it in the background (`ensureKb`). On a slow phone the first pass may exceed 20 ms.
+
+## v3.43.0 — Accuracy Architecture (one shared design for source-based content and question analysis)
+
+**What this version guarantees, and what it does not.** No LLM can be made error-free. v3.43 guarantees only this: *no high-risk claim or answer is shown as certain unless verified knowledge or a code check resolved it; everything else is visibly labeled and kept out of "memorize" and saved mistakes.* Nothing in the app claims 100 % correctness, and nothing here asks a model "are you sure?".
+
+### Constraints and how they are met
+| Constraint | How |
+|---|---|
+| C1 no slower first result | No new blocking request. The KB loads in the background; labels and patches are applied at the *final* text (streamed text appears exactly as before, then is patched in place). A static test checks that nothing in `analysis.js` awaits the accuracy layer. |
+| C2 no more tokens / requests | Every prompt is **smaller** than v3.42 (`tests/budget.test.mjs`, frozen baseline `tests/baseline/v3.42-budget.json`; solve 1022 → 665 tokens, lesson prompts −235…−357). Output caps, thinking budgets and request counts are unchanged (the 238 old engine/speed/latency tests still pass). Claims ride inside the existing proof request and the chunk gives up exactly the room they take. Small free keys: proof is skipped, so zero added requests; logprobs are never *probed* on a small key. |
+| C3 labels, not promises | `✓ verified` · `⚠ corrected / uncertain / possibly outdated / reference pending / other-profession rule` · `؟ unverified`. Memorize and saved mistakes accept only ✓ (plus plain, low-risk text copied from the source). |
+| C4 no self-revision | None added. Second opinion (B7) is user-initiated, uses a *different* model with shuffled options, scored by token probability. |
+
+### What was built (files)
+- `lib/profile.js` (P1) — profile = {discipline, exam, region, languages, level}; set in settings or inferred by keywords in code; fallback "general health sciences". The NCLEX frameworks / item formats / negative keywords moved out of the shared prompts into the `nclex-rn` exam module. Shared prompts contain no discipline or exam name (tested).
+- `lib/accuracy.js` (F1) — residue cleanup (`1×`, "linked to question…", cut "…" tails, truncated cross-references), sentence split + classification, **origin by n-gram overlap with the source** (never asked of the model), analogy box, invented mnemonic/framework stripped (Part A) or boxed (Part B), `honestTitle()`.
+- `lib/kb/*` (F2) — schema, BM25 index, lazy per-profile loading (dynamic `import()`, never on the startup path), forbidden-pattern patching with before→after log, reference cards ("not covered in the material", "source says X, reference says Y"), range checks by sex/age stratum in SI or conventional units, scope + jurisdiction checks, `reviewBy` → "may be outdated".
+- `scripts/build-kb.mjs` — OFFLINE builder: a fact is dropped unless its quote is found **verbatim** in the cited passage and the source license is verified and open (NC / SA / unverified rejected).
+- `lib/solvecheck.js` (B2–B6, B8) — brief parser, logprob confidence (top-1, margin, renormalised over option letters, per-option for multi-select), format/logic checks, CALC recomputation by a tiny parser (no `eval`), DATA read-back with low-probability digit flags, tiers capped by calibration, banner, lesson reconciliation.
+- `lib/claims.js` + `proof.js` (F3) — unresolved high-risk claims folded into the existing proof request; verdict cache by claim hash (30 days, 7 for time-sensitive); allowlisted domains only.
+- `lib/secondopinion.js` (B7), `lib/evidence.js` (B9, **off by default**), `lib/reports.js` (F4: report error, KB gap list, JSON export), `components/TrustPanel.jsx` (UI), `scripts/calibrate.mjs` (B10), `scripts/kb-sizes.mjs`.
+- Solve prompt: profile-templated; `ANSWER` first; `RATIONALE` deleted (net −357 tokens); `DATA` and `CALC` lines added. `parse.js` is unchanged and still works.
+
+### Decisions you may want to reverse
+1. **Seed KB facts are `source.verified:false`.** I could not reach the books from the build environment and refused to invent quotes. They *patch* clear errors (the digestive items from review, plus five adult ranges and nursing scope/frameworks) but are shown as "reference — source check pending", never ✓. Run `build-kb.mjs` against real corpora to upgrade them.
+2. **No profile is calibrated, so nothing reaches HIGH today.** The brief says an uncalibrated profile is capped at MEDIUM; the consequence is that every AI-solved question currently shows "AI is not fully sure", and `recordAnswer` skips items tagged `unverified` (v3.43.1: `verified` and `pending` are saved). the exam generator is tagged since v3.43.1 (see above).
+3. **A model verdict without an allowlisted source is an opinion.** `T` stays ؟; `F` becomes ⚠ "AI check disagrees" with the suggestion on tap, and rewrites text only with an allowlisted source. Grounding for the proof request is **off by default** (`setClaimsGrounding`).
+4. **Part B boxes invented mnemonics instead of deleting them** (the AI is the only author there and the prompt asks for a memory tip); Part A strips them.
+5. **"Unlabeled = 0" is for sentences the classifier calls high-risk.** Classification is regex heuristics (EN + AR); a claim phrased outside them is not caught.
+6. The proof request carries claims only when its text chunk has room; otherwise verification is cut, never the budget.
+
+### Measured (in this build environment, Node 22, mocked network)
+- 311 tests pass as of v3.43.1 (238 existing + 43 + 30). Seeded-error suite: 20 cases, every one patched, removed, cleaned or labeled; 0 high-risk sentences left unlabeled.
+- Deterministic layer ≈ 4 ms warm on a ~2000-word lesson (p95 under 20 ms; the very first call after load is slower, so `ensureKb` runs a throw-away pass in the background). KB lookup p95 ≪ 10 ms.
+- KB bundle: core-digestive 13.3 KB (4.2 KB gzip), core-ranges 2.8 KB, scope-nursing 2.8 KB — lazy chunks (`npm run kb:sizes`).
+
+### NOT tested / unknown — please read
+- **Real `logprobs` availability per Gemini model** and whether thinking models return `logprobsResult` for the visible text only. The code asks only for the solve task, remembers a refusing model, and degrades to code checks + verbalized confidence (capped at MEDIUM). On a non-small key a refusing model costs **one** extra (400) request, once per model.
+- **Real grounding** (cost, JSON-mode compatibility, and that grounding links are Google redirects whose *title* carries the site, which is what the allowlist reads).
+- **Calibration on real data or real devices.** No golden set exists: ≥300 human-verified, openly licensed items per profile could not be produced here. `tests/golden/questions/_synthetic/` holds two made-up items that only exercise the harness. HIGH-tier error rate is therefore **unmeasured**; never read it as zero.
+- **Licenses.** Nothing from OpenStax or any other book is bundled; seed facts are my own paraphrases of standard anatomy/physiology. Every corpus license must be verified per book before `build-kb.mjs` is used (the CC BY vs CC BY-NC-SA listing conflict for *Pharmacology for Nurses* is exactly what `licenseVerified` is for).
+- The `nclex-rn` module (formats, `penalizesWrongPicks`, negative keywords) was moved from the old prompt and the brief; it has **not** been checked against NCSBN documents (`checkedAt: null`).
+- **Vite build, Android/Electron packaging and the React UI in a browser** were not run (no `node_modules` or network). All JSX parses and the app bundles with esbuild, but TrustPanel / Editor / ExamCard were never rendered.
+- (v3.43.0 skipped origin gating for PDF/image sources. Since v3.43.1 they go through the same pipeline; see above.)
+- Not implemented: per-profile exam modules other than NCLEX, discipline modules beyond the nursing scope seed, a settings screen for the profile (`setProfile` exists), and the UI button for the second opinion (library + tests only).
+
+
 ## v3.41.0 — تحليل الملفات الصوتية بأقل توكنز (من غير ما الجودة تقل)
 
 **المشكلة الحقيقية**: Gemini بيحسب الصوت **32 توكن لكل ثانية** (دقيقة = 1,920 · ساعة = 115,200) **مهما كانت الصيغة أو البت ريت أو حجم الملف**. يعني ضغط الملف بيوفّر وقت رفع بس، مش توكن واحد. اللي بيكلّف فعلاً هو **مدة التسجيل × عدد الطلبات اللي شايلة الصوت**. والتطبيق بيبعت المصدر مع **كل** طلب في التحليل (كلمات + شرح + ملخص = 3 لـ 5 طلبات) ومع كل رسالة شات. محاضرة 30 دقيقة كصوت = 57,600 توكن × كل طلب.
@@ -23,6 +151,12 @@
 
 **اتجرّب**: `npm test` = **227 اختبار** (207 القديمة + 20 جديدة في `tests/audio.test.mjs`) بتثبّت: طلب واحد بس بيشيل الصوت، والتحليل الكامل بعده مبيبعتش الصوت أبداً، ومفيش سباق بين موديلين (تجربة ضابطة: من غير `noHedge` الطلب البطيء بيتسابق)، والكاش، والتحويل الاحتياطي، وإن أخطاء المفتاح/الزحمة متتفهمش غلط إنها صيغة.
 **ما اتجرّبش**: طلب حقيقي لـ Google بملف صوت حقيقي (مفيش نت في بيئة الشغل) ولا بناء Vite/APK. اختبر على جهازك بتسجيل قصير (MP3 وM4A وواتساب) قبل النشر. فاتفحصت صياغة الملفات اللي اتغيّرت بمترجم TypeScript.
+
+## v3.42 — رفع الصوت أسرع ~4 مرات
+
+**المشكلة:** ملف 23 ميجا خد 160 ثانية رفع (≈ 1.1 ميجابت/ث، سرعة الرفع هي العنق مش جوجل).
+**الحل:** `lib/audiopack.js` بيصغّر التسجيل على الموبايل قبل الرفع لـ Opus مونو 16kHz بـ 32kbps (اللي جيميني بيسمعه أصلاً)، فـ 23 ميجا ≈ 5.5 ميجا. بيقص mp3/wav/m4a على حدود الفريمات ويفك كل قطعة ≤ 4 دقايق (ذاكرة محدودة). لو مش ممكن (مفيش WebCodecs، صيغة غريبة، النتيجة مش أصغر بوضوح) أو جوجل رفضت الصيغة → بيترفع الأصلي زي زمان. + نسبة التقدّم الحقيقية أثناء الرفع (XHR) + صبر أطول لمعالجة الملف عند جوجل.
+**اتجرّب:** `npm test` = **238 اختبار**؛ الـ Ogg/mp3/wav/m4a اتفحصوا بـ ffmpeg على ملفات حقيقية. **ما اتجرّبش** على موبايل حقيقي ولا على جوجل الحقيقي (WebCodecs وقبول جيميني لـ ogg/opus). لو جيميني رفض الصيغة التطبيق بيرجع للأصلي لوحده.
 
 ## v3.40.10 — توفير توكنز: شيل «نص السؤال» + الترجمة والنطق جوجل بس
 

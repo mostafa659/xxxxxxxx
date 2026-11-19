@@ -8,7 +8,8 @@
    Speech is about 5-8 times fewer tokens as text (a minute ≈ 150 words ≈ 250 tokens, against 1,920 as audio).
 
    What keeps the quality (nothing below changes how the words are heard):
-   • the original file is sent as it is (no re-encoding, no speed-up, no cutting): the model hears exactly what the student recorded;
+   • v3.42: before the upload the file is shrunk on the phone to 16 kHz mono Opus 32 kbps (audiopack.js) — what Gemini hears anyway, 4× fewer bytes to upload;
+     if that is not possible, or Google refuses it, the ORIGINAL goes untouched (no speed-up, no cutting of the sound);
    • ONE request, no thinking, no second "hedged" model racing the first (noHedge in gemini.js: a race would pay for the same audio twice);
    • the strong Flash model goes first (the transcript is what every later answer stands on); Flash-Lite only when the day's quota of the strong ones is nearly spent;
    • the same file is never transcribed twice (fingerprint → cached transcript);
@@ -25,6 +26,7 @@ import { orderForTask } from "./quota.js";
 import { uploadToGoogle, FILES_ENABLED, looksLikeFileError } from "./gfiles.js";
 import { store } from "./storage.js";
 import { AUDIO_MIME, isAudioFile, mimeFor } from "./audio-types.js";
+import { packAudio } from "./audiopack.js";
 
 export const MAX_AUDIO = 150 * 1024 * 1024;       // bytes of the recording itself (≈ 2.5 h at 128 kbps; Google's own limit is 9.5 h)
 const INLINE_MAX = 12 * 1024 * 1024;              // bigger than this can only travel through the Files API (a request body is limited to ~20 MB)
@@ -149,7 +151,7 @@ export const looksLikeFormatError = (e) => {
 
 /* the transcript of one recording.  → { text, truncated?, cached, via: "native" | "wav" }   (throws a message written for the student) */
 export async function transcribeAudio(file, { apiKey, signal, onStatus = () => {}, deps = {} } = {}) {
-  const d = { run: runTask, upload: uploadToGoogle, cache: audioCache, lists: getModelLists, toWav: decodeToWav, uploads: FILES_ENABLED, ...deps };
+  const d = { run: runTask, upload: uploadToGoogle, cache: audioCache, lists: getModelLists, toWav: decodeToWav, uploads: FILES_ENABLED, pack: packAudio, ...deps };
   if (!apiKey) throw new Error("الصوت بيتحوّل لنص بـ Google Gemini، ومحتاج مفتاح. أضف مفتاح من أيقونة 🔑.");
   if (file.size > MAX_AUDIO) throw new Error(`الملف الصوتي كبير (${Math.round(file.size / 1048576)} ميجا) والحد ${Math.round(MAX_AUDIO / 1048576)} ميجا. قسّمه أو قصّه.`);
   if (file.size < 1024) throw new Error("الملف الصوتي فاضي أو تالف.");
@@ -164,7 +166,10 @@ export async function transcribeAudio(file, { apiKey, signal, onStatus = () => {
     if (d.uploads && blob.size >= MIN_UPLOAD) {
       try {
         onStatus("بيرفع الصوت…");
-        const f = await d.upload({ apiKey, mimeType: mime, blob, name: (file.name || "audio").slice(0, 100), signal });
+        const mb = (n) => (n / 1048576).toFixed(1);
+        let last = 0;
+        const onProgress = (done, total) => { const t = Date.now(); if (t - last < 400 && done < total) return; last = t; onStatus(`بيرفع الصوت… ${Math.round((done / total) * 100)}% (${mb(done)} من ${mb(total)} ميجا)`); };
+        const f = await d.upload({ apiKey, mimeType: mime, blob, name: (file.name || "audio").slice(0, 100), signal, onProgress, activeWaitMs: 90000 });
         if (f && f.fileUri) { uploaded = true; return [{ fileData: { mimeType: f.mimeType || mime, fileUri: f.fileUri } }, { text: AUDIO_USER }]; }
       } catch (e) {
         if (e && e.name === "AbortError") throw e;
@@ -205,9 +210,17 @@ export async function transcribeAudio(file, { apiKey, signal, onStatus = () => {
     return { raw, via };
   };
 
+  /* v3.42 · the upload is the slow part: shrink to 16 kHz mono Opus first (null = send the original as before) */
+  let res, packed = null;
+  try { packed = await d.pack(file, { signal, onStatus }); } catch (e) { if (e && e.name === "AbortError") throw e; packed = null; }
+  if (packed && packed.blob) {
+    try { onStatus(`الصوت اتصغّر من ${(packed.before / 1048576).toFixed(1)} لـ ${(packed.after / 1048576).toFixed(1)} ميجا`); res = await attempt(packed.blob, "audio/ogg", "packed"); }
+    catch (e) { if (!(e && e.name !== "AbortError" && looksLikeFormatError(e))) throw e; res = null; }    // Google refused the packed file's format → the original goes as before
+  }
+
   const native = mimeFor(file);
-  let res;
-  if (native) {
+  if (res) { /* done */ }
+  else if (native) {
     try { res = await attempt(file, native, "native"); }
     catch (e) {
       if (!(e && e.name !== "AbortError" && looksLikeFormatError(e))) throw e;

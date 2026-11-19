@@ -83,9 +83,18 @@ export async function loadMistakes() {
 
 /* Called when the student confirms an answer.
    q: { stem, options, correct[], type, rationale, topic } · sel: chosen indexes · ctx: { exam: title of the exam, retry: true when it is a re-practice }
-   Returns "new" | "again" | "fixed" | "mastered" | null (nothing changed: it was right and never a mistake). */
+   Returns "new" | "again" | "fixed" | "mastered" | "skipped" (unverified key: not saved) | null (nothing changed: it was right and never a mistake). */
+/* v3.44 · CALIBRATED TRUST ("act, then review"). Every exam item carries one tag (lib/examtrust.js): verified ✓ · grounded 📄 (anchored in the student's own source) ·
+   reference 🔎 (a KB rule agrees; its source check is pending) · conflict ⚠ · ungrounded ؟. Legacy tags map: pending → reference, unverified → ungrounded.
+   • SAVED MISTAKES: verified · grounded · reference save smoothly (with their badge; the student can remove an entry in one tap). conflict · ungrounded are held back with a
+     one-tap «save anyway», because for those the KEY itself may be wrong. Items from other sources carry no tag and behave as before.
+   • MEMORIZE: verified; or grounded and not safety-critical (doses / contraindications need an official reference). Never reference-only, conflict or ungrounded. */
+export const normalizeTrust = (t) => (t === "pending" ? "reference" : t === "unverified" ? "ungrounded" : ["verified", "grounded", "reference", "conflict", "ungrounded"].includes(t) ? t : "");
+export const mistakeEligible = (q) => !q || !q.trust || ["verified", "grounded", "reference"].includes(normalizeTrust(q.trust));
+export const memorizeEligible = (q) => { const t = normalizeTrust(q && q.trust); return t === "verified" || (t === "grounded" && !(q && q.trustSafety)); };
 export function recordAnswer(q, sel, ctx = {}) {
   if (!q || !q.stem || !Array.isArray(q.options) || !Array.isArray(q.correct)) return null;
+  if (!mistakeEligible(q) && !ctx.force) return "skipped";          // distinct from null: the caller tells the student why it was not saved
   const right = sameSet(sel || [], q.correct);
   const id = mistakeId(q.stem);
   const old = state.list.find((m) => m.id === id);
@@ -107,6 +116,7 @@ export function recordAnswer(q, sel, ctx = {}) {
     exam: ctx.exam || (old && old.exam) || "", picked: [...(sel || [])],
     wrong: (old ? old.wrong || 1 : 0) + 1, right: old ? old.right || 0 : 0, streak: 0, mastered: false, masteredAt: undefined,
     firstAt: old ? old.firstAt : now, lastAt: now,
+    ...(q.trust ? { trust: normalizeTrust(q.trust), ...(q.trustProv ? { prov: { sourceType: q.trustProv.sourceType, page: q.trustProv.page, block: q.trustProv.block, name: q.trustProv.name } } : {}) } : {}),
   };
   state = { list: old ? state.list.map((m) => (m.id === id ? entry : m)) : [entry, ...state.list] };
   emit();

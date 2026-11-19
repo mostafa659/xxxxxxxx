@@ -37,7 +37,22 @@ const b64ToBlob = (b64, type) => {
 const keyOf = (mime, data) => `${mime}:${data.length}:${data.slice(0, 48)}:${data.slice(-48)}`;
 
 /* the real network part: resumable upload exactly as in Google's documentation (start → upload + finalize → wait until ACTIVE) */
-export async function uploadToGoogle({ apiKey, mimeType, data, blob: given, name, signal, fetchImpl = fetch }) {
+/* v3.42 · a POST that reports how many bytes have really left the phone (fetch cannot): used for recordings, so a slow uplink shows a moving % instead of a frozen "uploading…" */
+const xhrPost = (url, headers, body, signal, onProgress) => new Promise((resolve, reject) => {
+  const x = new XMLHttpRequest();
+  const fail = (e) => reject(e);
+  x.open("POST", url);
+  for (const k of Object.keys(headers)) x.setRequestHeader(k, headers[k]);
+  x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+  x.onload = () => resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, json: async () => JSON.parse(x.responseText) });
+  x.onerror = () => fail(Object.assign(new Error("upload network error"), { status: 0 }));
+  x.ontimeout = x.onerror;
+  x.onabort = () => fail(Object.assign(new Error("abort"), { name: "AbortError" }));
+  if (signal) { if (signal.aborted) return x.abort(); signal.addEventListener("abort", () => x.abort(), { once: true }); }
+  x.send(body);
+});
+
+export async function uploadToGoogle({ apiKey, mimeType, data, blob: given, name, signal, fetchImpl = fetch, onProgress, activeWaitMs = ACTIVE_WAIT_MS }) {
   const blob = given || b64ToBlob(data, mimeType);      // v3.41: a recording is uploaded straight from the File (no 33 % base64 copy in memory)
   const start = await fetchImpl(`${ORIGIN}/upload/v1beta/files`, {
     method: "POST", signal,
@@ -51,18 +66,17 @@ export async function uploadToGoogle({ apiKey, mimeType, data, blob: given, name
   if (!start.ok) throw Object.assign(new Error(`upload start HTTP ${start.status}`), { status: start.status });
   const url = start.headers.get("x-goog-upload-url");
   if (!url) throw new Error("no upload url");
-  const up = await fetchImpl(url, {
-    method: "POST", signal,
-    headers: { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" },
-    body: blob,
-  });
+  const upHeaders = { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" };
+  const up = onProgress && fetchImpl === fetch && typeof XMLHttpRequest !== "undefined"
+    ? await xhrPost(url, upHeaders, blob, signal, onProgress)
+    : await fetchImpl(url, { method: "POST", signal, headers: upHeaders, body: blob });
   if (!up.ok) throw Object.assign(new Error(`upload HTTP ${up.status}`), { status: up.status });
   let file = (await up.json()).file;
   if (!file || !file.uri) throw new Error("upload: no file uri");
   const t0 = Date.now();
   while (file.state && file.state !== "ACTIVE") {
     if (file.state === "FAILED") throw new Error("file processing failed");
-    if (Date.now() - t0 > ACTIVE_WAIT_MS) throw new Error("file not ready in time");
+    if (Date.now() - t0 > activeWaitMs) throw new Error("file not ready in time");
     await sleep(700, signal);
     const r = await fetchImpl(`${ORIGIN}/v1beta/${file.name}`, { headers: { "x-goog-api-key": apiKey }, signal });
     if (!r.ok) throw Object.assign(new Error(`file status HTTP ${r.status}`), { status: r.status });

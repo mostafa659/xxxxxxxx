@@ -7,6 +7,7 @@ import { useTextScale, scaleStyle } from "../lib/textscale.js";
 import { RichText, QuestionView, WordList } from "../components/rich.jsx";
 import { CHIPS, MODES, sectionsFor, tasksFor, EMPTY_RESULT } from "../lib/config.js";
 import { createAnalysis, TASK_KEYS } from "../lib/analysis.js";
+import TrustPanel from "../components/TrustPanel.jsx";
 import { createTracker, restartTask, snapshot, feed, settle, expectedMs, fmtRemaining } from "../lib/progress.js";
 import { readFiles, textItem, makeSource, itemsFromSaved, totalBytes, MAX_TOTAL, isAudio } from "../lib/docs.js";
 import ChatPanel from "../components/ChatPanel.jsx";
@@ -188,6 +189,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
   const [runId, setRunId] = useState(0);
   const [over, setOver] = useState(false);
   const [lastRun, setLastRun] = useState(null);  // { sec } of the last completed run
+  const [trust, setTrust] = useState(null);   // v3.43: what the accuracy layer found (banner, labels, reference cards)
   const [timing, setTiming] = useState({});     // task → measured timings of the last run (shown under the result)
 
   const [batch, setBatch] = useState(null);   // many questions in one upload: { phase: "detect" | "run" | "none", rows, total, error }
@@ -449,6 +451,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
   const makeAnalysis = (hint) => createAnalysis({
     kind, history, dataUrl: imageUrl, doc, extra: hint ? `${hint}` : instructions, chips, apiKey, modeId: mode,
     onUpdate, onDone, onError, onNotice,
+    onTrust: (t) => setTrust((o) => (t.phase === "final" || !o ? t : { ...o, ...t })),
   });
 
   /* several files, or a note that picks questions → first find the questions (one small request), then analyse each one alone */
@@ -491,7 +494,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
     setResult({ ...nullsFor(kind) });
     setStatus(Object.fromEntries(tasksFor(kind).map((t) => [t, "run"])));
     an.current = makeAnalysis(hint);
-    setRunId((n) => n + 1);
+    setRunId((n) => n + 1); setTrust(null);
     an.current.start();
   };
 
@@ -671,6 +674,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
                 {qNote && <small style={{ width: "100%", marginInlineStart: 0, direction: "rtl", textAlign: "start", opacity: .85 }}>⏳ {qNote}</small>}
               </div>
             )}
+            <TrustPanel trust={trust} />
             {sections.map((s) => {
               const task = TASK_OF[s.key];
               return (

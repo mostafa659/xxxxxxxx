@@ -11,6 +11,8 @@
                          doc      = null for a single plain picture, otherwise { kind:"bundle", name, items:[…] } */
 
 import { fileToCompressedDataUrl } from "./image.js";
+import { extractPdfText } from "./pdftext.js";
+import { provenanceOf } from "./provenance.js";
 import { isAudioFile } from "./audio-types.js";
 
 export const MAX_ITEMS = 12;
@@ -204,22 +206,28 @@ export async function readItem(file, opts = {}) {
     const { transcribeAudio } = await import("./audio.js");
     const r = await transcribeAudio(file, { apiKey: opts.apiKey, signal: opts.signal, onStatus: opts.onStatus });
     const t = clean(r.text);
-    return { id, t: "text", name: file.name || "تسجيل صوتي", size: file.size, label: "AUDIO", text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT, audio: true };
+    const it = { id, t: "text", name: file.name || "تسجيل صوتي", size: file.size, label: "AUDIO", text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT, audio: true };
+    return { ...it, prov: provenanceOf(it) };
   }
   if (isImage(file)) {
-    try { return { id, t: "image", name: file.name || "صورة", size: file.size, label: "IMG", url: await fileToCompressedDataUrl(file) }; }
+    try { const it = { id, t: "image", name: file.name || "صورة", size: file.size, label: "IMG", url: await fileToCompressedDataUrl(file) }; return { ...it, prov: provenanceOf(it) }; }
     catch (e) { throw new Error("الصورة دي مش مقروءة (" + (ext(file.name) || "غير معروفة") + "). جرّب JPG أو PNG."); }
   }
   if (isPdf(file)) {
     if (file.size > MAX_PDF) throw new Error(`ملف الـ PDF كبير (${mb(file.size)} ميجا) والحد ${mb(MAX_PDF)} ميجا. قسّمه أو ارفع الصفحات المطلوبة بس.`);
     const data = String(await readAs(file, "readAsDataURL")).split(",")[1] || "";
     if (!data) throw new Error("ملف الـ PDF فاضي أو تالف.");
-    return { id, t: "pdf", name: file.name, size: file.size, label: "PDF", data };
+    /* v3.43 · the PDF's own text layer is read here, on the device (no network, no tokens), so the Part A accuracy layer has real source text, page by page.
+       A scanned PDF has none: prov.extracted is false and the analysis runs in STRICT mode (origin unknown). Bounded by time, so adding a file never stalls. */
+    const ex = await extractPdfText(data);
+    const it = { id, t: "pdf", name: file.name, size: file.size, label: "PDF", data };
+    return { ...it, prov: provenanceOf(it, ex), ...(ex.ok ? { ptext: ex.text.slice(0, MAX_TEXT), ppages: ex.pages.slice(0, 400).map((p) => ({ index: p.index, text: p.text.slice(0, 20000) })) } : {}) };
   }
   const { label, text } = await extractText(file);
   const t = clean(text);
   if (!t) throw new Error("مفيش نص مقروء جوه الملف ده.");
-  return { id, t: "text", name: file.name, size: file.size, label, text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT };
+  const it = { id, t: "text", name: file.name, size: file.size, label, text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT };
+  return { ...it, prov: provenanceOf(it) };
 }
 
 /* ── many files → { items, errors } (a bad file never blocks the good ones) ── */
@@ -237,7 +245,8 @@ export async function readFiles(files, current = [], opts = {}) {
 
 export const textItem = (text, name = "نص مكتوب") => {
   const t = clean(text);
-  return { id: uid(), t: "text", name, size: t.length, label: "TXT", text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT, typed: true };
+  const it = { id: uid(), t: "text", name, size: t.length, label: "TXT", text: t.slice(0, MAX_TEXT), truncated: t.length > MAX_TEXT, typed: true };
+  return { ...it, prov: provenanceOf(it) };
 };
 
 export function totalBytes(items) {
@@ -289,7 +298,7 @@ export function makeSource(items) {
 export function itemsFromSaved(imageUrl, doc) {
   if (!doc) return imageUrl ? [{ id: uid(), t: "image", name: "صورة", label: "IMG", size: 0, url: imageUrl }] : [];
   if (doc.kind === "bundle") return (doc.items || []).map((i) => ({ ...i, id: uid() }));
-  if (doc.kind === "pdf") return [{ id: uid(), t: "pdf", name: doc.name, size: doc.size || 0, label: "PDF", data: doc.data }];
+  if (doc.kind === "pdf") return [{ id: uid(), t: "pdf", name: doc.name, size: doc.size || 0, label: "PDF", data: doc.data, prov: doc.prov, ptext: doc.ptext, ppages: doc.ppages }];
   if (doc.kind === "text") return [{ id: uid(), t: "text", name: doc.name, size: doc.size || 0, label: "TXT", text: doc.text }];
   return [];
 }

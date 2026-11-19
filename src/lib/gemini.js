@@ -42,7 +42,8 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { MODEL_FAST, MODEL_PRO, GATEWAY_URL, GATEWAY_TOKEN, API_BASE_URL, NET, PAID, cap, SERVICE_TIER } from "./config.js";
 import { tierOf, taskClass, mediaOf, estimateTokens, tierStages, planLanes, hedgeDelayMs, nextReadyIn, readyLanes, begin as laneBegin, noteOk, noteBusy, noteDead, noteTooBig, noteSlow, clearDead as clearDeadLanes, clearCool as clearCoolLanes, coolFor, setBias, isDead, isCooling } from "./router.js";
 import { makeGuard, REWRITE_AT, allowRetry } from "./guard.js";
-import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS, smallKeyGate, proofBusy, proofStart, proofEnd } from "./proof.js";
+import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS, smallKeyGate, proofBusy, proofStart, proofEnd, foldClaims, parseVerdicts, claimsGrounding } from "./proof.js";
+import { readSources } from "./sources.js";
 import {
   PROVIDERS, getExtKeys, getExtLanes, refreshLanes, markExtDead, getEngineMode, answerBudget, buildBody,
   streamChat, nativeChat, bearer, headersFor, liveExtKeys, extKeyList, keysChanged as extKeysChanged,
@@ -428,8 +429,18 @@ const writeMemo = (model, task, i) => { try { window.localStorage.setItem(memoKe
 
 const tempFor = (task) => (/^solve/.test(task) ? 0.2 : /^lesson/.test(task) ? 0.4 : 0.1);
 
-function genConfig(model, think, maxOut, task) {
+/* v3.43 · B2: the ANSWER line of the (existing) solve request is the first thing it writes → its token probabilities are a free confidence signal. Asked ONLY for the
+   solve task. A model that refuses the field is remembered (a 400 once per model), never asked again; a SMALL free key never probes (it only asks where a model is
+   already known to accept it), so no request is ever added. */
+const lpKey = (model) => `clinix:lp:${model}`;
+const lpMemo = (model) => { try { return window.localStorage.getItem(lpKey(model)); } catch (e) { return null; } };
+const lpSet = (model, v) => { try { window.localStorage.setItem(lpKey(model), v); } catch (e) { /* ignore */ } };
+export const wantsLogprobs = (model, task, apiKey) => /^solve/.test(task) && /gemini/.test(model) && lpMemo(model) !== "0" && (lpMemo(model) === "1" || !isSmallKey(apiKey));
+export const __resetLogprobMemo = (model) => { try { window.localStorage.removeItem(lpKey(model)); } catch (e) { /* ignore */ } };
+
+function genConfig(model, think, maxOut, task, logprobs) {
   const g = { maxOutputTokens: maxOut };
+  if (logprobs) { g.responseLogprobs = true; g.logprobs = 5; }
   if (is2x(model)) g.temperature = tempFor(task); // Gemini 3: keep Google's default temperature
   if (think) {
     const t = { ...think };
@@ -447,7 +458,7 @@ function readParts(json) {
   const parts = cand?.content?.parts || [];
   const text = parts.filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("");
   const alive = parts.some((p) => typeof p.text === "string"); // visible text OR a thought summary
-  return { text, alive, finish: cand?.finishReason || null, block: json?.promptFeedback?.blockReason || null, grounding: cand?.groundingMetadata || null };
+  return { text, alive, finish: cand?.finishReason || null, block: json?.promptFeedback?.blockReason || null, grounding: cand?.groundingMetadata || null, logprobs: cand?.logprobsResult || null };
 }
 
 async function fetchStream({ apiKey, model, body, signal, onText, onAlive, firstMs, idleMs = 45000, strictFirst = false }) {
@@ -465,7 +476,7 @@ async function fetchStream({ apiKey, model, body, signal, onText, onAlive, first
   let seenAlive = false;
   const waitFor = () => (strictFirst && !seenAlive ? ["first-byte", Math.max(500, firstMs - (Date.now() - t0))] : ["idle", idleMs]);
 
-  let full = "", finish = null, block = null, grounding = null, usage = null, tier = "", gwMs = 0;
+  let full = "", finish = null, block = null, grounding = null, usage = null, tier = "", gwMs = 0, lpAcc = null;
   const handle = (line) => {
     if (!line.startsWith("data:")) return;
     const payload = line.slice(5).trim();
@@ -480,6 +491,7 @@ async function fetchStream({ apiKey, model, body, signal, onText, onAlive, first
     if (r.finish) finish = r.finish;
     if (r.block) block = r.block;
     if (r.grounding) grounding = mergeGrounding(grounding, r.grounding);   // the pages Google Search used (sent in pieces, mostly at the end)
+    if (r.logprobs) lpAcc = { chosenCandidates: [...(lpAcc ? lpAcc.chosenCandidates : []), ...(r.logprobs.chosenCandidates || [])], topCandidates: [...(lpAcc ? lpAcc.topCandidates : []), ...(r.logprobs.topCandidates || [])] };
     if (r.text) { full += r.text; onText(full); }
   };
 
@@ -527,7 +539,7 @@ async function fetchStream({ apiKey, model, body, signal, onText, onAlive, first
     clearTimeout(timer);
     signal.removeEventListener("abort", link);
   }
-  return { text: full, finish, block, grounding, usage, tier, gwMs };
+  return { text: full, finish, block, grounding, usage, tier, gwMs, logprobs: lpAcc };
 }
 
 /* Native (non-streaming) fallback — used only if WebView fetch cannot reach Google. */
@@ -580,9 +592,10 @@ async function attemptModel({ apiKey, model, task, system, noSearchSystem, parts
   { const typical = typicalTtft(apiKey, model, taskClass(task)); if (typical > 0) { const adapted = Math.max(FIRST_FLOOR_MS.v, typical * 8); if (adapted < firstMs) { firstMs = adapted; strictFirst = true; } } }
   const rungs = ladderFor(model, spec);
   let idx = Math.min(readMemo(model, task), rungs.length - 1);
+  let lpOn = wantsLogprobs(model, task, apiKey);
   let searching = !!search && Date.now() >= _noSearchUntil;       // Google Search grounding: the model looks the facts up before it answers (v3.34: unless Google just refused the tool)
   for (;;) {
-    const body = { contents: [{ role: "user", parts }], generationConfig: genConfig(model, rungs[idx], maxOut, task) };
+    const body = { contents: [{ role: "user", parts }], generationConfig: genConfig(model, rungs[idx], maxOut, task, lpOn) };
     /* a request that goes out WITHOUT the search tool must not tell the model to search: it would claim a search it never made */
     const sys = search && !searching && noSearchSystem ? noSearchSystem : system;
     if (sys) body.systemInstruction = { parts: [{ text: sys }] };
@@ -599,9 +612,12 @@ async function attemptModel({ apiKey, model, task, system, noSearchSystem, parts
           { detail: `${model} · ${out.finish || out.block || "empty"}`, emptyReply: true, blocked: !!out.block });
       }
       writeMemo(model, task, idx);
+      if (lpOn && out.logprobs) lpSet(model, "1");
       return { ...out, searched: searching };
     } catch (e) {
       if (e.thinking && idx < rungs.length - 1) { idx += 1; continue; }
+      /* v3.43: this model refuses logprobs (a 400 that names them): remembered, the SAME request repeats without them */
+      if (lpOn && e && e.status === 400 && !e.thinking && /logprob/i.test(String(e.detail || e.message || ""))) { lpSet(model, "0"); lpOn = false; if (sentAt) refundSend(apiKey, model, sentAt); continue; }
       /* this model refuses the search tool (a 400 that mentions it): answer WITHOUT it rather than not at all; the app then says "no sources" */
       if (searching && e && e.status === 400 && !e.thinking && /tool|search|ground|retriev/i.test(String(e.detail || e.message || ""))) { searching = false; continue; }
       /* v3.34 · THE ROOT CAUSE of "the server is busy" on a chat question: every tutor answer carries the Google Search tool, and a 429 that is about the search
@@ -812,7 +828,8 @@ async function guardedTask(args, trace) {
     let pr;
     try { pr = await proofread(out.text, args); } finally { proofEnd(); }
     if (pr.applied.length) { out = { ...out, text: pr.text }; }
-    trace.guard = { ...(trace.guard || {}), proof: pr.applied.length, proofRan: pr.ran };
+    trace.guard = { ...(trace.guard || {}), proof: pr.applied.length, proofRan: pr.ran, claims: pr.verdicts ? pr.verdicts.length : 0 };
+    if (pr.verdicts && pr.verdicts.length) return { ...res, text: out.text, verdicts: pr.verdicts, claimList: pr.claimList, links: pr.links };
   }
   return { ...res, text: out.text };
 }
@@ -822,8 +839,13 @@ async function proofread(text, args) {
   const none = { text, applied: [], ran: false };
   try {
     if (!allowProof()) return none;
-    const chunks = chunkForProof(text);
+    let chunks = chunkForProof(text);
     if (!chunks.length) return none;
+    /* v3.43 · F3: the unresolved high-risk claims ride INSIDE this request (no new request). The chunk gives up exactly the room they take, so the request is never bigger than before. */
+    let claimList = [], system = PROOF_SYSTEM;
+    if (typeof args.claimsFor === "function") {
+      try { const f = foldClaims(chunks, args.claimsFor(text)); chunks = f.chunks; claimList = f.claims; if (claimList.length) system = PROOF_SYSTEM + f.systemAdd; } catch (e) { claimList = []; }
+    }
     const lists = getModelLists(args.apiKey);
     const fast = lists.fast || [];
     const room = (m) => !finishedToday(args.apiKey, m) && paceMs(args.apiKey, m) === 0;                  // never wake a model that is resting: that is how an extra request turns into a wait for the next real one
@@ -834,14 +856,17 @@ async function proofread(text, args) {
     if (args.signal) args.signal.addEventListener("abort", stop, { once: true });
     const timer = setTimeout(stop, PROOF_MS);
     try {
-      const lists2 = await Promise.all(chunks.map((c) =>
-        runTaskInner({
-          apiKey: args.apiKey, task: "words:proof", signal: ctl.signal, models, system: PROOF_SYSTEM, parts: [{ text: c }],
+      const grounded = claimsGrounding() && claimList.length > 0;
+      const results = await Promise.all(chunks.map((c, i) => {
+        const sys = i === 0 ? system : PROOF_SYSTEM;
+        return runTaskInner({
+          apiKey: args.apiKey, task: "words:proof", signal: ctl.signal, models, system: sys, noSearchSystem: sys, search: grounded && i === 0, parts: [{ text: c }],
           spec: { levels: ["minimal", "low"], budget: 0 }, maxOut: 700, hedgeMs: 3500, firstMs: 3500, idleMs: 3000,
         }, { task: "words:proof", t0: Date.now(), slept: 0, attempts: [], hedges: 0 })
-          .then((r) => parseProof(r && r.text)).catch(() => [])));
-      const r = applyProof(text, lists2.flat());
-      return { ...r, ran: true };
+          .then((r) => ({ fixes: parseProof(r && r.text), verdicts: i === 0 ? parseVerdicts(r && r.text) : [], links: i === 0 && r && r.grounding ? readSources(r.grounding).links : [] })).catch(() => ({ fixes: [], verdicts: [], links: [] }));
+      }));
+      const r = applyProof(text, results.flatMap((x) => x.fixes));
+      return { ...r, ran: true, verdicts: results.flatMap((x) => x.verdicts), claimList, links: results.flatMap((x) => x.links) };
     } finally { clearTimeout(timer); if (args.signal) args.signal.removeEventListener("abort", stop); }
   } catch (e) { return none; }                         // a proofreader problem must never become the student's problem
 }

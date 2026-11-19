@@ -14,6 +14,10 @@ import { getModelLists, runTask } from "./gemini.js";
 import { materialFor } from "./library.js";
 import { sourceParts } from "./docs.js";
 import { fixText, ARABIC_RULE } from "./text.js";
+import { tagExamItem, trustCounts } from "./examtrust.js";
+import { ensureKb } from "./trust.js";
+import { buildSourceModel } from "./provenance.js";
+import { inferProfile } from "./profile.js";
 
 /* ── does this message ask for an exam? ── */
 const CREATE = /(اعمل|اعملي|اعملّي|اعملى|اعملّى|هات|هاتلي|جهز|جهزلي|جهّز|اطلع|اطلعلي|ولد|ولّد|صمم|صمّم|اكتب|اكتبلي|ابني|اديني|عايز|عاوز|عاوزه|عايزه|محتاج|أريد|اريد|make|create|generate|give|build|prepare|write|i want|i need)/i;
@@ -176,8 +180,11 @@ function planBatches(count, hasFiles) {
 
 const OWN_RE = /(أسئلتي|اسئلتي|أسئلتى|ذاكرت|ذاكرتها|شروحاتي|شرحي|مادتي|المكتبة|من اللي|saved|my (own )?(questions|notes|library|material))/i;
 
-export async function makeExam({ apiKey, request, questions, topics, focusId, focusTopicId, attach = [], extra = "", signal, onStatus, onProgress }) {
+export async function makeExam({ apiKey, request, questions, topics, focusId, focusTopicId, attach = [], extra = "", signal, onStatus, onProgress, profile: profileArg }) {
   const count = examCount(request);
+  /* v3.43.1 · every item is evaluated and tagged the moment it is complete (before the student sees it). The KB loads in the background while the first request is in flight. */
+  const profile = profileArg || inferProfile(`${request} ${extra}`);
+  ensureKb(profile).catch(() => {});
   const lists = getModelLists(apiKey);
   const models = [...lists.fast, ...lists.pro];
   const mat = materialFor({ questions, topics, query: request, focusId, focusTopicId });
@@ -209,9 +216,14 @@ export async function makeExam({ apiKey, request, questions, topics, focusId, fo
       onProgress({ title: fixText(title || "امتحان").slice(0, 80), intro: fixText(intro).slice(0, 240), questions: list, total: count, loading: !allDone && list.length < count });
     }
   };
+  /* the student's own source for citation-first grounding: the files attached to THIS exam (their PDF text layer / text / audio transcripts) + the saved lessons the exam was built from.
+     Built lazily on the first item (never before the first request), once. */
+  let _sm = null;
+  const sourceModel = () => _sm || (_sm = buildSourceModel({ items: [...attach, ...(useMat ? [{ t: "text", name: (mat.titles && mat.titles.join(", ")) || "saved lessons", text: mat.text, lesson: true }] : [])] }));
+  const tagged = (q) => (q ? tagExamItem(q, { profile, sourceModel: sourceModel() }) : q);         // evaluated + tagged once; an item, once seen, is never changed afterwards
   const absorb = (b, text) => {          // an item, once seen, is never changed afterwards (a restarted answer cannot rewrite what is on screen)
     const found = scanItems(text);
-    for (let j = b.seen; j < found.length; j++) b.items_out.push(cleanQuestion(found[j]));
+    for (let j = b.seen; j < found.length; j++) b.items_out.push(tagged(cleanQuestion(found[j])));
     b.seen = Math.max(b.seen, found.length);
     if (b.withMeta) { title = title || metaOf(text, "title"); intro = intro || metaOf(text, "intro"); }
   };
@@ -239,7 +251,7 @@ export async function makeExam({ apiKey, request, questions, topics, focusId, fo
       });
       absorb(b, res.text);
       if (!b.items_out.some(Boolean)) {                 // the streamed scan found nothing usable → parse the whole reply once
-        try { (parseJson(res.text).questions || []).forEach((q) => b.items_out.push(cleanQuestion(q))); } catch (e) { /* handled by the count check below */ }
+        try { (parseJson(res.text).questions || []).forEach((q) => b.items_out.push(tagged(cleanQuestion(q)))); } catch (e) { /* handled by the count check below */ }
       }
     } catch (e) {
       if (e && e.name === "AbortError") return;
@@ -285,6 +297,6 @@ export async function makeExam({ apiKey, request, questions, topics, focusId, fo
       title: fixText(title || "امتحان").slice(0, 80), intro: fixText(intro).slice(0, 240), questions: list, total: list.length, loading: false,
       answers: {}, cur: 0, done: false, at: Date.now(),
     },
-    requested: count, short: list.length < count, fromMaterial: useMat && !!mat.matched, titles: mat.titles,
+    trust: trustCounts(list), requested: count, short: list.length < count, fromMaterial: useMat && !!mat.matched, titles: mat.titles,
   };
 }

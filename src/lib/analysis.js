@@ -15,9 +15,19 @@ import { buildOcrPrompt, buildWordsPrompt, buildSolvePrompt, buildLessonPrompt, 
 import { createSlicedLesson, shouldSlice } from "./lessonflow.js";
 import { fixText, ARABIC_RULE } from "./text.js";
 import { cleanOcr, cleanWords, cleanBrief, splitReason } from "./parse.js";
+import { inferProfile, profileKey } from "./profile.js";
+import { ensureKb, verifyText } from "./trust.js";
+import { buildSourceModel } from "./provenance.js";
+import { cleanResidue } from "./accuracy.js";
+import { kbReady } from "./kb/index.js";
+import { render, indexSource, HIGH_RISK } from "./accuracy.js";
+import { stats as trustStats } from "./trust.js";
+import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
+import { selectClaims, applyCached, applyVerdicts } from "./claims.js";
+import { addGaps } from "./reports.js";
 import { getModelLists, runTask } from "./gemini.js";
 import { weakFirst } from "./router.js";
-import { sourceParts, sourceNote } from "./docs.js";
+import { sourceParts, sourceNote, itemsFromSaved } from "./docs.js";
 import { createFileCache, looksLikeFileError } from "./gfiles.js";
 import { stageOf, summarize } from "./latency.js";
 import { isSmallKey, orderForTask } from "./quota.js";
@@ -34,10 +44,11 @@ const SIMPLE_CFG = {
   words: { tier: "fast", levels: ["low", "minimal"], budget: 1024, maxOut: 12000, firstMs: 45000, idleMs: 30000 },   // 1024: the model has to check every word's CEFR level, a few more thinking tokens make that check honest
 };
 
+const has = (ids, id) => Array.isArray(ids) && ids.includes(id);
 const isAbort = (err) => !err || err.name === "AbortError";
 const secs = (ms) => Math.round(ms / 100) / 10;
 
-export function createAnalysis({ kind = "question", history, dataUrl, doc, extra, chips, apiKey, modeId, onUpdate, onDone, onError, onNotice }) {
+export function createAnalysis({ kind = "question", history, dataUrl, doc, extra, chips, apiKey, modeId, profile: profileArg, onUpdate, onDone, onError, onNotice, onTrust }) {
   const L = kind === "lesson";                 // study material (books, notes, slides, pasted text) instead of one exam question
   const mode = MODES[modeId] || MODES.balanced;
   const wordsCap = L ? { a: Math.round(mode.write.words.a * 1.7), b: Math.round(mode.write.words.b * 1.4) } : mode.write.words;
@@ -45,6 +56,87 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   const src = sourceParts(doc, dataUrl);       // the screenshot, the PDF or the text document
   const note = sourceNote(doc, extra, kind);   // "" for a plain screenshot
   const live = {};
+
+  /* ── v3.43 · the accuracy architecture around the SAME requests (no request, token or wait is added) ── */
+  let ocrText = "", assess = null, briefRaw = "";
+  const verdictLog = [];                                        // {claimList, verdicts, links} of every proof request that carried claims
+  /* ONE source model for every source type (lib/provenance.js): text / Word / audio / a PDF's text layer / the extraction stage's OCR of a screenshot or scanned PDF */
+  let extraction = null;                                        // { sourceType, text, complete } — what the extraction STAGE read (the only text a screenshot or scanned PDF ever has)
+  const srcItems = () => (doc ? itemsFromSaved(null, doc) : dataUrl ? [{ t: "image", name: "image" }] : []);
+  const srcTypeOf = () => { const it = srcItems(); return it.some((x) => x.t === "image") ? "image" : it.some((x) => x.t === "pdf") ? "pdf" : "text"; };
+  let _model = null, _modelKey = "";
+  const srcModel = () => {                                      // built once per extraction state (items never change during an analysis): never on the request path twice
+    const key = extraction ? `${extraction.complete}:${extraction.text.length}` : "-";
+    if (_model && _modelKey === key) return _model;
+    _modelKey = key;
+    return (_model = buildSourceModel({ items: srcItems(), extractions: extraction ? [{ ...extraction }] : [] }));
+  };
+  let _prof = null, _profKey = "";
+  const sample = () => (doc ? itemsFromSaved(null, doc).map((x) => (x.t === "text" ? x.text : x.t === "pdf" ? x.ptext || "" : "")).join("\n").slice(0, 20000) : "");   // a keyword scan needs a sample, not the whole book
+  const prof = () => {
+    if (profileArg) return profileArg;
+    const key = String(ocrText.length);
+    if (_prof && _profKey === key) return _prof;
+    _profKey = key;
+    return (_prof = inferProfile(`${ocrText}\n${sample()}`));
+  };
+  ensureKb(prof()).catch(() => {});                              // lazy, off the critical path: the KB loads while the first request is in flight
+  const emitTrust = (t) => { try { onTrust && onTrust(t); } catch (e) { /* the UI must never break the analysis */ } };
+
+  /* the solve stage's result → the brief for the lesson parts (+ its TIER) and the first assessment (banner appears as soon as the solve ends) */
+  const takeBrief = (res) => {
+    const brief = cleanBrief(res && res.text) || null;
+    if (!brief) return null;
+    briefRaw = brief;
+    try {
+      assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: ocrText, profile: prof() });
+      /* when no OCR stage ran (small keys skip it), the solve brief IS the model's reading of the image: its DATA / KEYWORD / options become a PARTIAL extraction, so the image is never an empty source */
+      if (!extraction) { const pb = parseBrief(brief); const t = cleanResidue([pb.data, pb.keyword, pb.concepts, ...pb.options.map((o) => o.why)].filter(Boolean).join("\n")); if (t.trim()) extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "solve-brief" }; }
+      emitTrust({ phase: "solve", assess, banner: makeBanner(assess, has(chips, "en") ? "en" : "ar") });
+      return `${brief}\nTIER: ${assess.tier}`;
+    } catch (e) { return brief; }
+  };
+
+  /* claims for the proof request: unresolved high-risk sentences of THIS part (never on a small key: proof itself is skipped there) */
+  const claimsFor = (text) => {
+    const p = prof();
+    if (!kbReady(p)) return [];
+    const r = verifyText({ text, sourceModel: srcModel(), profile: p, part: kind === "lesson" ? "A" : "B", brief: briefRaw });
+    applyCached(r.items);
+    return selectClaims(r.items);
+  };
+
+  /* the final text → patched in place (F1 + F2 + verdicts + B8). Streaming text is shown as written; this is the "late patch". */
+  const trustPass = (data) => {
+    try {
+      if (!data || typeof data.explanation !== "string" || !data.explanation.trim()) return data;
+      const p = prof(), L = kind === "lesson", part = L ? "A" : "B";
+      const model = srcModel();                                    // the same model for typed text, Word, audio, PDF and screenshots
+      const run = (t) => {
+        const r = verifyText({ text: t, sourceModel: model, profile: p, part, brief: briefRaw, titles: (history || []).map((h) => h.title) });
+        applyCached(r.items);
+        for (const v of verdictLog) applyVerdicts(r.items, v.claimList || [], v.verdicts || [], { links: v.links, profile: p });
+        r.text = render(r);
+        r.stats = trustStats(r, r.patches, r.gaps, { cards: r.cards, conflicts: r.conflicts });
+        return r;
+      };
+      const rx = run(data.explanation);
+      let ex = rx.text, mismatch = false;
+      if (!L && assess) { const rec = reconcileLesson(ex, assess, has(chips, "en") ? "en" : "ar"); ex = rec.text; mismatch = rec.mismatch; }
+      const rt = data.tricks ? run(data.tricks) : null;
+      const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
+      addGaps(p, gaps);
+      const all = rt ? [rx, rt] : [rx];
+      emitTrust({
+        phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
+        stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
+        cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
+        patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
+      });
+      return { ...data, explanation: ex, tricks: rt ? rt.text : data.tricks };
+    } catch (e) { return data; }                                 // an accuracy-layer problem must never become the student's problem
+  };
+  { const _u = onUpdate; onUpdate = (name, data, meta) => _u(name, name === "reason" && meta && meta.final ? trustPass(data) : data, meta); }
 
   /* v3.32 · where did the time go? Every model call of this analysis leaves a trace (gemini.js → onReport); when a stage finishes, its traces are
      summarised (latency.js) and travel with the "done" message as `lat`, so the screen can say "ضاع 310ث في 503×2" instead of just "409ث". */
@@ -72,13 +164,15 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         spec: { levels: cfg.levels, budget: cfg.budget },
         maxOut: cfg.maxOut, firstMs: cfg.firstMs, idleMs: cfg.idleMs,
         signal, onText, onReport: (t) => reports.push(t),
+        claimsFor: /^lesson/.test(task) ? claimsFor : undefined,
         onNotice: onNotice ? (x) => onNotice(/^(solve|lesson)/.test(task) ? "reason" : task, x) : undefined,   // "Google is busy, trying again (n of 3)" → a calm note, not an error
       });
     };
-    try { return await call(true); }
+    const keep = (r) => { if (r && r.verdicts && r.verdicts.length) verdictLog.push({ claimList: r.claimList, verdicts: r.verdicts, links: r.links }); return r; };
+    try { return keep(await call(true)); }
     catch (e) {
       /* Google could not use the uploaded file → send everything inline from now on (exactly the old behaviour) and repeat this request */
-      if (files.used && !isAbort(e) && !(signal && signal.aborted) && looksLikeFileError(e)) { files.disable(); return call(false); }
+      if (files.used && !isAbort(e) && !(signal && signal.aborted) && looksLikeFileError(e)) { files.disable(); return keep(await call(false)); }
       throw e;
     }
   };
@@ -90,8 +184,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   /* ── ocr + words: one stage each ── */
   const SIMPLE = {
     ocr: L
-      ? { prompt: () => buildStudySummaryPrompt(chips, extra), apply: (full) => ({ original_question_text: fixText(String(full || "").replace(/^```[a-z]*\n?|\n?```$/gim, "").trim()) }) }
-      : { prompt: () => buildOcrPrompt(), apply: (full) => ({ original_question_text: cleanOcr(full) }) },
+      ? { prompt: () => buildStudySummaryPrompt(chips, extra, prof()), apply: (full) => { const t = cleanResidue(fixText(String(full || "").replace(/^```[a-z]*\n?|\n?```$/gim, "").trim())); extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "map" }; return { original_question_text: t }; } }
+      : { prompt: () => buildOcrPrompt(), apply: (full) => { const t = cleanResidue(cleanOcr(full)); ocrText = t; extraction = { sourceType: srcTypeOf(), text: t, complete: true, name: "ocr" }; return { original_question_text: t }; } },
     words: { prompt: () => buildWordsPrompt(chips, kind), apply: (full, final) => ({ new_words: cleanWords(full, final) }) },
   };
 
@@ -154,7 +248,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs }
         : L ? (mode.writeA || mode.write) : mode.write;
-      const prompt = L ? buildStudyLessonPrompt({ history, extra, chips, words }) : buildLessonPrompt({ history, brief, extra, chips, words });
+      const prompt = L ? buildStudyLessonPrompt({ profile: prof(), history, extra, chips, words }) : buildLessonPrompt({ history, brief, extra, chips, words });
       stage(`lesson${brief ? "B" : "X"}:${mode.id}`, cfg, prompt, sig, (full, m) => {
         text = full; model = m; emit(false);
       }).then((res) => {
@@ -171,8 +265,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     /* deep mode only: a careful, silent strong-model solve → its short verified brief grounds the lesson.
        Balanced mode skips it (the lesson request thinks by itself): 3 requests per analysis instead of 5. */
     if (L || mode.id !== "deep") writeLesson(null);
-    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(), sig, () => {})
-      .then(({ text: t }) => { tSolve = since(); writeLesson(cleanBrief(t) || null); })
+    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {})
+      .then((r0) => { tSolve = since(); writeLesson(takeBrief(r0)); })
       .catch((err) => {
         if (isAbort(err) || sig.aborted) return;
         if (err.fatal || err.busy) return fail(err);   // Google is overloaded: another request right now would only make it worse
@@ -241,7 +335,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     });
 
     /* part A: no answer needed → starts at once */
-    run("a", `lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ history, extra, chips, words: wordsCap.a }));
+    run("a", `lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }));
 
     /* the two short parts that need the verified answer */
     const startBC = (brief) => {
@@ -263,8 +357,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         return run("m", `lessonBm:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b }));
       }
       if (L) {
-        run("m", `lessonM:${mode.id}`, cfgM, buildStudyBPrompt({ history, extra, chips, words: wordsCap.b, part: "main" }));
-        run("t", `lessonT:${mode.id}`, cfgT, buildStudyBPrompt({ history, extra, chips, words: wordsCap.b, part: "traps" }));
+        run("m", `lessonM:${mode.id}`, cfgM, buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b, part: "main" }));
+        run("t", `lessonT:${mode.id}`, cfgT, buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b, part: "traps" }));
       } else {
         run("m", `lessonM:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "main" }));
         run("t", `lessonT:${mode.id}`, cfgT, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "traps" }));
@@ -287,8 +381,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         startBC(brief);
       };
       timer = setTimeout(() => { if (moved || sig.aborted) return; boxed = true; solveCtrl.abort(); go(null); }, SOLVE_BOX[mode.id] || 30000);
-      stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(), solveCtrl.signal, () => {})
-        .then(({ text }) => { if (boxed || sig.aborted) return; go(cleanBrief(text) || null); })
+      stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), solveCtrl.signal, () => {})
+        .then((r0) => { if (boxed || sig.aborted) return; go(takeBrief(r0)); })
         .catch((err) => {
           if (boxed || sig.aborted || isAbort(err)) return;
           if (err.fatal || err.busy) { moved = true; clearTimeout(timer); return fail(err); }
@@ -344,8 +438,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
 
     /* deep mode only: the careful silent solve. Balanced mode skips it (part B thinks by itself). */
     if (L || mode.id !== "deep") { S.t.solve = 0; startB(null); }
-    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(), sig, () => {})
-      .then(({ text }) => { S.t.solve = since(); startB(cleanBrief(text) || null); })
+    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {})
+      .then((r0) => { S.t.solve = since(); startB(takeBrief(r0)); })
       .catch((err) => {
         if (isAbort(err) || sig.aborted) return;
         if (err.fatal || err.busy) return fail(err);
@@ -353,7 +447,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         startB(null);
       });
 
-    stage(`lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ history, extra, chips, words: wordsCap.a }), sig, (full, model) => {
+    stage(`lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }), sig, (full, model) => {
       S.a = full; S.aModel = model; emit(false);
     }).then(({ text, model }) => {
       S.a = text; S.aModel = model; S.aDone = true; S.t.a = since();
@@ -370,7 +464,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? mode.write
         : { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs };
-      stage(`${brief ? "lessonB" : "lessonBx"}:${mode.id}`, cfg, L ? buildStudyBPrompt({ history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b }), sig, (full, model) => {
+      stage(`${brief ? "lessonB" : "lessonBx"}:${mode.id}`, cfg, L ? buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b }), sig, (full, model) => {
         S.b = full; S.bModel = model; emit(false);
       }).then(({ text, model }) => {
         S.b = text; S.bModel = model; S.bDone = true;
@@ -390,9 +484,9 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const flow = createSlicedLesson({
       stage,
       prompts: {
-        head: (w) => buildStudyHeadPrompt({ history, extra, chips, words: w }),
-        slice: (o) => buildStudySlicePrompt({ history, extra, chips, ...o }),
-        tail: (w) => buildStudyTailPrompt({ history, extra, chips, words: w }),
+        head: (w) => buildStudyHeadPrompt({ profile: prof(), history, extra, chips, words: w }),
+        slice: (o) => buildStudySlicePrompt({ profile: prof(), history, extra, chips, ...o }),
+        tail: (w) => buildStudyTailPrompt({ profile: prof(), history, extra, chips, words: w }),
       },
       cfg: {
         head: { ...mode.write, maxOut: Math.min(mode.write.maxOut, 8000) },
