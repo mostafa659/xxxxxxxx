@@ -85,14 +85,15 @@ test("the reference not being loaded never produces a ✓ (conservative), and ta
   assert.equal(trustOf({}), "ungrounded");
 });
 
-test("saved mistakes: an «ungrounded» exam item is skipped automatically, «reference» / «verified» are saved, and the student can still save one by choice", async () => {
+test("saved mistakes: an «ungrounded» (no coverage) item is saved like the others, and the student can still save one by choice", async () => {
   await KB.loadKb(GEN);
   __setState([]);
   const un = tag({ stem: "Unresolved question number one?", rationale: "Because." });
   const pe = tag();
   assert.equal(un.trust, "ungrounded"); assert.equal(pe.trust, "reference");
-  assert.equal(mistakeEligible(un), false); assert.equal(mistakeEligible(pe), true);
-  assert.equal(recordAnswer(un, [1]), "skipped");
+  assert.equal(mistakeEligible(un), true, "v3.45: no coverage is not a concern"); assert.equal(mistakeEligible(pe), true);
+  assert.equal(recordAnswer(un, [1]), "new");
+  __setState([]);
   assert.equal(recordAnswer(pe, [1]), "new");
   assert.equal(shapeMistakes(JSON.parse(JSON.stringify({ list: [] }))).length, 0);
   assert.equal(recordAnswer(un, [1], { force: true }), "new", "the student's own decision");

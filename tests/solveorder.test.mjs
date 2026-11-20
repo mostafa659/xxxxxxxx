@@ -15,7 +15,6 @@ import { setExtKeys, setEnginePrefs } from "../src/lib/providers.js";
 import { createAnalysis } from "../src/lib/analysis.js";
 
 const base = JSON.parse(fs.readFileSync(new URL("./baseline/v3.42-budget.json", import.meta.url), "utf8"));
-const out42 = JSON.parse(fs.readFileSync(new URL("./baseline/v3.42-solve-output.json", import.meta.url), "utf8"));
 const NCLEX = inferProfile("nclex nurse"), GEN = { discipline: "general", exam: "", region: "" };
 const tok = (p) => estimateTokens(p.system, [{ text: p.user }], 0);
 
@@ -32,6 +31,14 @@ test("the solve prompt orders the fields PREMISE → ANSWER → … and tells th
   }
 });
 
+test("the solver DATA field preserves explicit numeric inputs for the deterministic calculator without inflating lesson prompts", () => {
+  const solve = P.buildSolvePrompt(GEN).system;
+  assert.match(solve, /DATA: <all decisive numerical inputs relevant to calculations/);
+  for (const prompt of [P.buildLessonPrompt({ profile: GEN, history: [], brief: "", extra: "", chips: [], words: 100 }), P.buildLessonBPrompt({ profile: GEN, history: [], brief: "", extra: "", chips: [], words: 100 })]) {
+    assert.ok(!prompt.system.includes("===CLINICAL_DATA==="));
+  }
+});
+
 test("BUDGET · prompt tokens ≤ the frozen v3.42 baseline (heaviest profile line included), thinking budget and output cap unchanged", () => {
   const was = base.prompts.solve.tokens;
   assert.ok(tok(P.buildSolvePrompt(NCLEX)) <= was, `${tok(P.buildSolvePrompt(NCLEX))} > ${was}`);
@@ -40,14 +47,14 @@ test("BUDGET · prompt tokens ≤ the frozen v3.42 baseline (heaviest profile li
   for (const [id, m] of Object.entries(base.modes)) { assert.equal(MODES[id].solve.maxOut, m.solveMaxOut, id); assert.equal(MODES[id].solve.budget, m.solveBudget, id); }
 });
 
-test("BUDGET · worst-case OUTPUT words of the brief (read from the caps in the prompt) ≤ v3.42, for 5- and 6-option items, with and without CALC", () => {
+test("BUDGET · the numerical-data handoff remains bounded for 5- and 6-option calculation items", () => {
   const caps = outputCaps(P.buildSolvePrompt(NCLEX).system);
-  assert.deepEqual({ premise: caps.premise, data: caps.data, dataWithCalc: caps.dataWithCalc, calc: caps.calc, option: caps.option, rationale: caps.rationale }, { premise: 20, data: 24, dataWithCalc: 10, calc: 25, option: 15, rationale: 0 });
+  assert.deepEqual({ premise: caps.premise, data: caps.data, calc: caps.calc, option: caps.option, rationale: caps.rationale }, { premise: 20, data: 80, calc: 60, option: 15, rationale: 0 });
   const rows = [];
-  for (const [n, was] of [[5, out42.worst5], [6, out42.worst6]]) for (const calc of [false, true]) {
+  for (const n of [5, 6]) for (const calc of [false, true]) {
     const now = worstWords(caps, n, calc);
-    rows.push(`${n} options${calc ? "+CALC" : ""}: ${was}→${now}`);
-    assert.ok(now <= was, `${n} options calc=${calc}: ${now} > ${was}`);
+    rows.push(`${n} options${calc ? "+CALC" : ""}: ${now} words`);
+    assert.ok(now <= 300, `${n} options calc=${calc}: ${now} exceeds the bounded handoff budget`);
   }
   console.log("# worst-case output words: " + rows.join(" · "));
   assert.ok(caps.premise * 1.3 <= 30, "the premise stays within ≈ 25-30 tokens");
@@ -74,6 +81,18 @@ const stream = (pre, p) => {
   const chosen = [...pre.map((t) => tk(t, 0.9)), tk("ANSWER", 1), tk(":", 1), tk(" B", p), tk("\n", 1)];
   return { chosenCandidates: chosen, topCandidates: chosen.map((c, i) => ({ candidates: i === chosen.length - 2 ? [tk(" B", p), tk(" A", 1 - p - 0.001)] : [c] })) };
 };
+
+test("the solve stage refuses inconsistent numeric readings from the OCR and solver passes", () => {
+  const raw = [
+    "PREMISE: A measured osmolality gap requires the exact same-sample values.",
+    "ANSWER: A", "TYPE: calculation", "KEYWORD: calculate", "CONCEPTS: osmolality; toxicology",
+    "DATA: Na=140 mmol/L; Glucose=90 mg/dL; BUN=14 mg/dL; MeasuredOsm=300 mOsm/kg",
+    "OPTIONS:", "A) ✅ OG = 10 mOsm/kg", "B) ❌ OG = 46 mOsm/kg", "CONFIDENCE: high",
+  ].join("\n");
+  const a = S.assessSolve({ raw, stem: "Osmolal gap", sourceDataText: "Na=140 mmol/L; Glucose=90 mg/dL; BUN=14 mg/dL; MeasuredOsm=336 mOsm/kg", profile: GEN });
+  assert.equal(a.tier, "LOW");
+  assert.ok(a.clinicalCalculationAudit.conflicts.some((x) => x.code === "extraction-measuredosm-mismatch"));
+});
 
 test("tiers: no premise (or one written after the answer) caps the tier at MEDIUM even for a calibrated profile; a premise-first brief can reach HIGH", async () => {
   const cal = await import("../src/lib/calibration.js");
@@ -122,3 +141,4 @@ test("end to end: the premise rides in the brief to the lesson writer, the solve
   const s = trust.find((t) => t.phase === "solve");
   assert.equal(s.assess.premise, "PREMMARK-5521 unstable patient."); assert.equal(s.assess.premiseFirst, true);
 });
+

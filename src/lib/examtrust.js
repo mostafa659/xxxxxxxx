@@ -13,7 +13,8 @@
      memorize         verified; or grounded AND not safety-critical (it is the student's own material, but doses / contraindications need an official reference).
                       Never reference-only, conflict or ungrounded.
    Not here (by design): the F3 claims-in-the-proof-request check — exam items are final when shown. Unresolved high-risk statements go to the KB gap list.
-   Legacy tags map: pending → reference, unverified → ungrounded. */
+   Legacy tags map: pending → reference, unverified → ungrounded.
+   v3.45 · the tier is the INTERNAL audit tag. What a student sees is derived from it (lib/studentview.js → examView): only a concrete risk is a warning; «reference» / «ungrounded» (no coverage) are silent. */
 import { cleanResidue, splitText, classify, norm, HIGH_RISK, SAFETY_CRITICAL, anchorsOf, tokens } from "./accuracy.js";
 import { checkItems } from "./kb/check.js";
 import { patientOf } from "./kb/ranges.js";
@@ -21,7 +22,7 @@ import { kbReady } from "./kb/index.js";
 import { inferProfile } from "./profile.js";
 import { addGaps } from "./reports.js";
 import { groundSentence, provLabel } from "./provenance.js";
-import { normalizeTrust, mistakeEligible, memorizeEligible } from "./mistakes.js";
+import { normalizeTrust, mistakeEligible, memorizeEligible, concernOf } from "./mistakes.js";
 
 export const TIERS = ["verified", "grounded", "reference", "conflict", "ungrounded"];
 export { normalizeTrust, mistakeEligible, memorizeEligible };
@@ -144,6 +145,7 @@ export function tagExamItem(q, { profile, now = Date.now(), record = true, sourc
   else if (g.state === "grounded" || support.includes("reference")) trust = "reference";
   else why.push(support.includes("outdated") ? "the only reference backing the key may be outdated" : "nothing anchors the key: it is the generator's own claim");
   q.trust = trust; q.trustNote = TRUST_NOTE[trust]; q.trustWhy = why; q.trustFlags = [...conflicts, ...defects];
+  q.trustConcern = concernOf(q);          // v3.45: true only for a CONCRETE risk (the student-facing layer and saved mistakes read this; `trust` stays the full internal audit tier)
   if (g.state === "grounded") q.trustProv = { ...g.prov, snippet: g.source, label: provLabel(g.prov, "en") };
   if (patches.length) q.trustPatches = patches.map((p) => ({ before: p.before, after: p.after, fact: p.fact }));
   if (record) addGaps(prof, gaps.filter((x) => HIGH_RISK.has(x.kind)));

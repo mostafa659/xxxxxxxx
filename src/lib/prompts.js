@@ -119,11 +119,11 @@ ANSWER: <letter(s), e.g. B or A, C, E; multi-part items: one line per blank, row
 TYPE: <priority | safety | pharmacology | lab values | SATA | calculation | matrix | cloze | bow-tie …>
 KEYWORD: <the decisive keyword and what it demands, max 10 words>
 CONCEPTS: <2 to 4 core concepts separated by ";">
-DATA: <the decisive numbers, labs with units, ages, times and findings, copied verbatim from the image, max 24 words (max 10 when CALC is used)>
+DATA: <all decisive numerical inputs relevant to calculations, exact values and units as key=value pairs; max 80 words; omit fields not present>
 OPTIONS:
 A) ✅ or ❌ <why, max 15 words>
 (one line for EVERY option)
-CALC: <ONLY for a calculation, dose or unit item, max 25 words: steps separated by ";" , e.g. 15 mg/kg × 70 kg = 1050 mg; 1050 mg = 1.05 g>
+CALC: <ONLY for a calculation, dose or unit item, max 60 words: show each applicable formula, substitution, result and unit; do not use a guessed input>
 CONFIDENCE: <high | medium | low> — if not high, one short reason (unreadable detail, missing information, two defensible options).${line ? "\n\n" + line : ""}`,
     user: "Analyze the question in the image and output the analysis.",
   };
@@ -255,7 +255,7 @@ export function buildLessonBPrompt({ profile, history, brief, extra, chips, word
       ? "\nA third tutor writes the step-by-step thinking, every option and the answer at the same moment. Do NOT write them: you write ONLY the memory sentences and the traps described below."
       : "";
   const ground = brief
-    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. Its TIER line says how far the analysis can be trusted: if it is MEDIUM or LOW write the answer as the most likely one (the app adds the warning itself).`
+    ? `The user message contains a preliminary solve brief. Use it as the starting analysis, NOT as unquestionable ground truth. Re-read the original question and options, verify that every stated datum is actually present, and independently check the decisive reasoning. Reconcile the brief with any supplied specialized references, their applicability conditions and exceptions. If the brief clearly conflicts with the question or a directly applicable, approved reference, correct the answer before teaching. Never invent missing case data.`
     : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else) and double-check it against every option. Then teach.`;
   return {
     system: `${CORE(true)}
@@ -265,6 +265,7 @@ YOU WRITE PART 2 OF 2. A first tutor writes part 1 (what the question asks, deco
 The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
 
 ${ground}
+
 
 ${TEACH}
 • For every wrong option, say what it would be right for ("this would be correct if …"), so one question teaches him the whole topic.
@@ -311,7 +312,7 @@ ${styleTail(chips, extra, profile)}${linkBlock(history, "question")}Start direct
 export function buildLessonPrompt({ profile, history, brief, extra, chips, words }) {
   const H = headings(chips);
   const ground = brief
-    ? `The user message contains a VERIFIED ANALYSIS made by a senior item analyst who already solved this question with deep reasoning. Treat its ANSWER as ground truth: never change it and never doubt it — your job is to TEACH it. Use the analysis, the image and your own knowledge to explain; every conclusion you write must agree with the analysis. Its TIER line says how far the analysis can be trusted: if it is MEDIUM or LOW write the answer as the most likely one (the app adds the warning itself).`
+    ? `The user message contains a preliminary solve brief. Use it as the starting analysis, NOT as unquestionable ground truth. Re-read the original question and options, verify that every stated datum is actually present, and independently check the decisive reasoning. Reconcile the brief with any supplied specialized references, their applicability conditions and exceptions. If the brief clearly conflicts with the question or a directly applicable, approved reference, correct the answer before teaching. Never invent missing case data.`
     : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else): work it twice (predict from the stem alone, then eliminate option by option), check the decisive keyword (FIRST, BEST, EXCEPT, NEXT …) and its polarity, and double-check against every option. Then teach.`;
   return {
     system: `${CORE(true)}
@@ -321,6 +322,7 @@ YOU WRITE THE WHOLE LESSON IN ONE ANSWER: the explanation AND the traps. Write O
 The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
 
 ${ground}
+
 
 ${TEACH}
 • For every wrong option, say what it would be right for ("this would be correct if …"), so one question teaches him the whole topic.

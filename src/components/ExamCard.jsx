@@ -3,16 +3,12 @@ import Icon from "./Icon.jsx";
 import { RichText } from "./rich.jsx";
 import { recordAnswer, removeMistake, mistakeId } from "../lib/mistakes.js";
 import { tagExamItem } from "../lib/examtrust.js";
-import { normalizeTrust } from "../lib/mistakes.js";
+import { examView, isDeveloper } from "../lib/studentview.js";
 import { ensureKb } from "../lib/trust.js";
 import { inferProfile } from "../lib/profile.js";
 
-/* v3.43.1 · the tag of an exam item: ✓ verified · ⚠ reference (source check pending) · ؟ unverified */
-const TAG = {
-  verified: ["✓", "متحقق من مرجع"], grounded: ["📄", "من مصدرك"], reference: ["🔎", "مرجع — المصدر لسه بيتراجع"],
-  conflict: ["⚠", "تعارض — راجع الإجابة"], ungrounded: ["؟", "مش مبني على مصدر"],
-};
-const where = (p) => (p ? `${{ pdf: "الـ PDF", image: "الصورة", audio: "التسجيل", lesson: "درسك المحفوظ", text: "ملاحظاتك" }[p.sourceType] || "مصدرك"}${p.page ? " · ص " + p.page : p.block ? " · فقرة " + p.block : ""}` : "");
+/* v3.45 · what the student sees of an item's trust comes from lib/studentview.js → examView: a positive pointer («من مصدرك · ص 3»), a calm «اتصحّح تلقائيًا», or a warning ONLY for a concrete risk.
+   Items nothing could check (no reference, no source) are shown plainly: no badge, no «not grounded». The internal tier stays on q.trust for developers. */
 
 /* An interactive exam inside the chat. The whole state lives in `exam` (saved with the message), so closing the chat or the app
    never loses progress:  { title, intro, questions:[{type,stem,options,correct,rationale,topic}], answers:{ [i]:{sel:[],checked} }, cur, done } */
@@ -118,13 +114,19 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
       <div className="exam-q" dir="ltr">
         {q.topic && <span className="exam-tag">{q.topic}</span>}
         <p className="exam-stem">{q.stem}</p>
-        {q.trust && TAG[normalizeTrust(q.trust)] && (
-          <details className="exam-trust" data-t={normalizeTrust(q.trust)} dir="rtl">
-            <summary>{TAG[normalizeTrust(q.trust)][0]} {normalizeTrust(q.trust) === "grounded" ? `من مصدرك · ${where(q.trustProv)}` : TAG[normalizeTrust(q.trust)][1]}</summary>
-            {q.trustProv && <p dir="ltr" className="exam-snippet">«{q.trustProv.snippet}»</p>}
-            {(q.trustWhy || []).length > 0 && <ul>{q.trustWhy.map((w, i) => <li key={i}>{w}</li>)}</ul>}
-          </details>
-        )}
+        {(() => {
+          const tv = examView(q);
+          const dev = isDeveloper();
+          if (tv.level === "none" && !(dev && q.trust)) return null;
+          return (
+            <details className="exam-trust" data-t={tv.level === "none" ? "audit" : tv.level} dir="rtl" open={tv.level === "warn" || undefined}>
+              <summary>{tv.level === "none" ? `[dev] ${q.trust}` : `${{ good: "✓", fixed: "✓", note: "ℹ", warn: "⚠" }[tv.level]} ${tv.text}`}</summary>
+              {tv.snippet && <p dir="ltr" className="exam-snippet">«{tv.snippet}»</p>}
+              {tv.reasons.length > 0 && <ul>{tv.reasons.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+              {dev && (q.trustWhy || []).length > 0 && <ul data-audit="developer">{q.trustWhy.map((w, i) => <li key={i}>[dev] {w}</li>)}</ul>}
+            </details>
+          );
+        })()}
         {q.type === "multi" && <p className="exam-hintline">Select all that apply — اختار كل الإجابات الصح</p>}
       </div>
 
@@ -146,7 +148,7 @@ export default function ExamCard({ exam, onChange, onAsk, busy, onOpenMistakes }
         <div className="exam-why" data-ok={right}>
           <b>{right ? "✅ إجابة صح" : "❌ إجابة غلط"}{!right && <small dir="ltr"> · الصح: {q.correct.map((j) => L[j]).join(", ")}</small>}</b>
           {q.rationale && <RichText text={q.rationale} />}
-          {!right && a.saved === "skipped" && <small className="exam-saved" data-skipped="1">ما اتحفظش في «غلطاتي» تلقائيًا: {normalizeTrust(q.trust) === "conflict" ? "فيه تعارض مع مصدرك أو المرجع" : "الإجابة مش مبنية على مصدر"} (ممكن المفتاح نفسه غلط). <button type="button" className="linkbtn" onClick={saveAnyway}>احفظه على أي حال</button></small>}
+          {!right && a.saved === "skipped" && <small className="exam-saved" data-skipped="1">ما اتحفظش في «غلطاتي» تلقائيًا لأن السؤال ده محتاج مراجعة (ممكن المفتاح نفسه فيه مشكلة). <button type="button" className="linkbtn" onClick={saveAnyway}>احفظه على أي حال</button></small>}
           {!right && a.saved && a.saved !== "skipped" && <small className="exam-saved-undo"> <button type="button" className="linkbtn" onClick={() => { removeMistake(mistakeId(q.stem)); setAns(cur, { saved: "removed" }); }}>شيله من غلطاتي</button></small>}
           {!right && a.saved && a.saved !== "skipped" && a.saved !== "removed" && <small className="exam-saved"><Icon name="bookmark" size={13} /> اتحفظ السؤال ده في «غلطاتي»{onOpenMistakes && <> · <button type="button" className="linkbtn" onClick={onOpenMistakes}>افتحها</button></>}</small>}
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => askAbout(cur)}><Icon name="chat" size={15} /> اشرحلي أكتر</button>

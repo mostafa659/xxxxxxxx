@@ -86,11 +86,20 @@ export async function loadMistakes() {
    Returns "new" | "again" | "fixed" | "mastered" | "skipped" (unverified key: not saved) | null (nothing changed: it was right and never a mistake). */
 /* v3.44 · CALIBRATED TRUST ("act, then review"). Every exam item carries one tag (lib/examtrust.js): verified ✓ · grounded 📄 (anchored in the student's own source) ·
    reference 🔎 (a KB rule agrees; its source check is pending) · conflict ⚠ · ungrounded ؟. Legacy tags map: pending → reference, unverified → ungrounded.
-   • SAVED MISTAKES: verified · grounded · reference save smoothly (with their badge; the student can remove an entry in one tap). conflict · ungrounded are held back with a
-     one-tap «save anyway», because for those the KEY itself may be wrong. Items from other sources carry no tag and behave as before.
+   • SAVED MISTAKES (v3.45): every item saves smoothly (the student can remove an entry in one tap) EXCEPT an item with a CONCRETE concern (concernOf): a contradiction or a structural
+     defect, where the KEY itself may be wrong → held back with a one-tap «save anyway». «ungrounded» alone (no coverage) is not a concern. Items from other sources carry no tag and behave as before.
    • MEMORIZE: verified; or grounded and not safety-critical (doses / contraindications need an official reference). Never reference-only, conflict or ungrounded. */
 export const normalizeTrust = (t) => (t === "pending" ? "reference" : t === "unverified" ? "ungrounded" : ["verified", "grounded", "reference", "conflict", "ungrounded"].includes(t) ? t : "");
-export const mistakeEligible = (q) => !q || !q.trust || ["verified", "grounded", "reference"].includes(normalizeTrust(q.trust));
+/* v3.45 · STUDENT-FRIENDLY: «ungrounded» only means "nothing anchored the key" (a coverage gap), which is NOT a reason to hold a mistake back. An item is held back only when there is a
+   CONCRETE risk that the key itself is wrong: a contradiction with the reference / the student's source, or a structural defect (missing option, duplicate option, bad key count).
+   Things the code already fixed in place (a patched stem or rationale), an unloaded reference, an unresolved dose or a scope note never block saving. */
+export const CONCRETE_FLAGS = new Set(["key-contradicts-reference", "negative-key-supported", "distractor-is-true", "source-contradiction", "source-vs-reference", "options", "duplicate-option", "key", "key-count", "select-count"]);
+export const concernOf = (q) => {
+  if (!q || !q.trust) return false;
+  if (Array.isArray(q.trustFlags)) return q.trustFlags.some((f) => CONCRETE_FLAGS.has(f));
+  return normalizeTrust(q.trust) === "conflict";          // an item tagged before the flags were stored: only a conflict counts
+};
+export const mistakeEligible = (q) => !q || !q.trust || !concernOf(q);
 export const memorizeEligible = (q) => { const t = normalizeTrust(q && q.trust); return t === "verified" || (t === "grounded" && !(q && q.trustSafety)); };
 export function recordAnswer(q, sel, ctx = {}) {
   if (!q || !q.stem || !Array.isArray(q.options) || !Array.isArray(q.correct)) return null;

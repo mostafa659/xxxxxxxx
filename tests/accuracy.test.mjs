@@ -175,22 +175,78 @@ test("B2: HIGH is reachable only through a calibrated profile (thresholds from c
   delete cal.CAL["pharmacy"];
 });
 
-test("B6: banner for MEDIUM/LOW only; per-option advice only for exams that penalise wrong picks", () => {
-  const a = S.assessSolve({ raw: brief({ answer: "A, C", type: "SATA", options: "A) ✅ a\nB) ❌ b\nC) ✅ c" }), logprobs: lpFor(0.6, 0.3), stem: "Select all that apply.", profile: nurse });
+test("B6: banner only for a concrete problem (LOW / a specific concern); per-option advice only for exams that penalise wrong picks", () => {
+  const a = S.assessSolve({ raw: brief({ answer: "A, C", type: "SATA", options: "A) ✅ a\nB) ❌ b\nC) ✅ c" }), logprobs: lpFor(0.45, 0.4), stem: "Select all that apply.", profile: nurse });
   const b = S.banner(a, "en");
   assert.ok(b && /not/i.test(b.head)); assert.ok(b.advice, "NCLEX SATA penalises wrong picks"); assert.ok(b.runnerUp);
-  const g = S.assessSolve({ raw: brief({ answer: "A, C", type: "SATA", options: "A) ✅ a\nB) ❌ b\nC) ✅ c" }), logprobs: lpFor(0.6, 0.3), stem: "Select all that apply.", profile: GEN });
+  const g = S.assessSolve({ raw: brief({ answer: "A, C", type: "SATA", options: "A) ✅ a\nB) ❌ b\nC) ✅ c" }), logprobs: lpFor(0.45, 0.4), stem: "Select all that apply.", profile: GEN });
   assert.equal(S.banner(g, "en").advice, "", "never advise this for an exam that does not penalise wrong picks");
   assert.equal(S.banner({ tier: "HIGH" }), null);
 });
 
-test("B8: the correct-answer section equals the brief; a mismatch is replaced and flagged; the warning is added by code", () => {
-  const a = S.assessSolve({ raw: brief({ answer: "B" }), logprobs: lpFor(0.6, 0.3), profile: nurse });
+test("B8: the correct-answer section equals the brief; a mismatch is replaced and flagged; the warning bullet is added by code only for LOW", () => {
+  const a = S.assessSolve({ raw: brief({ answer: "B" }), logprobs: lpFor(0.45, 0.4), profile: nurse });
+  assert.equal(a.tier, "LOW");
   const text = "## 🔍 كل اختيار لوحده\n- x\n## ✅ الإجابة الصح\n- **C)** لأنها الأفضل\n## 🔁 لو السؤال اتغيّر\n- y";
   const r = S.reconcileLesson(text, a);
   assert.equal(r.mismatch, true); assert.match(r.text, /\*\*B\*\*/); assert.match(r.text, /⚠️/); assert.ok(r.text.includes("## 🔁"));
   const same = S.reconcileLesson(text.replace("**C)**", "**B)**"), a);
-  assert.equal(same.mismatch, false);
+  assert.equal(same.mismatch, false); assert.match(same.text, /⚠️/, "LOW keeps the bullet");
+});
+
+test("audit fix #1: an uncalibrated MEDIUM (cap only) shows no banner and adds no lesson bullet, and the tier is NOT upgraded", () => {
+  const text = "## ✅ الإجابة الصح\n- **B)** لأنها الأفضل\n## 🔁 لو السؤال اتغيّر\n- y";
+  for (const logprobs of [lpFor(0.99), undefined]) {              // confident-but-uncalibrated, and no logprobs at all (small key)
+    const a = S.assessSolve({ raw: brief(), logprobs, profile: nurse });
+    assert.equal(a.tier, "MEDIUM", "honest: still capped, never HIGH"); assert.equal(a.calibrated, false);
+    assert.ok(a.reasons.includes("not calibrated for this subject"), "the reason is still recorded on the assessment");
+    assert.deepEqual(a.issues, [], "no specific issue"); assert.equal(S.warnsAbout(a), false);
+    assert.equal(S.banner(a, "en"), null); assert.equal(S.banner(a, "ar"), null);
+    const r = S.reconcileLesson(text, a);
+    assert.equal(r.text, text, "lesson text is untouched"); assert.equal(r.replaced, false); assert.doesNotMatch(r.text, /⚠️/);
+  }
+  // a missing / late premise is a prompt-order matter, not an answer problem: still no banner
+  const np = S.assessSolve({ raw: brief({ noPremise: true }), logprobs: lpFor(0.99), profile: nurse });
+  assert.equal(np.tier, "MEDIUM"); assert.equal(S.banner(np, "en"), null);
+});
+
+test("v3.45: only CONCRETE concerns warn (a failed check, an uncertain number, LOW); moderate probability / verbalised medium / missing CALC line stay internal; HIGH never warns", async () => {
+  // measured moderate probability
+  const mod = S.assessSolve({ raw: brief(), logprobs: lpFor(0.6, 0.3), profile: nurse });
+  assert.equal(mod.tier, "MEDIUM"); assert.ok(mod.issues.some((i) => /moderate/.test(i)));
+  assert.equal(S.banner(mod, "en"), null, "a moderate (not low) probability is not a concrete risk: no banner, the issue stays on the assessment for developers");
+  assert.equal(S.warnsAbout(mod), false);
+  // verbalised doubt without logprobs
+  const vd = S.assessSolve({ raw: brief({ conf: "medium — two options are close" }), profile: nurse });
+  assert.equal(vd.tier, "MEDIUM"); assert.ok(vd.issues.includes("two options are close")); assert.equal(S.banner(vd, "en"), null, "a verbalised doubt alone is not shown");
+  // uncertain digits read from the image
+  const raw = brief({ data: "K 5.9 mmol/L" });
+  const lp = { chosenCandidates: [tok("DATA", 1), tok(":", 1), tok(" K", 1), tok(" 5", 0.4), tok(".9", 0.9), tok("\n", 1), tok("ANSWER", 1), tok(":", 1), tok(" B", 0.99), tok("\n", 1)],
+    topCandidates: [{ candidates: [tok("DATA", 1)] }, { candidates: [tok(":", 1)] }, { candidates: [tok(" K", 1)] }, { candidates: [tok(" 5", 0.4)] }, { candidates: [tok(".9", 0.9)] }, { candidates: [tok("\n", 1)] }, { candidates: [tok("ANSWER", 1)] }, { candidates: [tok(":", 1)] }, { candidates: [tok(" B", 0.99), tok(" C", 0.01)] }, { candidates: [tok("\n", 1)] }] };
+  const dd = S.assessSolve({ raw, logprobs: lp, profile: nurse });
+  assert.ok(dd.dataDoubts.length); assert.ok(dd.issues.some((i) => /uncertain/.test(i))); assert.ok(S.banner(dd, "en").why.some((w) => /misread/.test(w)), "a number that may be misread is concrete");
+  // a calculation item with no CALC line
+  const nc = S.assessSolve({ raw: brief(), stem: "Calculate the dose in mL/h.", profile: nurse });
+  assert.ok(nc.issues.includes("a calculation item without a CALC line")); assert.equal(S.banner(nc, "en"), null, "bookkeeping, internal only");
+  // LOW: always a banner, and the bullet
+  const low = S.assessSolve({ raw: brief(), logprobs: lpFor(0.45, 0.4), profile: nurse });
+  assert.equal(low.tier, "LOW"); assert.ok(S.banner(low, "en").why.length > 0);
+  // a flagged check (marks mismatch) is LOW and says why
+  const fl = S.assessSolve({ raw: brief({ options: "A) ✅ a\nB) ❌ b" }), profile: nurse });
+  assert.equal(fl.tier, "LOW"); assert.ok(S.banner(fl, "en").why.some((w) => /marked/.test(w)));
+  // MEDIUM that carries flags (defensive: a caller-built assessment) still warns; a bare MEDIUM and HIGH do not
+  assert.ok(S.banner({ tier: "MEDIUM", flags: [{ code: "x", msg: "m" }], reasons: [], issues: [], perOption: [] }, "en"));
+  assert.equal(S.banner({ tier: "MEDIUM", flags: [], reasons: ["not calibrated for this subject"], issues: [] }, "en"), null);
+  assert.equal(S.banner({ tier: "HIGH", flags: [], reasons: [], issues: [] }, "en"), null);
+  // a calibrated profile: HIGH stays reachable, MEDIUM with a measured probability still warns
+  const cal = await import("../src/lib/calibration.js");
+  cal.CAL["pharmacy"] = { calibrated: true, n: 320, thresholds: { high: 0.93, margin: 0.6, medium: 0.7 }, highErr: 0.03 };
+  const ph = { discipline: "pharmacy", exam: "", region: "" };
+  assert.equal(S.assessSolve({ raw: brief(), logprobs: lpFor(0.99), profile: ph }).tier, "HIGH");
+  assert.equal(S.banner(S.assessSolve({ raw: brief(), logprobs: lpFor(0.99), profile: ph }), "en"), null);
+  assert.equal(S.banner(S.assessSolve({ raw: brief(), logprobs: lpFor(0.8, 0.1), profile: ph }), "en"), null, "moderate probability alone: silent");
+  assert.ok(S.banner(S.assessSolve({ raw: brief(), logprobs: lpFor(0.45, 0.4), profile: ph }), "en"), "low probability: warns");
+  delete cal.CAL["pharmacy"];
 });
 
 test("B7: second opinion shuffles options, maps the answer back, scores by token probability, and disagreement stays unresolved", () => {
@@ -259,7 +315,9 @@ test("F4: report error + KB gap list stored locally and exported as JSON, groupe
 test("saved mistakes: an item whose key was not verified is never auto-saved", () => {
   __setState([]);
   const q = { stem: "Which organ makes bile?", options: ["A", "B"], correct: [1], type: "single", rationale: "", topic: "digestive" };
-  assert.equal(recordAnswer({ ...q, trust: "unverified" }, [0]), "skipped");
+  assert.equal(recordAnswer({ ...q, trust: "unverified" }, [0]), "new", "v3.45: no coverage is not a reason to hold a mistake back");
+  assert.equal(recordAnswer({ ...q, stem: "conflicting one?", trust: "conflict" }, [0]), "skipped", "a concrete conflict is");
+  __setState([]);
   assert.equal(mistakeEligible({ trust: "verified" }), true);
   assert.equal(recordAnswer({ ...q, trust: "verified" }, [0]), "new");
   assert.equal(recordAnswer({ ...q, stem: "pending one?", trust: "pending" }, [0]), "new", "a reference agreed with the key (source check pending): saved");

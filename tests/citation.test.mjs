@@ -144,7 +144,7 @@ test("NEGATIVE STEMS · «which is NOT …»: the key is the false statement, so
   assert.equal(bad.trust, "conflict");
 });
 
-test("ACT, THEN REVIEW · verified / grounded / reference save smoothly with their badge; conflict / ungrounded are held back with «save anyway»; memorize rule", async () => {
+test("ACT, THEN REVIEW · verified / grounded / reference save smoothly with their badge; only a concrete conflict / defect is held back with «save anyway»; memorize rule", async () => {
   __setState([]);
   const mk = (stem, trust, extra = {}) => ({ stem, options: ["a", "b"], correct: [1], type: "single", rationale: "", topic: "x", trust, ...extra });
   assert.equal(recordAnswer(mk("Q verified?", "verified"), [0]), "new");
@@ -152,8 +152,10 @@ test("ACT, THEN REVIEW · verified / grounded / reference save smoothly with the
   assert.equal(recordAnswer(mk("Q reference?", "reference"), [0]), "new");
   assert.equal(recordAnswer(mk("Q legacy pending?", "pending"), [0]), "new", "legacy tag maps to reference");
   assert.equal(recordAnswer(mk("Q conflict?", "conflict"), [0]), "skipped");
-  assert.equal(recordAnswer(mk("Q ungrounded?", "ungrounded"), [0]), "skipped");
-  assert.equal(recordAnswer(mk("Q legacy unverified?", "unverified"), [0]), "skipped");
+  assert.equal(recordAnswer(mk("Q ungrounded?", "ungrounded"), [0]), "new", "no coverage: saved smoothly");
+  assert.equal(recordAnswer(mk("Q legacy unverified?", "unverified"), [0]), "new");
+  assert.equal(recordAnswer(mk("Q defective?", "ungrounded", { trustFlags: ["duplicate-option"] }), [0]), "skipped", "a structural defect is a concrete risk");
+  assert.equal(recordAnswer(mk("Q safety unresolved?", "ungrounded", { trustFlags: ["safety-unresolved"] }), [0]), "new");
   assert.equal(recordAnswer(mk("Q conflict forced?", "conflict"), [0], { force: true }), "new");
   const saved = __getState().list;
   const g = saved.find((m) => /Q grounded/.test(m.stem));

@@ -1,3 +1,76 @@
+## v3.52.0 — Independent Clinical Calculation Guard
+
+This release adds deterministic calculation checks to the exam-answer pipeline. It is designed to prevent the specific error patterns identified in the critical-care example: wrong osmolality equations, unsupported SVR/OG/R0 numbers, inconsistent drug-clearance reasoning, assay-wide D-lactate claims, and overconfident Pringle-source conclusions.
+
+- **Independent arithmetic:** calculates Fick cardiac output (including CaO2/CvO2 from explicitly supplied Hb, saturations and PO2), SVR, calculated osmolality/osmolal gap, anion gap/albumin correction, delta gap, and conditional Winter compensation. A claimed triple acid–base disorder must be supported independently by the delta-gap pattern and measured PaCO2 below Winter's expected range; Arabic and English phrasings are both recognized.
+- **Unit and input controls:** distinguishes BUN from urea conversions and measured osmolality from osmolarity; ethanol is included only with an explicit, validated local divisor. Missing or inconsistent inputs do not produce a numerical result.
+- **CVVH pharmacokinetics:** keeps `fu`, `CLint`, delivered `Qeff`, and `SC` separate. `SC=fu` is used only when explicitly established. No general dose change is inferred from hypoalbuminemia alone, and no infusion rate is output without all model inputs and the stated low-extraction assumption.
+- **Evidence/claim guardrails:** flags blanket statements about point-of-care D-lactate detection and claims that persistent bleeding after Pringle proves a single source.
+- **Cross-extraction reconciliation:** compares OCR and solver DATA pairwise, merges only consistent values, and requires every calculation-critical input to be present in both channels in production. A single-source reading, missing input, or disagreement blocks numerical confirmation and masks the green answer mark. Numeric checks target the selected answer/calculation, not deliberately incorrect distractors. Optional private blocks are stripped from streamed and final student text.
+- **No extra model requests:** the calculator runs locally in the existing answer pipeline. This release does not claim that model accuracy has been measured against Gemini A/B.
+
+**Validation:** full project suite **453/453 passed**; focused clinical-calculation suite **40/40 passed**; all changed JavaScript/test files pass `node --check`. The Vite production build was not run because Vite/dependencies are not installed in this working environment. No live Gemini comparison was run, and the exact case values cannot be recomputed without the original question image and numerical inputs.
+
+All calculation checks are conservative study safeguards, not diagnostic or prescribing tools. Exact case results are only independently verified when the relevant patient inputs and units are actually present.
+
+## v3.51.0 — Fifth Major AI-Error-Driven Specialized Expansion (34 new records)
+
+The fifth expansion adds 34 narrowly scoped, source-backed specialist records, bringing the bundled specialist corpus to 80 records. The batch is grounded in seven declared sources: a Swiss neonatal EOS guideline, two diabetic-foot infection/osteomyelitis reviews, a 2026 multi-source clinical evidence-QA benchmark, a 2026 biomedical-statistics framework, and two official CDC ACIP GRADE handbook chapters. All 34 records remain `draft`; exact source/quotation provenance does not equal clinical approval.
+
+- **Neonatal early-onset sepsis (10):** Swiss-only EOS pathway boundaries, serial exams, asymptomatic risk, respiratory-distress context, prematurity, pre-antibiotic culture, antibiotic reassessment, biomarker limitations, residual risk, and lumbar-puncture indications. Retrieval requires Switzerland and neonatal context; these recommendations must not be generalized to other jurisdictions.
+- **Diabetic foot infection / osteomyelitis (11):** local microbiology and resistance variation, avoiding universal empirical Pseudomonas coverage, multimodal diagnosis, bone-biopsy limitations, deep culture/imaging, source control, culture-directed therapy, off-loading, histology/culture discordance, and the distinct contributions of histology and microbiology. Population-specific figures are not universal test characteristics.
+- **Evidence synthesis and biomedical statistics (6):** separate “no evidence” from a negative finding, interpret odds-ratio confidence intervals correctly, avoid single-sentence anchoring, preserve low certainty, distinguish statistical from clinical importance, and separate effect estimate/effect size/CI/p-value.
+- **GRADE evidence appraisal (7):** outcome-level certainty, downgrading domains, upgrading non-randomized studies, RCT upgrade exception, conditional ROBINS-I exception, critical-outcome synthesis, and the lowest-certainty critical outcome rule in the ACIP handbook.
+
+**New prompt safeguard:** Evidence-appraisal rules activate only for literature, guideline, statistics, and evidence-synthesis queries. They require whole-source synthesis, preserve uncertainty, distinguish absence of evidence from evidence of no effect, use the correct null value for ratio versus difference measures, and keep statistical significance separate from clinical importance. Neonatal context inference was also corrected so newborns are not collapsed into generic pediatric population matching.
+
+**Public model-evaluation audit:** `docs/AI_MEDICAL_MODEL_AUDIT_2026.md` summarizes public 2026 benchmarks and systematic reviews, their limits, and the resulting error taxonomy. This is a structured audit of published evidence—not a claim to have inspected every private medical answer worldwide.
+
+Validation: strict builder accepted 34/34 and rejected 0; all new records remain draft and are excluded from student retrieval. Full project test suite: **411/411 passed**. Vite production build was not run because dependencies (`node_modules`) are not installed in this workspace. No live Gemini/API benchmark was run in this release.
+
+---
+
+## v3.50.0 — Major AI-error-driven specialist expansion (24 new records)
+
+Largest specialist-library expansion in this project so far: 24 additional, narrowly scoped draft records, increasing the bundled specialist corpus from 22 to 46 entries. The batch is divided into four focused domains, grounded in four peer-reviewed CC BY 4.0 sources, with passage-level quotation provenance and individual applicability/exception fields.
+
+- **Dental anaesthesia / LAST (11):** additive toxicity across amide agents; fractional-dose calculations; third-agent and vasoconstrictor accounting; jurisdiction-dependent maximum doses; atypical/delayed LAST; vasovagal/adrenaline differentials; sedation-masked prodrome; altered protein binding; bupivacaine/CCB pharmacodynamic interaction; airway-first rescue hierarchy.
+- **FH-deficient renal cancer / HLRCC (7):** hereditary versus sporadic distinction; nomenclature boundary; fumarate–PHD–HIF pseudohypoxia; α-KG dioxygenase and epigenetic effects; fumarate non-specificity; histology limits; KEAP1–NRF2 branch.
+- **Veterinary MDR1 / ABCB1 (4):** canine versus feline mutation differences; cohort-limited feline allele frequency; transporter loss-of-function evidence; in-vitro inhibitor assay versus clinical dosing boundary.
+- **Warfarin precision pharmacology (2):** interaction-effect variability and genotype-plus-clinical-covariate algorithms.
+
+**Error-driven safeguard added to the specialist prompt:** patient-specific laboratory values, vital signs, imaging, histology and history must come from the actual question; literature cohorts, case reports, mechanisms and in-vitro values cannot be restated as findings in the current case. Calculations must use supplied inputs and explicit units; mechanisms or associations alone do not prove diagnoses or variants; numerical data must not cross species, assays or jurisdictions without direct evidence.
+
+All 24 records remain **draft**. Their source/license/exact-quote checks establish provenance only—not medical correctness. A named qualified reviewer must approve claim support, clinical accuracy, scope and exceptions before retrieval can expose an entry to students. The general safety KB remains a separate layer. No live Gemini A/B benchmark or Vite production build is claimed in this release.
+
+Review file: `knowledge/specialized/major-expansion-2026/AUDIT.md`.
+
+## v3.48.0 — Focused Pharmacogenomics Expansion (10 new draft entries)
+
+Patch release based on v3.47.0. The first seven-record FDA pilot is preserved unchanged. A separate lazy-loaded expansion adds ten tightly scoped entries from the FDA Table of Pharmacogenetic Associations (current page checked 2026-11-20; update history includes 2026-09-10) plus the open-access 2026 CERSI-PGx UGT1A1/irinotecan guideline.
+
+- **Oncology:** DPYD/complete-versus-partial DPD deficiency for capecitabine and fluorouracil; UGT1A1/irinotecan phenotype and toxicity distinctions. The capecitabine and fluorouracil guidance is deliberately separate because FDA wording differs.
+- **Cardiovascular / pharmacology:** CYP2C19/clopidogrel active-metabolite response; CYP2D6 + concomitant CYP3A4 inhibition with propafenone; CYP2C9 poor-metabolizer contraindication for deuruxolitinib.
+- **Anesthesia:** BCHE/succinylcholine prolonged blockade; RYR1/CACNA1S susceptibility with the four FDA-listed trigger agents.
+- **Neurotherapeutics:** APOE ε4/ε4 risk framing for lecanemab and donanemab. These are benefit–risk risk modifiers, not automatic contraindications in this FDA table.
+- Every new record is **draft**. Builder-verified source/license/quote provenance does not mean that a clinician has approved the complete clinical claim. Draft entries remain excluded from student retrieval and prompts until a qualified reviewer approves claim support, accuracy, scope and exceptions.
+- No Gemini A/B benchmark was run in this release; no accuracy improvement is claimed.
+
+Review file: `docs/knowledge/specialized-expansion-2026-09-review.md`. Source manifest and candidates are under `knowledge/specialized/pharmacogenomics/`.
+
+## v3.47.0 — First Curated Pharmacogenomics Knowledge Pilot
+
+Patch release based on v3.46.0. The specialized layer is intentionally **small and high-value**; it is not a second textbook and does not duplicate facts a general medical model usually answers correctly.
+
+- Accepted globally applicable expert categories: rare mechanisms, complex relationships, specialist diagnostic interpretation, technical distinctions, context-sensitive quantitative data, species-specific knowledge and non-obvious exceptions. Country, institution, exam, protocol and recent-guideline entries remain supported too.
+- Each entry explains its incremental value beyond ordinary model knowledge, its clinical scope, applicability conditions, exceptions, source passages, review status and expiry/review date. Generic textbook facts remain rejected.
+- The builder's `verified` / `sourceVerified` / `quoteVerified` flags mean **source, license and exact-quote provenance only**. They do not claim that a quote proves the medical statement. Approved entries additionally require an explicit human review checklist for claim support, clinical accuracy, and scope/exceptions.
+- Context is fail-closed: a species-, population-, age-, sex-, pregnancy-, exam-, institution- or jurisdiction-specific entry is not retrieved when its required context is missing or mismatched.
+- `analysis.js` enriches question solve and answer-writing prompts with up to three retrieved specialist references (or a small profile-scoped candidate shelf for image-only questions). English and Arabic patient-context cues are recognized for species, age, sex and pregnancy; missing declared context still fails closed. The prompt tells the model to apply a reference only after matching the case and all applicability conditions. This adds no model request and does not expose library bookkeeping to students.
+- A first compact pilot contains seven FDA-sourced pharmacogenomics entries: evidence-tier interpretation, table-inclusion/testing distinction, HLA-B*57:01/abacavir, CYP2C9/aficamten, MT-RNR1/aminoglycosides, TPMT/NUDT15/azathioprine, and HLA-B*15:02/carbamazepine. All remain `draft` and are excluded from production retrieval until a qualified human clinical reviewer approves each claim, source support, scope and exceptions.
+- A paired Gemini A/B benchmark compares the same seven questions without and with the draft specialist references. It makes 14 calls, blinds the answer condition, stores the condition key separately, and includes a scoring rubric. No benchmark lift is claimed until actual Gemini calls are run and outputs are independently scored.
+- Run `npm run kb:pilot` with `GEMINI_API_KEY` set to perform the comparison; `npm run kb:pilot:prepare` prepares prompt pairs without API calls.
+
 ## v3.44.0 — Calibrated Citation-First Trust · High-Yield KB (542 concepts)
 
 **Frozen contracts, unchanged:** `tests/baseline/v3.42-budget.json` and `tests/baseline/v3.42-solve-output.json` are untouched; every prompt is still at or below v3.42; no request, token or wait was added (the exam still makes exactly the 2 requests v3.42 makes with an attached file — measured on the v3.42 code — and 1 without). Everything below is local, on-device code.
@@ -88,7 +161,7 @@ All three are active in the app and covered by tests (311 pass: the 238 original
 | Constraint | How |
 |---|---|
 | C1 no slower first result | No new blocking request. The KB loads in the background; labels and patches are applied at the *final* text (streamed text appears exactly as before, then is patched in place). A static test checks that nothing in `analysis.js` awaits the accuracy layer. |
-| C2 no more tokens / requests | Every prompt is **smaller** than v3.42 (`tests/budget.test.mjs`, frozen baseline `tests/baseline/v3.42-budget.json`; solve 1022 → 665 tokens, lesson prompts −235…−357). Output caps, thinking budgets and request counts are unchanged (the 238 old engine/speed/latency tests still pass). Claims ride inside the existing proof request and the chunk gives up exactly the room they take. Small free keys: proof is skipped, so zero added requests; logprobs are never *probed* on a small key. |
+| C2 no more tokens / requests | Every prompt is **smaller** than v3.42 (`tests/budget.test.mjs`, frozen baseline `tests/baseline/v3.42-budget.json`; solve 1022 → 665 tokens, lesson prompts −235…−357). Output caps, thinking budgets and request counts are unchanged (the 238 old engine/speed/latency tests still pass). Claims ride inside the existing proof request and the chunk gives up exactly the room they take. Small free keys: proof is skipped, so zero added requests; logprobs are probed **once per model on any key** (audit fix #2) on the solve request itself, so the probe adds no request, and the verdict (supported / refused with a 400 / silently omitted) is cached. |
 | C3 labels, not promises | `✓ verified` · `⚠ corrected / uncertain / possibly outdated / reference pending / other-profession rule` · `؟ unverified`. Memorize and saved mistakes accept only ✓ (plus plain, low-risk text copied from the source). |
 | C4 no self-revision | None added. Second opinion (B7) is user-initiated, uses a *different* model with shuffled options, scored by token probability. |
 
@@ -116,7 +189,7 @@ All three are active in the app and covered by tests (311 pass: the 238 original
 - KB bundle: core-digestive 13.3 KB (4.2 KB gzip), core-ranges 2.8 KB, scope-nursing 2.8 KB — lazy chunks (`npm run kb:sizes`).
 
 ### NOT tested / unknown — please read
-- **Real `logprobs` availability per Gemini model** and whether thinking models return `logprobsResult` for the visible text only. The code asks only for the solve task, remembers a refusing model, and degrades to code checks + verbalized confidence (capped at MEDIUM). On a non-small key a refusing model costs **one** extra (400) request, once per model.
+- **Real `logprobs` availability per Gemini model** and whether thinking models return `logprobsResult` for the visible text only. The code asks only for the solve task, probes each model **once** (small free keys included) and remembers the verdict, whether the model refuses (400) or silently omits `logprobsResult`; it never invents probabilities and degrades to code checks + verbalized confidence (capped at MEDIUM). A model that answers with a 400 costs **one** extra request, once per model (refunded in the quota ledger); silent omission costs none.
 - **Real grounding** (cost, JSON-mode compatibility, and that grounding links are Google redirects whose *title* carries the site, which is what the allowlist reads).
 - **Calibration on real data or real devices.** No golden set exists: ≥300 human-verified, openly licensed items per profile could not be produced here. `tests/golden/questions/_synthetic/` holds two made-up items that only exercise the harness. HIGH-tier error rate is therefore **unmeasured**; never read it as zero.
 - **Licenses.** Nothing from OpenStax or any other book is bundled; seed facts are my own paraphrases of standard anatomy/physiology. Every corpus license must be verified per book before `build-kb.mjs` is used (the CC BY vs CC BY-NC-SA listing conflict for *Pharmacology for Nurses* is exactly what `licenseVerified` is for).

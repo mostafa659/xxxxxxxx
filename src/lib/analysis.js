@@ -20,9 +20,11 @@ import { ensureKb, verifyText } from "./trust.js";
 import { buildSourceModel } from "./provenance.js";
 import { cleanResidue } from "./accuracy.js";
 import { kbReady } from "./kb/index.js";
+import { prepareSpecializedPrompt } from "./kb/specialized-prompt.js";
 import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
+import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
 import { selectClaims, applyCached, applyVerdicts } from "./claims.js";
 import { addGaps } from "./reports.js";
 import { getModelLists, runTask } from "./gemini.js";
@@ -75,10 +77,12 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   const sample = () => (doc ? itemsFromSaved(null, doc).map((x) => (x.t === "text" ? x.text : x.t === "pdf" ? x.ptext || "" : "")).join("\n").slice(0, 20000) : "");   // a keyword scan needs a sample, not the whole book
   const prof = () => {
     if (profileArg) return profileArg;
-    const key = String(ocrText.length);
+    const documentText = sample();
+    const detectionText = `${ocrText}\n${briefRaw}\n${documentText}`;
+    const key = `${ocrText.length}:${briefRaw.length}:${documentText.length}`;
     if (_prof && _profKey === key) return _prof;
     _profKey = key;
-    return (_prof = inferProfile(`${ocrText}\n${sample()}`));
+    return (_prof = inferProfile(detectionText));
   };
   ensureKb(prof()).catch(() => {});                              // lazy, off the critical path: the KB loads while the first request is in flight
   const emitTrust = (t) => { try { onTrust && onTrust(t); } catch (e) { /* the UI must never break the analysis */ } };
@@ -89,11 +93,12 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     if (!brief) return null;
     briefRaw = brief;
     try {
-      assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: ocrText, profile: prof() });
+      assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: ocrText, profile: prof(), sourceDataText: extractLabelledClinicalData(ocrText) });
       /* when no OCR stage ran (small keys skip it), the solve brief IS the model's reading of the image: its DATA / KEYWORD / options become a PARTIAL extraction, so the image is never an empty source */
       if (!extraction) { const pb = parseBrief(brief); const t = cleanResidue([pb.data, pb.keyword, pb.concepts, ...pb.options.map((o) => o.why)].filter(Boolean).join("\n")); if (t.trim()) extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "solve-brief" }; }
       emitTrust({ phase: "solve", assess, banner: makeBanner(assess, has(chips, "en") ? "en" : "ar") });
-      return `${brief}\nTIER: ${assess.tier}`;
+      const calculationHandoff = formatClinicalCalculationAudit(assess.clinicalCalculationAudit);
+      return `${brief}\nTIER: ${assess.tier}${calculationHandoff ? `\n${calculationHandoff}` : ""}`;
     } catch (e) { return brief; }
   };
 
@@ -106,12 +111,49 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     return selectClaims(r.items);
   };
 
-  /* the final text → patched in place (F1 + F2 + verdicts + B8). Streaming text is shown as written; this is the "late patch". */
+  /* The final text is recalculated in code before any answer is shown. Private source-data blocks are removed from every UI update. */
   const trustPass = (data) => {
     try {
       if (!data || typeof data.explanation !== "string" || !data.explanation.trim()) return data;
       const p = prof(), L = kind === "lesson", part = L ? "A" : "B";
-      const model = srcModel();                                    // the same model for typed text, Word, audio, PDF and screenshots
+      const model = srcModel();
+      const expBlock = extractClinicalDataBlock(data.explanation);
+      const trickBlock = extractClinicalDataBlock(data.tricks || "");
+      const cleanExplanation = expBlock.text;
+      const cleanTricks = trickBlock.text;
+      const brief = parseBrief(briefRaw);
+      const briefData = brief.data || "";
+      const hiddenData = [expBlock.dataText, trickBlock.dataText].filter(Boolean).join("; ");
+      const ocrData = extractLabelledClinicalData(ocrText);
+      const primaryData = hiddenData || briefData || ocrData;
+      const audit = auditClinicalCalculations({
+        dataText: primaryData,
+        secondaryDataText: [hiddenData ? briefData : "", hiddenData || briefData ? ocrData : ""].filter(Boolean),
+        authorityDataText: ocrData,
+        modelDataText: hiddenData || briefData,
+        requireAuthorityInputs: true,
+        narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
+        answerText: extractCorrectAnswerSection(cleanExplanation),
+        calcText: brief.calc || "",
+        contextText: `${ocrText}\n${briefRaw}\n${cleanExplanation}\n${cleanTricks}`,
+        optionText: (() => { const chosen = brief.options.find((o) => o.mark === "yes"); return chosen ? `${chosen.letter}) ${chosen.why}` : ""; })(),
+      });
+      if (audit.triggered) {
+        if (!assess && audit.conflicts.length) {
+          assess = { tier: "LOW", answer: "", letters: [], runnerUp: null, perOption: [], perOptionAdvice: false, flags: [], concerns: [], reasons: [], issues: [], clinicalCalculationAudit: audit };
+        } else if (assess) {
+          assess.clinicalCalculationAudit = audit;
+        }
+        if (assess && audit.conflicts.length) {
+          assess.tier = "LOW";
+          assess.eligible = false;
+          assess.answer = "";
+          assess.letters = [];
+          assess.flags = [...(assess.flags || []), ...audit.conflicts.map((c) => ({ code: c.code, msg: c.message }))];
+          assess.concerns = [...(assess.concerns || []), ...audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }))];
+          assess.issues = [...new Set([...(assess.issues || []), ...audit.conflicts.map((c) => c.message)])];
+        }
+      }
       const run = (t) => {
         const r = verifyText({ text: t, sourceModel: model, profile: p, part, brief: briefRaw, titles: (history || []).map((h) => h.title) });
         applyCached(r.items);
@@ -120,23 +162,40 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         r.stats = trustStats(r, r.patches, r.gaps, { cards: r.cards, conflicts: r.conflicts });
         return r;
       };
-      const rx = run(data.explanation);
+      const rx = run(cleanExplanation);
       let ex = rx.text, mismatch = false;
       if (!L && assess) { const rec = reconcileLesson(ex, assess, has(chips, "en") ? "en" : "ar"); ex = rec.text; mismatch = rec.mismatch; }
-      const rt = data.tricks ? run(data.tricks) : null;
+      if (!L && audit.results.length && !audit.conflicts.length) {
+        const calculationSection = renderClinicalAuditForStudent(audit, has(chips, "en") ? "en" : "ar");
+        if (calculationSection && !/## 🧮 (?:مراجعة الحسابات|Calculation check)/.test(ex)) {
+          const answerHeading = /^##\s*(?:✅\s*)?(?:الإجابة الصح|The correct answer)\s*$/m;
+          const h = answerHeading.exec(ex);
+          ex = h ? `${ex.slice(0, h.index)}${calculationSection}\n\n${ex.slice(h.index)}` : `${ex}\n\n${calculationSection}`;
+        }
+      }
+      const rt = cleanTricks ? run(cleanTricks) : null;
       const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
       addGaps(p, gaps);
       const all = rt ? [rx, rt] : [rx];
       emitTrust({
         phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
+        calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
         stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
         cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
         patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
       });
-      return { ...data, explanation: ex, tricks: rt ? rt.text : data.tricks };
-    } catch (e) { return data; }                                 // an accuracy-layer problem must never become the student's problem
+      return { ...data, explanation: ex, tricks: rt ? rt.text : cleanTricks };
+    } catch (e) { return { ...data, explanation: stripPartialClinicalDataBlock(data.explanation || ""), tricks: stripPartialClinicalDataBlock(data.tricks || "") }; }
   };
-  { const _u = onUpdate; onUpdate = (name, data, meta) => _u(name, name === "reason" && meta && meta.final ? trustPass(data) : data, meta); }
+  { const _u = onUpdate; onUpdate = (name, data, meta) => {
+    if (name !== "reason") return _u(name, data, meta);
+    if (meta && meta.final) return _u(name, trustPass(data), meta);
+    const safe = data && typeof data === "object" ? { ...data,
+      explanation: typeof data.explanation === "string" ? stripPartialClinicalDataBlock(data.explanation) : data.explanation,
+      tricks: typeof data.tricks === "string" ? stripPartialClinicalDataBlock(data.tricks) : data.tricks,
+    } : data;
+    return _u(name, safe, meta);
+  }; }
 
   /* v3.32 · where did the time go? Every model call of this analysis leaves a trace (gemini.js → onReport); when a stage finishes, its traces are
      summarised (latency.js) and travel with the "done" message as `lat`, so the screen can say "ضاع 310ث في 503×2" instead of just "409ث". */
@@ -180,6 +239,17 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   /* The model now and then drops stray letters of another script inside Arabic words. text.js already removes them from the
      screen. (v3.23: the old "ask for a full clean rewrite" is gone — on a 2000-word lesson it silently DOUBLED the waiting time.) */
   const stage = (task, cfg, prompt, signal, onText) => stageOnce(task, cfg, prompt, signal, onText);
+  /* Question-solving and answer-teaching requests receive a small specialist context.
+     Lessons/study documents remain on their existing path. No extra model request is made. */
+  const stageWithSpecialized = (task, cfg, prompt, signal, onText, queryHint = "") => {
+    if (L) return stage(task, cfg, prompt, signal, onText);
+    const query = [ocrText, briefRaw, sample(), queryHint].filter(Boolean).join("\n");
+    return prepareSpecializedPrompt(prompt, { query, profile: prof(), limit: 3 })
+      .then(({ prompt: enriched }) => {
+        if (signal && signal.aborted) throw Object.assign(new Error("Aborted"), { name: "AbortError" });
+        return stage(task, cfg, enriched, signal, onText);
+      });
+  };
 
   /* ── ocr + words: one stage each ── */
   const SIMPLE = {
@@ -249,7 +319,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs }
         : L ? (mode.writeA || mode.write) : mode.write;
       const prompt = L ? buildStudyLessonPrompt({ profile: prof(), history, extra, chips, words }) : buildLessonPrompt({ history, brief, extra, chips, words });
-      stage(`lesson${brief ? "B" : "X"}:${mode.id}`, cfg, prompt, sig, (full, m) => {
+      stageWithSpecialized(`lesson${brief ? "B" : "X"}:${mode.id}`, cfg, prompt, sig, (full, m) => {
         text = full; model = m; emit(false);
       }).then((res) => {
         if (over || sig.aborted) return;
@@ -265,7 +335,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     /* deep mode only: a careful, silent strong-model solve → its short verified brief grounds the lesson.
        Balanced mode skips it (the lesson request thinks by itself): 3 requests per analysis instead of 5. */
     if (L || mode.id !== "deep") writeLesson(null);
-    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {})
+    else stageWithSpecialized(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {}, briefRaw)
       .then((r0) => { tSolve = since(); writeLesson(takeBrief(r0)); })
       .catch((err) => {
         if (isAbort(err) || sig.aborted) return;
@@ -323,16 +393,20 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       onUpdate("reason", compose(true), { chars: chars(), model: S.mModel, final: true });
       onDone("reason", { ms: since(), chars: chars(), model: S.mModel, stages: { solve: secs(S.t0s.solve || 0), a: secs(S.t0s.a || 0), b: secs(since()) } });
     };
-    const run = (k, task, cfg, prompt) => stage(task, cfg, prompt, sig, (full, model) => {
-      S[k] = full; S[k + "Model"] = model; emit(false);
-    }).then(({ text, model }) => {
-      S[k] = text; S[k + "Model"] = model; S[k + "Done"] = true; S.t0s[k] = since();
-      emit(false); settle();
-    }).catch((err) => {
-      if (isAbort(err) || sig.aborted) return;
-      if (err.fatal) return fail(err);
-      S[k + "Fail"] = err; emit(false); settle();
-    });
+    const run = (k, task, cfg, prompt) => {
+      const onTextPart = (full, model) => { S[k] = full; S[k + "Model"] = model; emit(false); };
+      const request = /(?:lessonM|lessonT|lessonBm|lessonBx):/.test(task)
+        ? stageWithSpecialized(task, cfg, prompt, sig, onTextPart, briefRaw)
+        : stage(task, cfg, prompt, sig, onTextPart);
+      return request.then(({ text, model }) => {
+        S[k] = text; S[k + "Model"] = model; S[k + "Done"] = true; S.t0s[k] = since();
+        emit(false); settle();
+      }).catch((err) => {
+        if (isAbort(err) || sig.aborted) return;
+        if (err.fatal) return fail(err);
+        S[k + "Fail"] = err; emit(false); settle();
+      });
+    };
 
     /* part A: no answer needed → starts at once */
     run("a", `lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }));
@@ -381,7 +455,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         startBC(brief);
       };
       timer = setTimeout(() => { if (moved || sig.aborted) return; boxed = true; solveCtrl.abort(); go(null); }, SOLVE_BOX[mode.id] || 30000);
-      stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), solveCtrl.signal, () => {})
+      stageWithSpecialized(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), solveCtrl.signal, () => {}, briefRaw)
         .then((r0) => { if (boxed || sig.aborted) return; go(takeBrief(r0)); })
         .catch((err) => {
           if (boxed || sig.aborted || isAbort(err)) return;
@@ -438,7 +512,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
 
     /* deep mode only: the careful silent solve. Balanced mode skips it (part B thinks by itself). */
     if (L || mode.id !== "deep") { S.t.solve = 0; startB(null); }
-    else stage(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {})
+    else stageWithSpecialized(`solve:${mode.id}`, mode.solve, buildSolvePrompt(prof()), sig, () => {}, briefRaw)
       .then((r0) => { S.t.solve = since(); startB(takeBrief(r0)); })
       .catch((err) => {
         if (isAbort(err) || sig.aborted) return;
@@ -464,7 +538,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? mode.write
         : { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs };
-      stage(`${brief ? "lessonB" : "lessonBx"}:${mode.id}`, cfg, L ? buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b }), sig, (full, model) => {
+      const bPrompt = L ? buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b });
+      stageWithSpecialized(`${brief ? "lessonB" : "lessonBx"}:${mode.id}`, cfg, bPrompt, sig, (full, model) => {
         S.b = full; S.bModel = model; emit(false);
       }).then(({ text, model }) => {
         S.b = text; S.bModel = model; S.bDone = true;

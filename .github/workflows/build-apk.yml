@@ -1,0 +1,134 @@
+name: Build APK
+
+# v3.37 · the full APK (the web app packed inside) is NOT rebuilt on every push any more: a change to the app's own code is tried with
+# deploy-web.yml (1 minute, nothing to install) or the live-shell APK (build-apk-live.yml, installed once).
+# This workflow runs when you start it by hand, or when something NATIVE changes (icons, splash, plugins, Capacitor config).
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "**/capacitor.config.json"
+      - "**/package-lock.json"
+      - "**/resources/**"
+      - "**/assets/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: apk-full
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Finds the app folder (the one that holds package.json) automatically, so the build works whether the
+      # files were uploaded to the repo root or inside a sub-folder (e.g. "clinixstudy-app/").
+      - name: Locate project folder
+        id: proj
+        shell: bash
+        run: |
+          DIR=""
+          for f in $(find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -not -path './.git/*' | awk '{print length, $0}' | sort -n | cut -d' ' -f2-); do
+            if grep -q '"name"[[:space:]]*:[[:space:]]*"clinixstudy"' "$f"; then DIR=$(dirname "$f"); break; fi
+          done
+          if [ -z "$DIR" ]; then
+            echo "::error::package.json (name: clinixstudy) was not found in this repository. Upload the project files themselves (package.json, src/, electron/ ...) to the repo."
+            find . -maxdepth 3 -not -path './.git/*' | head -60
+            exit 1
+          fi
+          echo "Project folder: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4          # keeps ~/.gradle between runs: the Android build tools are not downloaded again
+
+      - name: Install dependencies
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm install
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"   # the APK build does not need the desktop runtime
+
+      - name: Build web app
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm run build
+        env:
+          # Optional: add a repo secret named GEMINI_API_KEY to bake the key into the APK.
+          VITE_GEMINI_API_KEY: ${{ vars.GATEWAY_URL == '' && secrets.GEMINI_API_KEY || '' }}
+          VITE_GROQ_API_KEY: ${{ vars.GATEWAY_URL == '' && secrets.GROQ_API_KEY || '' }}
+          VITE_OPENROUTER_API_KEY: ${{ vars.GATEWAY_URL == '' && secrets.OPENROUTER_API_KEY || '' }}
+          VITE_MISTRAL_API_KEY: ${{ vars.GATEWAY_URL == '' && secrets.MISTRAL_API_KEY || '' }}
+          # v3.32 · AI gateway (gateway/README.md): repo VARIABLE GATEWAY_URL + repo SECRET GATEWAY_TOKEN. When the gateway is on, NO provider key is baked into the app
+          # (an app file is a zip: anything baked in can be read out of it), so the four keys below are emptied.
+          VITE_GATEWAY_URL: ${{ vars.GATEWAY_URL }}
+          VITE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_TOKEN }}
+          VITE_PAID: ${{ vars.PAID_KEY }}                  # set PAID_KEY=1 if you use your own PAID Google key directly (no gateway)
+          VITE_SERVICE_TIER: ${{ vars.SERVICE_TIER }}      # optional: priority (Google Tier 2+)
+
+      - name: Add Android platform
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npx cap add android
+
+      - name: Launch splash (brand colour + app icon)
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          RES=android/app/src/main/res
+          mkdir -p $RES/values $RES/drawable-xxxhdpi
+          cat > $RES/values/launch.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="launch_bg">#FFFFFF</color></resources>
+          XML
+          cp resources/splash_icon.png $RES/drawable-xxxhdpi/splash_icon.png
+          python3 - <<'PY'
+          import re
+          p = "android/app/src/main/res/values/styles.xml"
+          s = open(p, encoding="utf-8").read()
+          block = """<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+                  <item name="windowSplashScreenBackground">@color/launch_bg</item>
+                  <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+                  <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+                  <item name="android:background">@color/launch_bg</item>
+              </style>"""
+          s2 = re.sub(r'<style name="AppTheme\.NoActionBarLaunch".*?</style>', block, s, flags=re.S)
+          assert s2 != s, "launch style not found"
+          open(p, "w", encoding="utf-8").write(s2)
+          PY
+
+      - name: Generate app icons
+        working-directory: ${{ steps.proj.outputs.dir }}
+        continue-on-error: true
+        run: npx --yes @capacitor/assets generate --android
+
+      - name: Sync web assets
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: ${{ steps.proj.outputs.dir }}/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: APK size report (what makes the file big?)
+        working-directory: ${{ steps.proj.outputs.dir }}/android/app/build/outputs/apk/debug
+        run: |
+          ls -l app-debug.apk
+          unzip -l app-debug.apk | sort -k1 -n -r | head -15
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinixStudy-apk
+          path: ${{ steps.proj.outputs.dir }}/android/app/build/outputs/apk/debug/app-debug.apk

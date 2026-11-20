@@ -69,12 +69,13 @@ test("proof request: claims never make it bigger; with no room they are simply n
   assert.equal(PR.foldClaims(["x ".repeat(100)], claims).claims.length, 0);
 });
 
-test("requests: logprobs only on the solve task (no new request), small keys never probe, a refusing model is remembered", () => {
+test("requests: logprobs only on the solve task (no new request), an unknown model is probed once on any key, a refusing model is remembered", () => {
   const m = "gemini-test-lp";
   __resetLogprobMemo(m);
   assert.equal(wantsLogprobs(m, "lessonB:fast", "k"), false);
   assert.equal(wantsLogprobs(m, "ocr", "k"), false);
   assert.equal(wantsLogprobs(m, "words:proof", "k"), false);
+  assert.equal(wantsLogprobs(m, "solve:deep", "k"), true, "audit fix #2: the one probe is allowed even on a small key");
   window.localStorage.setItem(`clinix:lp:${m}`, "0");
   assert.equal(wantsLogprobs(m, "solve:deep", "k"), false);
   __resetLogprobMemo(m);

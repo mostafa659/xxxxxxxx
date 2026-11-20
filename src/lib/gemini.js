@@ -430,13 +430,24 @@ const writeMemo = (model, task, i) => { try { window.localStorage.setItem(memoKe
 const tempFor = (task) => (/^solve/.test(task) ? 0.2 : /^lesson/.test(task) ? 0.4 : 0.1);
 
 /* v3.43 · B2: the ANSWER line of the (existing) solve request is the first thing it writes → its token probabilities are a free confidence signal. Asked ONLY for the
-   solve task. A model that refuses the field is remembered (a 400 once per model), never asked again; a SMALL free key never probes (it only asks where a model is
-   already known to accept it), so no request is ever added. */
+   solve task.
+   audit fix #2: ONE capability probe per model, on ANY key (a small free key included). The probe is not an extra request: it is the solve request itself with the
+   logprobs fields added. What the model does with it is remembered per model, so it is never asked again:
+     "1"  supported      the response carried a logprobsResult
+     "0"  unsupported    Google refused the field (a 400 that names logprobs) OR answered normally but SILENTLY left logprobsResult out
+     none not probed yet (also: the probe failed for another reason, e.g. a 429, so nothing was learned)
+   Only the 400 case costs one extra HTTP round trip, once per model (it is refunded in the quota ledger). While a probe is in flight, a concurrent solve for the same
+   model does not start a second one. When logprobs are unavailable nothing is invented from them: the response carries logprobs: null and solvecheck.js falls back to
+   its code checks (p1 / margin stay null). */
 const lpKey = (model) => `clinix:lp:${model}`;
-const lpMemo = (model) => { try { return window.localStorage.getItem(lpKey(model)); } catch (e) { return null; } };
-const lpSet = (model, v) => { try { window.localStorage.setItem(lpKey(model), v); } catch (e) { /* ignore */ } };
-export const wantsLogprobs = (model, task, apiKey) => /^solve/.test(task) && /gemini/.test(model) && lpMemo(model) !== "0" && (lpMemo(model) === "1" || !isSmallKey(apiKey));
-export const __resetLogprobMemo = (model) => { try { window.localStorage.removeItem(lpKey(model)); } catch (e) { /* ignore */ } };
+const _lpMem = new Map();          // only used when localStorage itself throws (private mode, blocked storage), so the cache still holds for the session
+const _lpProbing = new Set();      // models whose probe is in flight right now
+const lpMemo = (model) => { try { return window.localStorage.getItem(lpKey(model)); } catch (e) { return _lpMem.has(model) ? _lpMem.get(model) : null; } };
+const lpSet = (model, v) => { try { window.localStorage.setItem(lpKey(model), v); } catch (e) { _lpMem.set(model, v); } };
+/* true when a solve request to this model should carry the logprobs fields: it is already known to support them, or it has never been probed and no probe is in flight.
+   (apiKey is kept in the signature for the callers; the key size no longer matters, the probe adds no request.) */
+export const wantsLogprobs = (model, task, apiKey) => /^solve/.test(task) && /gemini/.test(model) && lpMemo(model) !== "0" && (lpMemo(model) === "1" || !_lpProbing.has(model)); // eslint-disable-line no-unused-vars
+export const __resetLogprobMemo = (model) => { _lpMem.delete(model); _lpProbing.delete(model); try { window.localStorage.removeItem(lpKey(model)); } catch (e) { /* ignore */ } };
 
 function genConfig(model, think, maxOut, task, logprobs) {
   const g = { maxOutputTokens: maxOut };
@@ -582,7 +593,14 @@ let _tierOff = false;       // Google refused the service_tier field once → ne
    When the search tool is what Google refused, the model itself is still fine: leave search out for a few minutes instead of failing every model in turn. */
 let _noSearchUntil = 0;
 export const __resetSearchGate = () => { _noSearchUntil = 0; };
-async function attemptModel({ apiKey, model, task, system, noSearchSystem, parts, spec, maxOut, signal, onText, onAlive, firstMs, idleMs, search }) {
+/* audit fix #2: the first solve request to a model whose logprobs support is unknown is its probe; the claim is made here, synchronously, so two parallel requests cannot both probe. */
+async function attemptModel(args) {
+  const probe = wantsLogprobs(args.model, args.task, args.apiKey) && lpMemo(args.model) !== "1";
+  if (probe) _lpProbing.add(args.model);
+  try { return await attemptModelOnce({ ...args, lpProbe: probe }); }
+  finally { if (probe) _lpProbing.delete(args.model); }
+}
+async function attemptModelOnce({ apiKey, model, task, system, noSearchSystem, parts, spec, maxOut, signal, onText, onAlive, firstMs, idleMs, search, lpProbe }) {
   /* v3.32 · PAID profile: a silent request is cut early (config.js NET). A Pro model that thinks "high" legitimately stays quiet longer: it keeps up to 120 s. */
   const heavy = /pro/.test(model) || ((spec && spec.levels) || []).includes("high");
   if (PAID) { firstMs = heavy ? Math.min(firstMs, 120000) : cap(firstMs, "first"); idleMs = heavy ? Math.min(idleMs, 120000) : cap(idleMs, "idle"); }
@@ -592,7 +610,7 @@ async function attemptModel({ apiKey, model, task, system, noSearchSystem, parts
   { const typical = typicalTtft(apiKey, model, taskClass(task)); if (typical > 0) { const adapted = Math.max(FIRST_FLOOR_MS.v, typical * 8); if (adapted < firstMs) { firstMs = adapted; strictFirst = true; } } }
   const rungs = ladderFor(model, spec);
   let idx = Math.min(readMemo(model, task), rungs.length - 1);
-  let lpOn = wantsLogprobs(model, task, apiKey);
+  let lpOn = lpProbe || wantsLogprobs(model, task, apiKey);   // the probe, or a model already known to support logprobs
   let searching = !!search && Date.now() >= _noSearchUntil;       // Google Search grounding: the model looks the facts up before it answers (v3.34: unless Google just refused the tool)
   for (;;) {
     const body = { contents: [{ role: "user", parts }], generationConfig: genConfig(model, rungs[idx], maxOut, task, lpOn) };
@@ -612,11 +630,12 @@ async function attemptModel({ apiKey, model, task, system, noSearchSystem, parts
           { detail: `${model} · ${out.finish || out.block || "empty"}`, emptyReply: true, blocked: !!out.block });
       }
       writeMemo(model, task, idx);
-      if (lpOn && out.logprobs) lpSet(model, "1");
+      /* audit fix #2: the probe is answered either way: logprobs came back → supported; the reply is fine but logprobsResult is missing → unsupported (silent omission) */
+      if (lpOn && lpProbe) lpSet(model, out.logprobs ? "1" : "0");
       return { ...out, searched: searching };
     } catch (e) {
       if (e.thinking && idx < rungs.length - 1) { idx += 1; continue; }
-      /* v3.43: this model refuses logprobs (a 400 that names them): remembered, the SAME request repeats without them */
+      /* v3.43: this model refuses logprobs (a 400 that names them): remembered (unsupported), the SAME request repeats without them */
       if (lpOn && e && e.status === 400 && !e.thinking && /logprob/i.test(String(e.detail || e.message || ""))) { lpSet(model, "0"); lpOn = false; if (sentAt) refundSend(apiKey, model, sentAt); continue; }
       /* this model refuses the search tool (a 400 that mentions it): answer WITHOUT it rather than not at all; the app then says "no sources" */
       if (searching && e && e.status === 400 && !e.thinking && /tool|search|ground|retriev/i.test(String(e.detail || e.message || ""))) { searching = false; continue; }

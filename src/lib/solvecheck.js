@@ -10,6 +10,7 @@ import { norm } from "./accuracy.js";
 import { profileKey, examOf, penalizesWrongPicks } from "./profile.js";
 import { CAL, DEFAULT_THRESHOLDS } from "./calibration.js";
 import { rangeInfo, rangeContradiction, patientOf, describeRange } from "./kb/ranges.js";
+import { auditClinicalCalculations, maskOptionsWhenCalculationConflicts } from "./clinical-calculations.js";
 
 export const TIERS = ["LOW", "MEDIUM", "HIGH"];
 const tierMin = (a, b) => TIERS[Math.min(TIERS.indexOf(a), TIERS.indexOf(b))];
@@ -242,12 +243,14 @@ export function dataDoubts(L, minP = 0.7) {
 export const thresholdsFor = (profile) => { const k = profileKey(profile || {}); const c = CAL[k] || CAL[(profile && profile.discipline) || ""] || null; return c ? { ...DEFAULT_THRESHOLDS, ...c.thresholds, calibrated: !!c.calibrated, n: c.n || 0, highErr: c.highErr } : { ...DEFAULT_THRESHOLDS, calibrated: false, n: 0 }; };
 
 /* ── the one function: raw brief + logprobs + stem + profile → the assessment ── */
-export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [] } = {}) {
+export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], sourceDataText = "" } = {}) {
   const b = parseBrief(raw);
   const th = thresholdsFor(profile);
   const L = normLogprobs(logprobs);
   const flags = [...formatChecks(b, { stem, profile })];
   const reasons = [];
+  const concerns = [];                                       // v3.45: the CONCRETE risks only (what a student may be told); `issues` stays the fuller internal list
+  const issues = [];                                         // audit fix #1: SPECIFIC problems with THIS answer (the only things that justify a MEDIUM banner); bookkeeping reasons (uncalibrated, no logprobs, premise order) never go here
   const fmt = itemFormat(b.type, stem);
 
   // B5 · what the model read from the image: KB range check of every lab in DATA, with the patient's sex / age from DATA + stem
@@ -271,7 +274,24 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [] } 
   const yes = b.options.find((o) => o.mark === "yes");
   const calc = b.calc ? checkCalc(b.calc, { yesWhy: yes ? yes.why : "" }) : null;
   if (calc && !calc.ok) flags.push({ code: "calc", msg: calc.steps.filter((s) => !s.ok).map((s) => s.why).join("; ") });
-  if (/\b(?:calculat|dose|dosage|mL\/h|drip|rate|conversion)\w*/i.test(`${b.type} ${stem}`) && !b.calc) reasons.push("a calculation item without a CALC line");
+  const clinicalCalculationAudit = auditClinicalCalculations({
+    dataText: b.data,
+    secondaryDataText: sourceDataText,
+    authorityDataText: sourceDataText,
+    modelDataText: b.data,
+    requireAuthorityInputs: true,
+    narrative: b.calc || "",
+    answerText: yes ? `${yes.letter}) ${yes.why}` : b.answerRaw || "",
+    calcText: b.calc || "",
+    contextText: `${stem} ${b.type} ${b.keyword} ${b.concepts}`,
+    optionText: yes ? `${yes.letter}) ${yes.why}` : "",
+  });
+  for (const c of clinicalCalculationAudit.conflicts) {
+    flags.push({ code: "clinical-calculation", msg: c.message });
+    issues.push(c.message);
+    concerns.push({ code: c.code, en: c.message, ar: "ظهر تعارض بين الحساب المستقل والرقم أو المعادلة المذكورة في الإجابة؛ لا تعتمد النتيجة قبل تصحيح الحساب." });
+  }
+  if (/\b(?:calculat|dose|dosage|mL\/h|drip|rate|conversion)\w*/i.test(`${b.type} ${stem}`) && !b.calc) { reasons.push("a calculation item without a CALC line"); issues.push("a calculation item without a CALC line"); }   // bookkeeping: internal only
 
   // B2 · confidence
   const conf = L ? answerConfidence(L, b.options.map((o) => o.letter)) : null;
@@ -281,6 +301,12 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [] } 
     tier = conf.p1 >= th.high && conf.margin >= th.margin ? "HIGH" : conf.p1 >= th.medium ? "MEDIUM" : "LOW";
     if (b.confidence === "low") tier = tierDown(tier);                                    // the verbalised line is only a tie-breaker / a brake
     else if (Math.abs(conf.p1 - th.high) < 0.03 && b.confidence === "high" && tier === "MEDIUM") tier = "HIGH";
+    // the MEASURED tier (before any cap below): a real probability that is not high is a concrete reason to warn; the caps are not
+    const pct = Math.round(conf.p1 * 100);
+    if (tier === "LOW") issues.push(`the model's probability for this answer is low (${pct}%)`);
+    else if (tier === "MEDIUM") issues.push(`the model's probability for this answer is moderate, not high (${pct}%)`);
+    if (tier === "LOW") concerns.push({ code: "low-probability", en: "the AI's own measured confidence in this answer is low", ar: "ثقة الـ AI في الإجابة دي ضعيفة" });
+    if (fmt === "sata" && conf.missed.length) { issues.push(`option ${conf.missed.map((m) => m.letter).join(", ")} may also be correct`); concerns.push({ code: "sata-missed", en: `option ${conf.missed.map((m) => m.letter).join(", ")} may also be correct`, ar: `ممكن الاختيار ${conf.missed.map((m) => m.letter).join("، ")} كمان يكون صح` }); }
   } else {
     tier = b.confidence === "low" ? "LOW" : "MEDIUM";                                      // no logprobs: code checks + the verbalised line, capped at MEDIUM
     reasons.push("answer probabilities were not available");
@@ -290,10 +316,11 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [] } 
   if (b.answerRaw && (!b.premise || !b.premiseFirst)) { tier = tierMin(tier, "MEDIUM"); reasons.push(!b.premise ? "no clinical premise before the answer" : "the premise came after the answer"); }
   if (!b.answerRaw) tier = "LOW";
   if (flags.length) tier = "LOW";
-  if (/blur|crop|cut off|unreadable|illegible|ambiguous|missing information|can.?t read/i.test(b.confidenceReason)) { tier = "LOW"; reasons.push(b.confidenceReason); }
-  if (b.confidence && b.confidence !== "high" && b.confidenceReason) reasons.push(b.confidenceReason);
-  if (doubts.length) reasons.push("a number or unit in what I read from the image is uncertain");
-  if (!b.answerRaw) reasons.push("no answer was produced");
+  if (/blur|crop|cut off|unreadable|illegible|ambiguous|missing information|can.?t read/i.test(b.confidenceReason)) { tier = "LOW"; reasons.push(b.confidenceReason); issues.push(b.confidenceReason); concerns.push({ code: "unreadable", en: "part of the question may not have been read correctly from the image", ar: "ممكن جزء من السؤال اتقرا غلط من الصورة" }); }
+  if (b.confidence && b.confidence !== "high" && b.confidenceReason) { reasons.push(b.confidenceReason); issues.push(b.confidenceReason); }
+  else if (b.confidence === "low") { issues.push("the model itself reported low confidence"); concerns.push({ code: "model-low", en: "the AI reported low confidence in this answer", ar: "الـ AI نفسه قال إنه مش واثق من الإجابة دي" }); }
+  if (doubts.length) { reasons.push("a number or unit in what I read from the image is uncertain"); issues.push("a number or unit in what I read from the image is uncertain"); concerns.push({ code: "data-doubt", en: "a number in the image may have been misread: double-check it", ar: "في رقم في الصورة ممكن يكون اتقرا غلط: راجعه بنفسك" }); }
+  if (!b.answerRaw) { reasons.push("no answer was produced"); issues.push("no answer was produced"); concerns.push({ code: "no-answer", en: "no answer was produced", ar: "ما طلعش جواب للسؤال ده" }); }
 
   const per = conf ? conf.per : [];
   return {
@@ -301,19 +328,28 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [] } 
     p1: conf ? Math.round(conf.p1 * 1000) / 1000 : null, margin: conf ? Math.round(conf.margin * 1000) / 1000 : null,
     runnerUp: conf && conf.runnerUp ? { letter: conf.runnerUp.letter, p: Math.round(conf.runnerUp.p * 1000) / 1000 } : null,
     perOption: per.map((x) => ({ letter: x.letter, p: Math.round(x.p * 100) / 100, high: x.p >= th.high })), missed: conf ? conf.missed : [],
-    data: b.data, dataFlags, dataDoubts: doubts, flags, reasons: [...new Set(reasons)], calc, verbalized: b.confidence,
+    data: b.data, dataFlags, dataDoubts: doubts, flags, reasons: [...new Set(reasons)], issues: [...new Set(issues)], concerns, calc, clinicalCalculationAudit, verbalized: b.confidence,
     hasLogprobs: !!conf, eligible: tier === "HIGH" && !flags.length,
     perOptionAdvice: penalizesWrongPicks(profile, fmt),          // only for exams that really penalise a wrong pick (never invented for the others)
   };
 }
 
-/* ── B6 · what the screen says ── */
+/* ── B6 · what the screen says ──
+   audit fix #1: the banner is a WARNING about this answer, not a standing disclaimer. It shows only for
+     · LOW, or
+     · MEDIUM with at least one CONCRETE concern (assess.concerns: a flagged check, an uncertain number read from the image, a SATA option that may also be right…).
+   v3.45: a merely moderate probability, a verbalised "medium", a calc without a CALC line, an uncalibrated subject or missing logprobs are NOT concerns: they never produce a banner (they stay in assess.issues / assess.reasons for developers).
+   A MEDIUM that is only a cap (no calibrated golden set, no logprobs on this key, premise order) is NOT shown: the tier itself is unchanged and stays honest, it just is not repeated on every answer. */
+export const warnsAbout = (a) => !!a && (a.tier === "LOW" || ((a.tier === "MEDIUM") && ((a.concerns && a.concerns.length) > 0 || (a.flags && a.flags.length) > 0)));
 export function banner(a, lang = "ar") {
-  if (!a || a.tier === "HIGH") return null;
+  if (!warnsAbout(a)) return null;
   const ar = lang !== "en";
-  const why = [...a.flags.map((f) => f.msg), ...a.reasons].filter(Boolean).slice(0, 4);
-  const head = ar ? (a.tier === "LOW" ? "الذكاء الاصطناعي مش متأكد من الإجابة دي" : "الذكاء الاصطناعي مش متأكد 100% من الإجابة دي") : (a.tier === "LOW" ? "AI is not sure about this answer" : "AI is not fully sure about this answer");
-  const likely = a.answer ? (ar ? `الأرجح: ${a.answer.split("\n")[0]}` : `Most likely: ${a.answer.split("\n")[0]}`) : "";
+  /* v3.45: only CONCRETE reasons reach the student (a failed check, a measured low probability, a number that may be misread, a SATA option that may also be right).
+     Bookkeeping (uncalibrated subject, no probabilities, premise order, a moderate-but-not-low probability, no CALC line) stays in `a.reasons` / `a.issues` for the developer. */
+  const why = [...(a.flags || []).map((f) => f.msg), ...(a.concerns || []).map((c) => (ar ? c.ar : c.en))].filter(Boolean).slice(0, 4);
+  const head = ar ? (a.tier === "LOW" ? "الذكاء الاصطناعي مش متأكد من الإجابة دي" : "راجع الإجابة دي كويس") : (a.tier === "LOW" ? "AI is not sure about this answer" : "Double-check this answer");
+  const calculationConflict = !!(a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts && a.clinicalCalculationAudit.conflicts.length);
+  const likely = calculationConflict ? (ar ? "لا يمكن اعتماد اختيار قبل تصحيح التعارض الحسابي." : "No option can be confirmed until the calculation conflict is corrected.") : a.answer ? (ar ? `الأرجح: ${a.answer.split("\n")[0]}` : `Most likely: ${a.answer.split("\n")[0]}`) : "";
   const ru = a.runnerUp ? (ar ? `البديل الأقرب: ${a.runnerUp.letter}` : `Runner-up: ${a.runnerUp.letter}`) : "";
   const adv = a.perOptionAdvice && a.perOption.length ? (ar ? "الامتحان ده بيخصم على الاختيار الغلط: اختار بس الاختيارات اللي ثقتها عالية." : "This exam penalises wrong picks: select only the high-confidence options.") : "";
   return { tier: a.tier, head, likely, runnerUp: ru, why, advice: adv, perOption: a.perOptionAdvice ? a.perOption : [] };
@@ -321,11 +357,31 @@ export function banner(a, lang = "ar") {
 
 /* ── B8 · lesson consistency ──
    The correct-answer section must equal the brief's ANSWER. Mismatch → that section's first line is replaced by the brief's answer, and the flag is reported.
-   For MEDIUM / LOW the "AI is not sure" bullet is added BY CODE (the prompt no longer spends tokens on it). */
+   audit fix #1: the "AI is not sure" bullet is added BY CODE only for LOW. MEDIUM (including a MEDIUM that is just the uncalibrated cap) adds nothing to the lesson text. */
 const ANSWER_HEAD = /^##\s*(?:✅\s*)?(?:الإجابة الصح|The correct answer)\s*$/m;
+function maskCalculationConflictsInLesson(text, lang, conflicts) {
+  let t = maskOptionsWhenCalculationConflicts(text);
+  const m = ANSWER_HEAD.exec(t);
+  if (!m) return t;
+  const start = m.index + m[0].length;
+  const rest = t.slice(start);
+  const nextH = /\n##\s/.exec(rest);
+  const tail = nextH ? rest.slice(nextH.index) : "";
+  const details = conflicts.slice(0, 3).map((c) => `- ${c.message}`).join("\n");
+  const body = lang === "en"
+    ? `\n- **No answer choice is confirmed.** An independent calculation found a numerical or formula conflict. Do not memorize a selected option until the inputs and equation are reconciled.\n${details}\n`
+    : `\n- **مينفعش نعتمد اختيار صحيح حاليًا.** الحساب المستقل كشف تعارضًا في المعادلة أو النتيجة الرقمية. ما تحفظش اختيارًا قبل مراجعة المدخلات والمعادلة.\n${details}\n`;
+  return `${t.slice(0, start)}${body}${tail}`;
+}
 export function reconcileLesson(text, a, lang = "ar") {
-  if (!a || !a.answer) return { text, mismatch: false, replaced: false };
+  if (!a) return { text, mismatch: false, replaced: false };
   const t = String(text || "");
+  const calcConflicts = a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts || [];
+  if (calcConflicts.length) {
+    const safeText = maskCalculationConflictsInLesson(t, lang, calcConflicts);
+    return { text: safeText, mismatch: true, replaced: true, calculationConflict: true };
+  }
+  if (!a.answer) return { text: t, mismatch: false, replaced: false };
   const m = ANSWER_HEAD.exec(t);
   if (!m) return { text: t, mismatch: false, replaced: false };
   const start = m.index + m[0].length;
@@ -344,7 +400,7 @@ export function reconcileLesson(text, a, lang = "ar") {
     newBody = `\n- **${label}** — ${lang === "en" ? "(corrected to match the verified analysis)" : "(اتصحّحت عشان تطابق التحليل المتحقق منه)"}\n`;
   }
   let warn = "";
-  if (a.tier !== "HIGH") warn = `\n- ⚠️ ${lang === "en" ? "The AI is not sure of this answer; treat it as the most likely one" : "الذكاء الاصطناعي مش متأكد من الإجابة دي؛ اعتبرها الأرجح مش المؤكدة"}${a.runnerUp ? ` (${lang === "en" ? "runner-up" : "البديل"}: ${a.runnerUp.letter})` : ""}.`;
+  if (a.tier === "LOW") warn = `\n- ⚠️ ${lang === "en" ? "The AI is not sure of this answer; treat it as the most likely one" : "الذكاء الاصطناعي مش متأكد من الإجابة دي؛ اعتبرها الأرجح مش المؤكدة"}${a.runnerUp ? ` (${lang === "en" ? "runner-up" : "البديل"}: ${a.runnerUp.letter})` : ""}.`;
   const out = t.slice(0, start) + warn + newBody + tail;
   return { text: out, mismatch, replaced: mismatch || !!warn };
 }

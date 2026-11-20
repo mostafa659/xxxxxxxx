@@ -1,0 +1,423 @@
+[
+  {
+    "id": "pgx.fda.evidence-tier-semantics",
+    "title": "Interpretation of FDA pharmacogenetic evidence tiers",
+    "kind": "diagnostic-interpretation",
+    "statement": "The FDA pharmacogenetic table separates associations supporting therapeutic-management recommendations from associations indicating potential safety or response effects and associations showing pharmacokinetic effects only; these categories are not interchangeable, and a pharmacokinetic-only listing does not establish a clinical safety or response effect.",
+    "aliases": {
+      "en": [
+        "FDA pharmacogenetic evidence tiers",
+        "FDA PGx sections",
+        "pharmacokinetic only evidence",
+        "PGx evidence category"
+      ],
+      "ar": [
+        "تصنيفات الأدلة الدوائية الجينية",
+        "جدول FDA للجينات والأدوية",
+        "التأثير الحركي الدوائي فقط"
+      ]
+    },
+    "value": {
+      "category": "technical-distinction",
+      "beyondGeneral": "The non-obvious value is the regulator's three-way evidence classification; a generic model may collapse pharmacokinetic association, potential clinical impact, and actionable therapeutic-management guidance into one undifferentiated claim.",
+      "generalAnswerRisk": "A generic answer may treat every listed gene-drug pair as equally actionable or imply that a pharmacokinetic change proves a clinical outcome."
+    },
+    "clinical": {
+      "scope": "Interpreting the FDA Table of Pharmacogenetic Associations for pharmacogenomics teaching and evidence classification."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The question asks how to interpret categories in the FDA pharmacogenetic table.",
+        "The current FDA table version is the reference being discussed."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "The question asks for complete prescribing guidance for a specific medicine.",
+        "effect": "The FDA table is not comprehensive prescribing information; consult the current FDA-approved labeling and other clinical factors."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "evidence-tiers",
+        "quote": "safety or response"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.abacavir-hla-b-5701",
+    "title": "HLA-B*57:01 and abacavir hypersensitivity risk",
+    "kind": "relationship",
+    "statement": "For a patient who tests positive for HLA-B*57:01, the FDA table identifies increased abacavir hypersensitivity risk and states that abacavir should not be used in this genotype-positive subgroup.",
+    "aliases": {
+      "en": [
+        "HLA-B*57:01 abacavir",
+        "abacavir hypersensitivity",
+        "HLA B 5701 positive"
+      ],
+      "ar": [
+        "أباكافير وHLA-B*57:01",
+        "فرط الحساسية لأباكافير"
+      ]
+    },
+    "value": {
+      "category": "complex-relationship",
+      "beyondGeneral": "The expert value is the allele-specific drug restriction and its exact direction; generic summaries can blur HLA-B alleles or reduce a specific avoidance recommendation to a vague adverse-reaction association.",
+      "generalAnswerRisk": "A generic answer may confuse HLA-B*57:01 with other HLA variants or describe only monitoring rather than the listed avoid-use instruction."
+    },
+    "clinical": {
+      "scope": "Allele-specific pharmacogenetic interpretation of abacavir-associated hypersensitivity risk."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The patient's test result is explicitly positive for HLA-B*57:01.",
+        "The medicine under discussion is abacavir."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "The case names a different HLA-B allele or a different antiretroviral drug.",
+        "effect": "Do not transfer this allele-drug rule to another variant or medicine."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "abacavir-hlab5701",
+        "quote": "positive for HLA-B*57:01"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.aficamten-cyp2c9-pm",
+    "title": "Aficamten and CYP2C9 poor-metabolizer interpretation",
+    "kind": "exception",
+    "statement": "For patients with a CYP2C9 genotype classified as poor metabolizer who take aficamten, the FDA table notes potentially higher exposure and adverse-reaction risk, while stating that the drug's titration and monitoring schedule already accounts for this variation and genotype-based dose adjustment is not necessary.",
+    "aliases": {
+      "en": [
+        "aficamten CYP2C9 poor metabolizer",
+        "aficamten pharmacogenomics",
+        "CYP2C9 aficamten dose adjustment"
+      ],
+      "ar": [
+        "أفيكامتن وCYP2C9",
+        "ضعيفو استقلاب CYP2C9 مع aficamten"
+      ]
+    },
+    "value": {
+      "category": "non-obvious-exception",
+      "beyondGeneral": "This is a non-obvious exception to the shortcut that a genotype-associated exposure increase always requires a genotype-specific dose change; the product's titration and monitoring schedule already accounts for the variation.",
+      "generalAnswerRisk": "A generic answer may infer that every poor-metabolizer exposure increase requires a separate genotype-based dose reduction."
+    },
+    "clinical": {
+      "scope": "Interpreting the CYP2C9-aficamten entry in the FDA pharmacogenetic association table."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The drug in the case is aficamten.",
+        "The reported phenotype is CYP2C9 poor metabolizer."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "A different CYP2C9 substrate or another genotype is being discussed.",
+        "effect": "Do not generalize the aficamten titration and monitoring exception to other medicines or variants."
+      },
+      {
+        "when": "The question requests the actual aficamten dosing or monitoring schedule.",
+        "effect": "Use the current FDA-approved aficamten labeling for the detailed regimen."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "aficamten-cyp2c9",
+        "quote": "CYP2C9 genotype are not necessary"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.mtrnr1-aminoglycoside-ototoxicity",
+    "title": "MT-RNR1 m.1555A>G and aminoglycoside ototoxicity",
+    "kind": "relationship",
+    "statement": "The FDA table associates m.1555A>G variant carriers with increased adverse-reaction risk, specifically ototoxicity, during aminoglycoside exposure and advises considering alternative treatments outside the aminoglycoside class.",
+    "aliases": {
+      "en": [
+        "MT-RNR1 m.1555A>G aminoglycoside",
+        "aminoglycoside ototoxicity pharmacogenetics",
+        "mitochondrial 12S rRNA aminoglycoside"
+      ],
+      "ar": [
+        "طفرة MT-RNR1 ومضادات الأمينوغليكوزيد",
+        "سمية الأذن مع aminoglycosides"
+      ]
+    },
+    "value": {
+      "category": "complex-relationship",
+      "beyondGeneral": "The specialist value is the exact mitochondrial variant-drug-class relationship and the named toxicity; a broad answer about aminoglycoside adverse effects can miss this inherited susceptibility or overgeneralize it to unrelated variants.",
+      "generalAnswerRisk": "A generic answer may discuss ordinary dose-related ototoxicity without recognizing the specific MT-RNR1 m.1555A>G association."
+    },
+    "clinical": {
+      "scope": "Pharmacogenetic susceptibility to aminoglycoside-associated ototoxicity."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The genetic result explicitly identifies MT-RNR1 m.1555A>G.",
+        "The implicated medicine belongs to the aminoglycoside class."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "The case reports a different MT-RNR1 variant or a non-aminoglycoside medicine.",
+        "effect": "Do not transfer the m.1555A>G association to other variants or unrelated drug classes."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "aminoglycosides-mtrnr1",
+        "quote": "m.1555A>G variant carriers"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.azathioprine-tpmt-nudt15",
+    "title": "TPMT and NUDT15 combined interpretation for azathioprine",
+    "kind": "diagnostic-interpretation",
+    "statement": "For azathioprine, TPMT and/or NUDT15 intermediate or poor-metabolizer phenotypes alter active-metabolite exposure and dose requirements and increase myelosuppression risk; the FDA notes dose reduction for intermediate metabolizers, alternatives for poor metabolizers, and potentially larger reductions when both phenotypes are intermediate.",
+    "aliases": {
+      "en": [
+        "azathioprine TPMT NUDT15",
+        "TPMT NUDT15 compound intermediate metabolizer",
+        "thiopurine pharmacogenomics myelosuppression"
+      ],
+      "ar": [
+        "الأزاثيوبرين وTPMT وNUDT15",
+        "نقص إنزيمات استقلاب thiopurines"
+      ]
+    },
+    "value": {
+      "category": "complex-relationship",
+      "beyondGeneral": "The added value is the joint interpretation of two independent pharmacogenes, including the stronger risk signal when both are intermediate metabolizers; a generic one-gene summary can miss combined-phenotype effects.",
+      "generalAnswerRisk": "A generic answer may treat TPMT and NUDT15 as interchangeable single-gene tests or overlook the combined-intermediate subgroup."
+    },
+    "clinical": {
+      "scope": "Genotype-informed interpretation of azathioprine-associated thiopurine myelosuppression risk."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The drug under consideration is azathioprine.",
+        "A TPMT and/or NUDT15 metabolizer phenotype is explicitly provided."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "A specific starting dose or disease-specific treatment protocol is requested.",
+        "effect": "Do not derive a complete dosing regimen from the summary table; use the current FDA-approved label and current specialist guideline for the indication."
+      },
+      {
+        "when": "Only one gene's phenotype is known.",
+        "effect": "Do not assume the untested gene has a normal-metabolizer phenotype."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "azathioprine-tpmt-nudt15",
+        "quote": "TPMT and/or NUDT15"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.carbamazepine-hla-b-1502",
+    "title": "HLA-B*15:02 and carbamazepine severe skin-reaction risk",
+    "kind": "exception",
+    "statement": "For patients positive for HLA-B*15:02 allele, the FDA table links carbamazepine with increased risk of severe skin reactions and advises avoiding use unless potential benefits outweigh risks; genotyping does not replace clinical vigilance.",
+    "aliases": {
+      "en": [
+        "HLA-B*15:02 carbamazepine",
+        "carbamazepine SJS TEN",
+        "HLA B 1502 severe cutaneous adverse reaction"
+      ],
+      "ar": [
+        "كاربامازيبين وHLA-B*15:02",
+        "متلازمة ستيفنز جونسون مع carbamazepine"
+      ]
+    },
+    "value": {
+      "category": "non-obvious-exception",
+      "beyondGeneral": "The non-obvious detail is that the FDA wording is not an unconditional ban: it allows a benefit-risk exception and explicitly says genotyping cannot replace clinical vigilance; this wording must not be flattened into an absolute rule.",
+      "generalAnswerRisk": "A generic answer may either overstate an absolute contraindication or imply that a negative or positive genotype removes the need for clinical monitoring."
+    },
+    "clinical": {
+      "scope": "Allele-specific pharmacogenetic interpretation of carbamazepine-associated severe cutaneous adverse reactions."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The genetic result explicitly identifies HLA-B*15:02 positivity.",
+        "The medicine under discussion is carbamazepine."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "The potential benefits are judged to outweigh the risks in the clinical context.",
+        "effect": "The FDA wording allows an individualized benefit-risk consideration rather than an unconditional avoid-use statement."
+      },
+      {
+        "when": "A different HLA allele or another drug is named.",
+        "effect": "Do not transfer this exact gene-allele-drug rule without separate supporting evidence."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "carbamazepine-hlab1502",
+        "quote": "*15:02 allele positive"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  },
+  {
+    "id": "pgx.fda.table-inclusion-not-testing-mandate",
+    "title": "FDA pharmacogenetic table inclusion is not a universal testing mandate",
+    "kind": "relationship",
+    "statement": "A gene-drug association appearing in the FDA pharmacogenetic table does not by itself mean the FDA recommends a pharmacogenetic test before prescribing every medicine; the companion-diagnostic exception and the specific drug labeling must be considered.",
+    "aliases": {
+      "en": [
+        "FDA pharmacogenetic test recommendation",
+        "table inclusion testing mandate",
+        "companion diagnostic pharmacogenetics",
+        "FDA PGx testing before prescribing"
+      ],
+      "ar": [
+        "هل إدراج الدواء يعني ضرورة الفحص الجيني",
+        "اختبارات pharmacogenetics قبل وصف الدواء",
+        "companion diagnostic"
+      ]
+    },
+    "value": {
+      "category": "technical-distinction",
+      "beyondGeneral": "The expert distinction separates evidence that a gene-drug association exists from a regulatory recommendation to test every patient before prescribing; a general model may incorrectly convert a table listing into a universal testing mandate.",
+      "generalAnswerRisk": "A generic answer may tell students that every listed association requires routine pre-prescription genetic testing, which the FDA table explicitly does not say."
+    },
+    "clinical": {
+      "scope": "Regulatory interpretation of whether an FDA-listed pharmacogenetic association mandates pre-prescription testing."
+    },
+    "scope": {
+      "discipline": [
+        "all"
+      ],
+      "exam": [],
+      "jurisdiction": "intl",
+      "specialty": "Clinical Pharmacogenomics"
+    },
+    "applicability": {
+      "conditions": [
+        "The question asks what inclusion in the FDA pharmacogenetic table implies about pre-prescription testing."
+      ]
+    },
+    "exceptions": [
+      {
+        "when": "The relevant test is an FDA-designated companion diagnostic or the drug labeling specifically requires testing.",
+        "effect": "Follow the applicable companion-diagnostic and current drug-label requirements; do not generalize the table caveat to override them."
+      }
+    ],
+    "evidence": [
+      {
+        "sourceId": "fda-pgx-table-2026-09",
+        "passageId": "table-inclusion",
+        "quote": "test before prescribing"
+      }
+    ],
+    "approval": {
+      "status": "draft"
+    },
+    "version": "2026-09-10",
+    "effectiveFrom": "2026-09-10",
+    "reviewBy": "2027-05-20"
+  }
+]
