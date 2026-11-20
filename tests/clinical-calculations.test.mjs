@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   auditClinicalCalculations,
   parseClinicalData,
+  parseClinicalDataDiagnostics,
   extractLabelledClinicalData,
   extractClinicalDataBlock,
   stripPartialClinicalDataBlock,
@@ -440,4 +441,42 @@ test("a triple acid-base claim is supported only when delta gap and Winter indep
     narrative: "A triple disorder is present.",
   });
   assert.ok(unsupported.conflicts.some((x) => x.code === "triple-acid-base-not-supported"));
+});
+
+test("ECMO arterial-site and blood-sample qualifiers prevent false numeric-conflict alarms", () => {
+  const stem = [
+    "Right Radial Arterial Line: BP 104/46 mmHg (MAP 65 mmHg), SpO2 (Right Ear/Finger): 69%.",
+    "Left Femoral/Pedal Doppler & Left Toe Pulse Oximetry: non-pulsatile flow, MAP 82 mmHg, SpO2 (Left Great Toe): 99%.",
+    "Right Radial ABG: pH 7.16, PaCO2 54 mmHg, PaO2 39 mmHg, HCO3 19 mEq/L, Lactate 11.2 mmol/L.",
+    "ECMO Post-Oxygenator ABG: pH 7.42, PaCO2 34 mmHg, PaO2 460 mmHg.",
+  ].join("\n");
+  const extracted = extractLabelledClinicalData(stem);
+  const parsed = parseClinicalDataDiagnostics(extracted);
+  assert.equal(parsed.duplicates.length, 0, "different sites/samples must not be collapsed into one duplicate field");
+  assert.equal(parsed.facts.maprightradial.value, 65);
+  assert.equal(parsed.facts.mapleftfemoralpedal.value, 82);
+  assert.equal(parsed.facts.phrightradial.value, 7.16);
+  assert.equal(parsed.facts.phecmopostoxygenator.value, 7.42);
+  assert.equal(parsed.facts.pao2rightradial.value, 39);
+  assert.equal(parsed.facts.pao2ecmopostoxygenator.value, 460);
+
+  const audit = auditClinicalCalculations({
+    dataText: extracted,
+    modelDataText: extracted,
+    authorityDataText: extracted,
+    contextText: `${stem} Distractor E mentions continuous renal replacement therapy (CRRT); distractor D mentions 2 L of 5% albumin.`,
+    answerText: "B) Address differential hypoxemia with a tailored V-AV ECMO configuration.",
+    requireAuthorityInputs: true,
+  });
+  assert.deepEqual(audit.conflicts, []);
+  assert.equal(audit.domains.crRT, true, "CRRT distractor is seen as text");
+  assert.equal(audit.domains.proteinPK, false, "plain albumin in a distractor is not drug protein-binding pharmacokinetics");
+  assert.equal(audit.triggered, false, "unrelated distractor terms must not start a drug infusion calculation");
+});
+
+test("same-site repeated readings remain a real conflict after site scoping", () => {
+  const extracted = extractLabelledClinicalData("Right Radial Arterial Line MAP 65 mmHg; right radial repeat MAP 58 mmHg.");
+  const report = parseClinicalDataDiagnostics(extracted);
+  assert.equal(report.duplicates.length, 1);
+  assert.equal(report.duplicates[0].key, "maprightradial");
 });

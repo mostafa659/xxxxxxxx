@@ -1,5 +1,5 @@
 /*
- * Clinical safety rules (v3.53).
+ * Clinical safety rules (v3.54).
  *
  * This is a conservative contradiction detector, not a diagnostic engine.
  * It only blocks narrowly defined, high-impact overclaims / missing safety
@@ -200,6 +200,108 @@ export function auditClinicalSafety({ caseText = "", answerText = "", selectedOp
     const renalDosePlan = /\b(?:renal[- ]adjusted|adjust(?:ed|ment)? for renal|dose adjustment for renal|kidney[- ]adjusted|adjust dose based on (?:renal|kidney)|creatinine clearance[- ]based)\b/i.test(proposedPlan);
     const potassiumMonitor = /\b(?:monitor|repeat|serial|trend).{0,45}(?:potassium|K\+)|(?:potassium|K\+).{0,45}(?:monitor|repeat|serial|trend)\b/i.test(proposedPlan);
     if (!renalDosePlan || !potassiumMonitor) rule("tmp-smx-renal-hyperkalemia-safety", `The plan includes TMP-SMX in a patient with ${potassium != null && potassium >= 5.5 ? `hyperkalaemia (K ${potassium})` : "acute renal dysfunction"}. Require kidney-function-based dosing plus explicit potassium and renal monitoring; do not let a PJP treatment recommendation bypass this patient-specific safety constraint.`);
+  }
+
+  // VA-ECMO with femoral arterial return can create two differently oxygenated arterial territories.
+  // Radial and distal limb readings are different sampling sites, not duplicate values to average.
+  const vaFemoralCase = /\bVA[- ]ECMO\b/i.test(context) && /femoro[- ]femoral|femoral.{0,40}arterial return|arterial.{0,40}femoral/i.test(context);
+  const radialHypoxemia = /right radial.{0,100}(?:SpO2|oxygen saturation|PaO2).{0,35}(?:6[0-9]|[0-5]\d)\s*(?:%|mm\s*hg)/i.test(context)
+    || /(?:SpO2|oxygen saturation).{0,30}(?:69|6[0-9])\s*%/i.test(context)
+    || /right radial ABG.{0,100}PaO2\s*[:=]?\s*(?:[0-5]\d)\s*mm\s*hg/i.test(context);
+  const lowerBodyBetterOxygenation = /(?:toe|pedal|lower extremity|lower limb).{0,80}(?:SpO2|oxygen saturation).{0,25}(?:9[5-9]|100)\s*%/i.test(context);
+  const postOxygenatorWellOxygenated = /post[- ]oxygenator.{0,80}PaO2\s*[:=]?\s*(?:[2-9]\d\d|[1-9]\d{3})\s*mm\s*hg/i.test(context);
+  const differentialHypoxemia = vaFemoralCase && radialHypoxemia && (lowerBodyBetterOxygenation || postOxygenatorWellOxygenated);
+  if (differentialHypoxemia && !/\bV[- ]?AV\b|veno[- ]arterial[- ]venous|upper[- ]body oxygenat|axillary arterial return|central arterial return|central cannulat/i.test(proposedPlan)) {
+    rule("va-ecmo-differential-hypoxemia-not-addressed", "The case has a femoral VA-ECMO upper/lower-body oxygenation gradient (right-radial hypoxaemia with better oxygenator/distal signals). The plan must address proximal/coronary/cerebral oxygen delivery—e.g. a carefully configured V-AV strategy or another centre-specific upper-body return strategy—not merely raise ventilator FiO2 or pump speed.");
+  }
+  if (/non[- ]?pulsatile.{0,90}(?:toe|pedal|lower limb)|(?:toe|pedal).{0,90}non[- ]?pulsatile/i.test(context)
+      && /(?:toe|pedal).{0,50}(?:SpO2|oxygen saturation).{0,25}9[5-9]\s*%|(?:SpO2|oxygen saturation).{0,50}(?:toe|pedal).{0,25}9[5-9]\s*%/i.test(context)
+      && !/femoral.{0,50}(?:arterial blood gas|ABG|arterial sample)|(?:arterial blood gas|ABG).{0,50}femoral|NIRS|near[- ]infrared|distal arterial gas/i.test(proposedPlan)) {
+    advisories.push({ code: "nonpulsatile-toe-spo2-needs-confirmation", message: "A 99% toe pulse-oximeter value recorded during explicitly non-pulsatile continuous flow may be unreliable without a valid plethysmographic signal. Do not treat it as a definitive lower-body arterial saturation; confirm distal oxygenation/perfusion with an appropriate arterial sample and/or regional NIRS while retaining the clearly severe right-radial hypoxaemia." });
+  }
+
+  // Severe LV distension on VA-ECMO needs a case-specific unloading plan, not just a circuit-flow increase.
+  const severeLvDistension = /LVEF\s*~?\s*(?:1[0-9]|[0-9])\s*[-–/]?\s*15?\s*%|LVEF.{0,25}10\s*[-–]\s*15\s*%/i.test(context)
+    && /spontaneous echo contrast|\bsmoke\b/i.test(context)
+    && /aortic valve.{0,45}(?:intermittent|every|rare|occasion|opens?)/i.test(context)
+    && /PCWP\s*[:=]?\s*(?:2[0-9]|[3-9]\d)\s*mm\s*hg/i.test(context);
+  if (severeLvDistension && !/\b(?:Impella|LV vent|left ventricular vent|left atrial vent|surgical vent|unload(?:ing)? the left ventricle|left ventricular decompression|IABP|intra[- ]aortic balloon)\b/i.test(proposedPlan)) {
+    rule("va-ecmo-lv-distension-not-addressed", "The case documents severe LV distension/stasis (very low LVEF, spontaneous echo contrast, rare aortic-valve opening and high PCWP). The plan must explicitly address LV unloading/venting and reassess native ejection; increasing VA-ECMO flow alone can worsen LV afterload and pulmonary congestion.");
+  }
+  if (/\bImpella\b.{0,55}\bor\b.{0,55}\batrial septostomy\b|\batrial septostomy\b.{0,55}\bor\b.{0,55}\bImpella\b/i.test(proposedPlan)) {
+    advisories.push({ code: "lv-unloading-modalities-not-equivalent", message: "Do not present Impella and atrial septostomy as identical: both may be used in an LV unloading/venting strategy, but Impella actively unloads the LV and reduces wall stress/myocardial oxygen demand, whereas atrial septostomy is passive pressure decompression and does not substantially lower wall stress. Select and monitor the strategy according to anatomy, aortic-valve opening, LV stasis, oxygenation and procedural risks." });
+  }
+  if (vaFemoralCase && /\b(?:Impella|atrial septostomy|LV vent|left ventricular vent|left atrial vent)\b/i.test(proposedPlan)
+      && !/access.{0,60}(?:review|assess|feasib|anatom)|(?:review|assess|confirm).{0,55}(?:vascular|arterial|femoral|axillary|transseptal) access|contraindicat|vascular anatomy/i.test(proposedPlan)) {
+    advisories.push({ code: "lv-unloading-access-feasibility-not-addressed", message: "Before selecting or inserting an LV unloading/venting device, explicitly assess arterial/venous or transseptal access feasibility, existing ECMO cannulae, reconstructed aortic/iliofemoral anatomy, device-specific contraindications and the severe bleeding/thrombosis balance. Do not treat a device name as a complete procedural plan." });
+  }
+
+  // Overt abdominal compartment syndrome requires urgent decompression assessment.
+  const iap = number(/(?:bladder\s+pressure(?:\s*\(IAP\))?|intra[- ]abdominal pressure|\bIAP\b)\s*[:=]?\s*([\d,.]+)\s*mm\s*hg/i);
+  const oliguria = /urine output\s*[:=]?\s*(?:[0-9]|1[0-4])\s*mL\s*\/\s*hr|oliguria|anuria/i.test(context);
+  if (iap != null && iap >= 20 && oliguria && !/decompressive laparotomy|surgical abdominal decompression|open the abdomen|abdominal decompression/i.test(proposedPlan)) {
+    rule("overt-acs-not-decompressed", `Bladder/IAP is ${iap} mmHg with new oliguria, supporting overt abdominal compartment syndrome (assuming standardized measurement). The plan must explicitly prioritize urgent surgical decompression assessment; fluid loading or watchful waiting alone is not adequate.`);
+  }
+
+  // Spinal cord rescue after extensive TAAA repair is time-critical, but a bloody drain under bivalirudin is not a routine flush.
+  const postTaaaCordDeficit = /thoracoabdominal aortic|\bTAAA\b|extent\s*(?:I|II|2)/i.test(context)
+    && /bilateral.{0,45}(?:motor loss|paralysis|weakness)|0\s*\/\s*5.{0,45}(?:bilateral|lower extremit)|paraplegia/i.test(context);
+  const csfPressure = number(/(?:intrathecal\s+)?CSF\s+pressure\s*[:=]?\s*([\d,.]+)\s*mm\s*hg/i);
+  const bloodyCsf = /blood[- ]tinged.{0,25}CSF|bloody CSF|CSF.{0,30}blood[- ]tinged|lumbar CSF drain.{0,300}blood[- ]tinged/i.test(context);
+  const bivalirudinActive = /\bbivalirudin\b/i.test(context) && /aPTT\s*[:=]?\s*(?:[5-9]\d|1\d\d)\s*(?:sec|seconds|s)\b/i.test(context);
+  const severeNeuraxialBleedingRisk = (platelets != null && platelets < 50) || (inr != null && inr >= 1.5) || (number(/fibrinogen\s*[:=]?\s*([\d,.]+)\s*mg\s*\/\s*dl/i) != null && number(/fibrinogen\s*[:=]?\s*([\d,.]+)\s*mg\s*\/\s*dl/i) < 150);
+  const explicitAvoidDrainManipulation = /(?:do not|avoid|never|must not).{0,55}(?:flush|irrigat|aspirat|replace|exchange|manipulat|insert)|(?:لا\s*(?:تغسل|تشفط|تسحب|تدخل|تستبدل|تعبث)).{0,45}(?:المصرف|القسطرة|السائل النخاعي)/i.test(proposedPlan);
+  const drainManipulation = !explicitAvoidDrainManipulation && /\b(?:flush|force[- ]flush|irrigat|aspirat|replace|exchange|insert|manipulat)\w*.{0,45}(?:lumbar|CSF|spinal|neuraxial)?|(?:lumbar|CSF|spinal|neuraxial).{0,45}\b(?:flush|irrigat|aspirat|replace|exchange|insert|manipulat)\w*/i.test(proposedPlan);
+  if (postTaaaCordDeficit && bloodyCsf && bivalirudinActive && severeNeuraxialBleedingRisk && drainManipulation) {
+    rule("bloody-csf-drain-manipulation-on-bivalirudin", "Progressive paralysis plus blood-tinged CSF, active bivalirudin (aPTT prolonged) and severe thrombocytopenia/coagulopathy is not a routine drain-obstruction scenario. Do not blindly/forcefully flush, aspirate, replace or manipulate the neuraxial catheter. Hold/reassess anticoagulation as the bleeding risk dictates, obtain urgent spine/neurosurgical and anesthesia review, and evaluate for compressive neuraxial hematoma while balancing ECMO-circuit thrombosis risk.");
+  }
+  if (postTaaaCordDeficit && csfPressure != null && csfPressure >= 10) {
+    const mapRescue = /(?:MAP|mean arterial pressure).{0,70}(?:9[0-9]|100)\s*mm\s*hg|(?:target|augment|raise|increase|maintain).{0,55}(?:MAP|mean arterial pressure).{0,30}(?:9[0-9]|100)|(?:MAP|mean arterial pressure).{0,45}(?:augment|raise|increase|target)/i.test(proposedPlan);
+    if (!mapRescue) advisories.push({ code: "taa-sci-rescue-map-not-explicit", message: "The plan should include a spinal-cord rescue bundle, not CSF-drain work alone: verify the arterial pressure site/level and consider protocol-directed MAP augmentation (published rescue protocols commonly target ≥90–95 mmHg), optimize oxygen delivery/hemoglobin and correct hypoxia/hypercarbia. Targets must be individualized to the patient and repair." });
+    if (bloodyCsf && !/MRI.{0,50}spine|spinal MRI|CT.{0,50}spine|neuraxis imaging|spinal hematoma|epidural hematoma|compressive hematoma/i.test(proposedPlan)) {
+      advisories.push({ code: "bloody-csf-neuraxial-imaging-not-mentioned", message: "Blood-tinged CSF with progressive bilateral motor loss and coagulopathy requires urgent assessment for a compressive spinal/neuraxial hematoma (imaging when feasible), not an assumption of simple catheter obstruction. Coordinate any imaging/intervention with ECMO and surgical teams." });
+    }
+    if (/dampened|damped|blunted|poor waveform/i.test(context) && !/zero|level|transducer|waveform|signal.{0,25}valid|verify.{0,35}(?:pressure|waveform)|confirm.{0,35}(?:pressure|waveform)/i.test(proposedPlan)) {
+      advisories.push({ code: "dampened-csf-pressure-trace-needs-validation", message: "The reported intrathecal pressure is accompanied by a dampened waveform. Verify transducer zero/level, stopcock and line setup, and whether the trace is technically valid before treating 34 mmHg as a reliable pressure measurement; do not use blind flushing to validate it in a bloody, anticoagulated system." });
+    }
+    const hbValue = number(/(?:hemoglobin|haemoglobin|\bHb\b)\s*[:=]?\s*([\d,.]+)\s*g\s*\/\s*dl/i);
+    if (hbValue != null && hbValue < 10 && !/transfus|red blood cell|packed red cells|hemoglobin.{0,30}(?:target|optim|raise)|haemoglobin.{0,30}(?:target|optim|raise)/i.test(proposedPlan)) {
+      advisories.push({ code: "taa-sci-oxygen-delivery-hb-not-addressed", message: `Hemoglobin is ${hbValue} g/dL in a patient with suspected spinal-cord ischemia and systemic hypoxia. Include an explicit oxygen-delivery/transfusion assessment; some aortic rescue protocols target Hb ≥10 g/dL, but this is protocol- and patient-dependent rather than a universal threshold.` });
+    }
+    if (!/\b(?:drain|CSF pressure|cerebrospinal fluid|spinal cord perfusion|SCPP)\b/i.test(proposedPlan)) rule("taa-sci-rescue-not-addressed", "Progressive neurologic deficit after extensive TAAA repair with markedly elevated CSF pressure requires an explicit spinal-cord rescue pathway, coordinated with the bleeding/anticoagulation risk.");
+  }
+
+  // Chattering signals drainage insufficiency/suction; avoid reflex RPM escalation or large volume loading.
+  const drainageChatter = /chatter|chattering|chugging|suction event/i.test(context);
+  if (drainageChatter && /increase.{0,35}(?:RPM|pump speed|flow)|raise.{0,35}(?:RPM|pump speed)|5,?200\s*RPM|6\.0\s*L\s*\/\s*min/i.test(proposedPlan)) {
+    rule("ecmo-chatter-rpm-escalation", "The drainage cannula is chattering. Raising RPM/flow can intensify venous suction and drainage collapse; stabilize flow (often by temporarily reducing RPM) and assess venous return, cannula position/obstruction, bleeding, tamponade, pneumothorax and raised intra-abdominal pressure before titration.");
+  }
+  if (drainageChatter && !/reduce.{0,35}(?:RPM|pump speed)|lower.{0,35}(?:RPM|pump speed)|stabiliz.{0,45}(?:drainage|venous return)|assess.{0,70}(?:cannula|venous return|preload|tamponade|pneumothorax|intra[- ]abdominal)/i.test(proposedPlan)) {
+    advisories.push({ code: "ecmo-chatter-workup-omitted", message: "Frequent drainage-line chatter is not fixed by an automatic 2-L albumin bolus. The answer should address pump-speed reduction/stabilization and investigate cannula position/obstruction, venous return, bleeding, tamponade, pneumothorax and the very high IAP." });
+  }
+  if (drainageChatter && /\b(?:2\s*l|2,000\s*ml)\b.{0,25}albumin|albumin.{0,25}\b(?:2\s*l|2,000\s*ml)\b/i.test(proposedPlan) && (iap != null && iap >= 20)) {
+    rule("ecmo-chatter-reflex-volume-in-acs", "A large empiric albumin bolus is unsafe to present as the default response to ECMO chatter in a patient with overt abdominal compartment physiology and severe pulmonary venous congestion. Diagnose the cause of drainage insufficiency and give volume only if objective assessment supports it.");
+  }
+
+  // Muscle injury, hyperkalaemia and dark urine require urgent limb/perfusion and metabolic evaluation.
+  const ck = number(/\bCK\s*[:=]?\s*([\d,.]+)\s*(?:U\s*\/\s*L)?/i);
+  const darkUrine = /(?:tea[- ]colou?red|dark).{0,25}urine/i.test(context);
+  if ((ck != null && ck >= 5000 && darkUrine) || (potassium != null && potassium >= 6.0 && ck != null && ck >= 5000)) {
+    const limbAssessment = /limb perfusion|distal perfusion|vascular assessment|doppler|duplex|compartment assessment|compartment syndrome|serial neurovascular/i.test(proposedPlan);
+    const hyperKAction = /hyperkala?emia|hyperkalemia|potassium.{0,35}(?:treat|correct|monitor|repeat)|(?:treat|correct|monitor|repeat).{0,35}potassium/i.test(proposedPlan);
+    if (!limbAssessment) advisories.push({ code: "rhabdo-limb-ischemia-assessment-omitted", message: `CK ${ck} U/L with dark urine and/or marked hyperkalaemia raises concern for severe muscle injury/rhabdomyolysis or limb malperfusion. Include urgent bilateral limb perfusion/compartment assessment; do not perform fasciotomy without a clinical compartment-syndrome indication.` });
+    if (!hyperKAction) advisories.push({ code: "severe-hyperkalemia-response-omitted", message: "Potassium ≥6.0 mmol/L in this context is immediately dangerous. The integrated plan should include urgent hyperkalaemia assessment/treatment, repeat potassium/ECG and renal-support planning alongside definitive perfusion control." });
+  }
+
+  // Major bleeding on bivalirudin has no specific pharmacological antidote; circuit thrombosis risk remains.
+  const overtBleeding = /dark maroon.{0,35}nasogastric|maroon.{0,35}gastric|active bleeding|major bleeding|blood[- ]tinged CSF/i.test(context);
+  if (overtBleeding && /\bbivalirudin\b/i.test(context)) {
+    const holdBival = /\b(?:hold|withhold|pause|interrupt|stop|temporarily discontinue)\b.{0,50}\bbivalirudin\b|\bbivalirudin\b.{0,50}\b(?:hold|withhold|pause|interrupt|stop)\b/i.test(proposedPlan);
+    if (!holdBival) rule("major-bleeding-bivalirudin-not-reassessed", "The case suggests major bleeding while bivalirudin is running. The plan must explicitly reassess/hold anticoagulation as clinically indicated, urgently control bleeding and correct hemostatic deficits, while continuously balancing the substantial oxygenator/LV/circuit thrombosis risk. Bivalirudin has no specific reversal antidote; protamine does not reverse it.");
+    else advisories.push({ code: "bivalirudin-hold-requires-circuit-balance", message: "Holding bivalirudin during major bleeding may be necessary, but it is not a definitive reversal and creates ECMO/cardiac thrombosis risk. State frequent reassessment of bleeding, aPTT/other hemostatic tests, circuit/oxygenator and LV stasis, with a multidisciplinary restart threshold." });
+  }
+  if (/\bprotamine\b/i.test(proposedPlan) && /\bbivalirudin\b/i.test(context)) {
+    rule("protamine-does-not-reverse-bivalirudin", "Protamine reverses heparin, not bivalirudin. Do not use protamine as a bivalirudin antidote; the direct thrombin inhibitor has no specific pharmacological antidote.");
   }
 
   return {

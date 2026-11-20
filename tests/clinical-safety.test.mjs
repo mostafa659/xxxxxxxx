@@ -24,8 +24,9 @@ test("duplicate numeric labels within one source are preserved and block calcula
 test("labelled extractor keeps current and baseline lab readings rather than taking the first silently", () => {
   const sodium = extractLabelledClinicalData("Sodium 126 mmol/L at presentation; baseline sodium 139 mmol/L.");
   const facts = parseClinicalData(sodium);
-  assert.equal((sodium.match(/na=/g) || []).length, 2);
+  assert.equal((sodium.match(/na=/g) || []).length, 1);
   assert.equal(facts.na.value, 126);
+  assert.equal(facts.nabaseline.value, 139, "baseline values are retained under a distinct temporal identity");
 });
 
 test("Arabic numerals are parsed deterministically", () => {
@@ -153,4 +154,50 @@ test("supratherapeutic tacrolimus with acute kidney injury cannot be ignored", (
   assert.ok(ignored.conflicts.some((x) => x.code === "supratherapeutic-tacrolimus-with-aki"));
   const managed = auditClinicalSafety({ caseText: highRiskCase, selectedOptionText: "Hold tacrolimus.", answerText: "Hold/review tacrolimus with the transplant team and repeat the trough level; monitor kidney function." });
   assert.equal(managed.conflicts.some((x) => x.code === "supratherapeutic-tacrolimus-with-aki"), false);
+});
+
+const ecmoTaaaCase = `A 49-year-old man 18 hours after emergent Extent II thoracoabdominal aortic aneurysm (TAAA) repair. Peripheral femoro-femoral VA-ECMO. Progressive bilateral lower extremity motor loss (0/5 strength bilaterally). Right radial MAP 65 mmHg and SpO2 69%; left femoral/pedal MAP 82 mmHg with non-pulsatile continuous flow and toe SpO2 99%. Right radial ABG pH 7.16, PaO2 39 mmHg. Hemoglobin 7.9 g/dL. ECMO post-oxygenator ABG pH 7.42, PaO2 460 mmHg. Drainage-line chattering. PCWP 29 mmHg. TEE LVEF 10–15% with spontaneous echo contrast (smoke), aortic valve opens every 4th beat. Bladder pressure (IAP) 29 mmHg; urine output 5 mL/hr. Lumbar CSF drain: intrathecal CSF pressure 34 mmHg, waveform dampened and blood-tinged. Bivalirudin infusion; current aPTT 74 sec. Platelets 38 × 10^9/L; fibrinogen 110 mg/dL; INR 1.9. CK 18,400 U/L; potassium 6.3 mEq/L; dark tea-coloured urine. Dark maroon nasogastric tube output.`;
+const ecmoOptionB = `Hold bivalirudin and correct coagulopathy with platelets and cryoprecipitate (avoiding PCC); convert peripheral VA-ECMO to hybrid Veno-Arterial-Venous (V-AV) ECMO by adding a right internal jugular venous return cannula while placing a percutaneous left ventricular vent (e.g. Impella or atrial septostomy); perform an immediate decompressive laparotomy; troubleshoot/flush the lumbar drain without rapid high-volume CSF aspiration (maintaining CSF pressure target 10–12 mmHg only after hemostatic optimization).`;
+
+test("VA-ECMO TAAA case recognises real site-specific gradients and blocks unsafe bloody-drain flushing on bivalirudin", () => {
+  const audit = auditClinicalSafety({ caseText: ecmoTaaaCase, selectedOptionText: ecmoOptionB, answerText: "B is fully correct; troubleshoot and flush the lumbar drain." });
+  const codes = new Set(audit.conflicts.map((x) => x.code));
+  assert.ok(codes.has("bloody-csf-drain-manipulation-on-bivalirudin"));
+  assert.ok(!codes.has("va-ecmo-differential-hypoxemia-not-addressed"), "V-AV strategy addresses upper-body hypoxaemia");
+  assert.ok(!codes.has("va-ecmo-lv-distension-not-addressed"), "an LV unloading method is named");
+  assert.ok(!codes.has("overt-acs-not-decompressed"), "decompressive laparotomy is named");
+  assert.ok(audit.advisories.some((x) => x.code === "taa-sci-rescue-map-not-explicit"));
+  assert.ok(audit.advisories.some((x) => x.code === "bloody-csf-neuraxial-imaging-not-mentioned"));
+  assert.ok(audit.advisories.some((x) => x.code === "lv-unloading-modalities-not-equivalent"));
+  assert.ok(audit.advisories.some((x) => x.code === "lv-unloading-access-feasibility-not-addressed"));
+  assert.ok(audit.advisories.some((x) => x.code === "ecmo-chatter-workup-omitted"));
+  assert.ok(audit.advisories.some((x) => x.code === "rhabdo-limb-ischemia-assessment-omitted"));
+  assert.ok(audit.advisories.some((x) => x.code === "severe-hyperkalemia-response-omitted"));
+  assert.ok(audit.advisories.some((x) => x.code === "nonpulsatile-toe-spo2-needs-confirmation"));
+  assert.ok(audit.advisories.some((x) => x.code === "dampened-csf-pressure-trace-needs-validation"));
+  assert.ok(audit.advisories.some((x) => x.code === "taa-sci-oxygen-delivery-hb-not-addressed"));
+  assert.ok(audit.advisories.some((x) => x.code === "bivalirudin-hold-requires-circuit-balance"));
+});
+
+test("an explicit no-flush, spinal-rescue and imaging plan resolves the neuraxial manipulation conflict", () => {
+  const audit = auditClinicalSafety({
+    caseText: ecmoTaaaCase,
+    selectedOptionText: ecmoOptionB,
+    answerText: "Do not flush, force aspirate, replace or blindly manipulate the bloody lumbar drain. Hold/reassess bivalirudin with the ECMO team; urgently involve neurosurgery and anesthesia and obtain urgent MRI spine when feasible to exclude epidural/compressive hematoma. Verify the CSF transducer zero, level and waveform validity. Augment MAP to 90–95 mmHg per the spinal rescue protocol; verify the arterial-line reference and optimise oxygen delivery with a transfusion assessment for Hb 7.9 g/dL. Treat the decompressed abdominal compartment, stabilise ECMO chatter by temporarily reducing RPM and assessing cannula position/preload/tamponade/pneumothorax. Assess both limb Dopplers and compartments, treat hyperkalaemia urgently, confirm distal oxygenation using arterial sampling or NIRS instead of relying on a toe oximeter during non-pulsatile flow, and select active Impella unloading rather than describing it as equivalent to passive atrial septostomy; review vascular/transseptal access feasibility, reconstructed aortic and iliofemoral anatomy, contraindications and bleeding/thrombosis risk before device insertion.",
+  });
+  assert.equal(audit.conflicts.some((x) => x.code === "bloody-csf-drain-manipulation-on-bivalirudin"), false);
+  assert.equal(audit.conflicts.some((x) => x.code === "taa-sci-rescue-not-addressed"), false);
+});
+
+test("unsafe ECMO option A is flagged for RPM escalation during chatter, CSF aspiration, and protamine-for-bivalirudin", () => {
+  const audit = auditClinicalSafety({
+    caseText: ecmoTaaaCase,
+    selectedOptionText: "Increase VA-ECMO pump speed to 5,200 RPM; manually aspirate 30 mL CSF; administer protamine sulfate with PCC.",
+    answerText: "Choose A and use protamine to reverse bivalirudin.",
+  });
+  const codes = new Set(audit.conflicts.map((x) => x.code));
+  assert.ok(codes.has("ecmo-chatter-rpm-escalation"));
+  assert.ok(codes.has("protamine-does-not-reverse-bivalirudin"));
+  assert.ok(codes.has("bloody-csf-drain-manipulation-on-bivalirudin"));
+  assert.ok(codes.has("va-ecmo-differential-hypoxemia-not-addressed"));
 });

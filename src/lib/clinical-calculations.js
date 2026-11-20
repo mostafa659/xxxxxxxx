@@ -83,6 +83,25 @@ export function parseClinicalData(text = "") {
   return parseClinicalDataDiagnostics(text).facts;
 }
 
+function qualifierForMeasurement(source, index) {
+  const t = String(source || "");
+  const lineStart = t.lastIndexOf("\n", Math.max(0, index)) + 1;
+  const lineEndRaw = t.indexOf("\n", index);
+  const lineEnd = lineEndRaw < 0 ? t.length : lineEndRaw;
+  const line = t.slice(lineStart, lineEnd).toLowerCase();
+  const before = t.slice(Math.max(lineStart, index - 90), index).toLowerCase();
+  const tags = [];
+  if (/post[-\s]?(?:oxygenator|membrane)|ecmo\s+post/.test(line)) tags.push("ecmo_post_oxygenator");
+  else if (/pre[-\s]?(?:oxygenator|membrane)|ecmo\s+pre/.test(line)) tags.push("ecmo_pre_oxygenator");
+  else if (/right\s+radial/.test(line)) tags.push("right_radial");
+  else if (/left\s+radial/.test(line)) tags.push("left_radial");
+  else if (/left\s+(?:femoral|pedal|toe)|femoral\s*\/\s*pedal/.test(line)) tags.push("left_femoral_pedal");
+  else if (/right\s+(?:femoral|pedal|toe)/.test(line)) tags.push("right_femoral_pedal");
+  else if (/pulmonary\s+artery\s+catheter|\bPAC\b/.test(line)) tags.push("pulmonary_artery_catheter");
+  if (/\b(?:baseline|prior|previous|preoperative|pre-op)\b/.test(before)) tags.push("baseline");
+  return tags.length ? tags.join("_") : "";
+}
+
 export function extractLabelledClinicalData(text = "") {
   const source = String(text || "");
   const specs = [
@@ -123,7 +142,11 @@ export function extractLabelledClinicalData(text = "") {
     // reference-range value, or earlier time point instead of the current result.
     const global = new RegExp(re.source, `${re.flags.replace(/g/g, "")}g`);
     for (const match of source.matchAll(global)) {
-      pairs.push(`${key}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
+      // Site/sample qualifiers are part of a measurement's identity. Right-radial
+      // patient gas and post-oxygenator gas, for example, are not competing readings.
+      const qualifier = qualifierForMeasurement(source, match.index);
+      const scopedKey = qualifier ? `${key}_${qualifier}` : key;
+      pairs.push(`${scopedKey}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
     }
   }
   if (/(?:\bSC\b|sieving\s+coefficient)\s*(?:=|equals?|is equal to)\s*(?:\bfu\b|unbound\s+fraction)|(?:\bfu\b|unbound\s+fraction)\s*(?:=|equals?|is equal to)\s*(?:\bSC\b|sieving\s+coefficient)/i.test(source)) pairs.push("scequalsfu=1 relationship");
@@ -185,7 +208,7 @@ function clinicalDomains(text = "") {
     osmolality: /osmolal gap|osmolar gap|\bog\b|calculated osmolality|calculated osmolarity/.test(t),
     acidBase: /acid[- ]base|anion gap|\bag\b|winter.?s formula|metabolic acidosis|الحموضة|القلوية|الفجوة الأنيونية|الأحماض|الحمض|حمض.{0,10}قاعدة/.test(t),
     crRT: /\bcvvh\b|\bcvvhd\b|\bcvvhdf\b|continuous renal replacement|effluent flow/.test(t),
-    proteinPK: /hypoalbumin|albumin|unbound fraction|free fraction|protein.?bound|\bfu\b/.test(t),
+    proteinPK: /hypoalbumin|low albumin(?:emia)?|albumin.{0,35}(?:binding|bound)|(?:binding|bound).{0,35}albumin|unbound fraction|free fraction|protein.?bound|\bfu\b|intrinsic clearance/.test(t),
     pringle: /pringle|hepatoduodenal ligament/.test(t),
     lactate: /d[- ]lactate|lactate oxidase|propylene glycol|point.of.care lactate/.test(t),
   };
@@ -526,12 +549,16 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   if (computed.domains.osmolality && !computed.results.some((r) => r.id === "og") && hasOutput(/\b(?:OG|osmolal gap|osmolar gap)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "og-without-inputs", severity: "high", message: "An osmolal-gap result is reported, but sodium, glucose, BUN, and measured osmolality (with a consistent ethanol method when applicable) were not all available. Do not present the number as verified." });
   if (computed.domains.crRT && computed.domains.proteinPK && !computed.results.some((r) => r.id === "r0") && hasOutput(/(?:\bR\s*[₀0]|(?:maintenance\s+)?infusion\s+rate)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "r0-without-inputs", severity: "high", message: "An infusion rate is reported without all required drug-specific PK/CRRT inputs. Do not provide a numerical maintenance rate or substitute an assumed sieving coefficient." });
   const conflicts = [...inputConflicts, ...formulaFindings, ...valueConflicts, ...unsupportedOutputs];
+  const activeCalculationDomain = computed.domains.hemodynamics || computed.domains.osmolality || computed.domains.acidBase
+    || (computed.domains.crRT && computed.domains.proteinPK) || computed.domains.pringle || computed.domains.lactate;
   return {
     ...computed,
     sourceVerification: { required: !!requireAuthorityInputs, method: "separate source-reading pass; may be model-generated and is not human or orthogonal OCR verification", authorityFieldsAvailable: Object.keys(authorityFacts).length, modelFieldsAvailable: Object.keys(modelFacts).length, missingSourceFields: missingAuthority, missingModelFields: missingModel },
     conflicts,
-    triggered: Object.values(computed.domains).some(Boolean) || conflicts.length > 0,
-    status: conflicts.length ? "conflict" : computed.results.length ? "computed" : computed.inputCount ? "incomplete" : "no-structured-inputs",
+    // A stray distractor mentioning CRRT and a separate distractor mentioning albumin
+    // must not activate a drug-clearance calculation. PK/CRRT is a joint domain.
+    triggered: activeCalculationDomain || conflicts.length > 0,
+    status: conflicts.length ? "conflict" : computed.results.length ? "computed" : activeCalculationDomain && computed.inputCount ? "incomplete" : "no-structured-inputs",
   };
 }
 
