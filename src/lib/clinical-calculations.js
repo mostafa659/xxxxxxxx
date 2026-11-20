@@ -3,11 +3,11 @@
  *
  * This module never diagnoses or prescribes. It independently recomputes a small,
  * explicit set of examination calculations from values in the solver DATA field
- * and available independent OCR/lesson extractions. Missing inputs are never guessed. In particular, the
+ * and a separate model-generated source-reading pass / lesson extraction (not an orthogonal OCR engine). Missing inputs are never guessed. In particular, the
  * sieving coefficient is NOT silently replaced with the unbound fraction.
  */
 
-const NUM = "-?\\d+(?:[.,]\\d+)?";
+const NUM = "-?[0-9\\u0660-\\u0669]+(?:[.,٫][0-9\\u0660-\\u0669]+)?";
 const PAIR_RE = new RegExp(`(?:^|[;|,\\n])\\s*([A-Za-z][A-Za-z0-9_]*)\\s*=\\s*(${NUM})\\s*([^;,\\n]*)`, "g");
 
 const KEY_ALIASES = {
@@ -45,7 +45,7 @@ const KEY_ALIASES = {
 };
 
 const normKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const num = (s) => Number(String(s).replace(",", "."));
+const num = (s) => Number(String(s).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/٫/g, ".").replace(",", "."));
 const round = (x, d = 2) => Number.isFinite(x) ? Number(x.toFixed(d)) : null;
 const close = (a, b, abs = 0.5, rel = 0.015) => Math.abs(a - b) <= Math.max(abs, Math.abs(b) * rel);
 
@@ -57,18 +57,30 @@ function canonicalKey(key) {
   return k;
 }
 
-export function parseClinicalData(text = "") {
+export function parseClinicalDataDiagnostics(text = "") {
   const facts = {};
+  const duplicates = [];
   const raw = String(text || "");
-  PAIR_RE.lastIndex = 0;
+  const pairRe = new RegExp(PAIR_RE.source, "g");
   let m;
-  while ((m = PAIR_RE.exec(raw))) {
+  while ((m = pairRe.exec(raw))) {
     const key = canonicalKey(m[1]);
     const value = num(m[2]);
     if (!Number.isFinite(value)) continue;
-    facts[key] = { key, value, unit: String(m[3] || "").trim().replace(/\s+/g, " "), raw: m[0].trim() };
+    const reading = { key, value, unit: String(m[3] || "").trim().replace(/\s+/g, " "), raw: m[0].trim() };
+    if (!facts[key]) facts[key] = reading; // first reading wins; conflicting repeats are never silently overwritten
+    else {
+      const prior = facts[key];
+      if (!close(prior.value, reading.value, 0.0001, 0.0001) || (prior.unit && reading.unit && prior.unit.toLowerCase() !== reading.unit.toLowerCase())) {
+        duplicates.push({ key, first: prior, repeated: reading });
+      }
+    }
   }
-  return facts;
+  return { facts, duplicates };
+}
+
+export function parseClinicalData(text = "") {
+  return parseClinicalDataDiagnostics(text).facts;
 }
 
 export function extractLabelledClinicalData(text = "") {
@@ -107,8 +119,12 @@ export function extractLabelledClinicalData(text = "") {
   ];
   const pairs = [];
   for (const [key, re] of specs) {
-    const match = re.exec(source);
-    if (match) pairs.push(`${key}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
+    // Preserve every occurrence: selecting only the first match can silently pick a baseline,
+    // reference-range value, or earlier time point instead of the current result.
+    const global = new RegExp(re.source, `${re.flags.replace(/g/g, "")}g`);
+    for (const match of source.matchAll(global)) {
+      pairs.push(`${key}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
+    }
   }
   if (/(?:\bSC\b|sieving\s+coefficient)\s*(?:=|equals?|is equal to)\s*(?:\bfu\b|unbound\s+fraction)|(?:\bfu\b|unbound\s+fraction)\s*(?:=|equals?|is equal to)\s*(?:\bSC\b|sieving\s+coefficient)/i.test(source)) pairs.push("scequalsfu=1 relationship");
   return pairs.join("; ");
@@ -125,7 +141,8 @@ function labelledNumber(text, aliases) {
   const t = String(text || "");
   for (const alias of aliases) {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`${escaped}\\s*(?:[:=]|is|of)?\\s*(${NUM})`, "i");
+    const boundary = /^[A-Za-z0-9]+$/.test(alias) ? `\\b${escaped}\\b` : escaped;
+    const re = new RegExp(`${boundary}\\s*(?:[:=]|is|of)?\\s*(${NUM})`, "i");
     const m = re.exec(t);
     if (m) return num(m[1]);
   }
@@ -165,8 +182,8 @@ function clinicalDomains(text = "") {
   const t = String(text || "").toLowerCase();
   return {
     hemodynamics: /\bsvr\b|systemic vascular resistance|fick principle|fick equation/.test(t),
-    osmolality: /osmolal gap|osmolar gap|\bOG\b|calculated osmolality|calculated osmolarity/.test(t),
-    acidBase: /acid[- ]base|anion gap|\bAG\b|winter.?s formula|metabolic acidosis|الحموضة|القلوية|الفجوة الأنيونية|الأحماض|الحمض|حمض.{0,10}قاعدة/.test(t),
+    osmolality: /osmolal gap|osmolar gap|\bog\b|calculated osmolality|calculated osmolarity/.test(t),
+    acidBase: /acid[- ]base|anion gap|\bag\b|winter.?s formula|metabolic acidosis|الحموضة|القلوية|الفجوة الأنيونية|الأحماض|الحمض|حمض.{0,10}قاعدة/.test(t),
     crRT: /\bcvvh\b|\bcvvhd\b|\bcvvhdf\b|continuous renal replacement|effluent flow/.test(t),
     proteinPK: /hypoalbumin|albumin|unbound fraction|free fraction|protein.?bound|\bfu\b/.test(t),
     pringle: /pringle|hepatoduodenal ligament/.test(t),
@@ -447,7 +464,8 @@ export function extractCorrectAnswerSection(text = "") {
 export function auditClinicalCalculations({ dataText = "", secondaryDataText = "", authorityDataText = "", modelDataText = "", requireAuthorityInputs = false, narrative = "", answerText = "", calcText = "", contextText = "", optionText = "" } = {}) {
   const combined = [contextText, narrative, answerText, calcText, optionText].filter(Boolean).join("\n");
   const sourceTexts = [dataText, ...(Array.isArray(secondaryDataText) ? secondaryDataText : [secondaryDataText]), authorityDataText].filter((x) => String(x || "").trim());
-  const sourceFacts = sourceTexts.map(parseClinicalData).filter((x) => Object.keys(x).length);
+  const sourceReports = sourceTexts.map(parseClinicalDataDiagnostics);
+  const sourceFacts = sourceReports.map((x) => x.facts).filter((x) => Object.keys(x).length);
   const authorityFacts = parseClinicalData(authorityDataText);
   const modelFacts = parseClinicalData(modelDataText || (requireAuthorityInputs ? "" : dataText));
   const facts = {};
@@ -455,6 +473,11 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   // Compare every extractor pair, not only each secondary source against the first one.
   // This catches conflicts even when the primary extraction omitted that particular field.
   const readings = new Map();
+  for (const report of sourceReports) {
+    for (const d of report.duplicates) {
+      inputConflicts.push({ code: `within-source-${d.key}-ambiguous`, severity: "high", message: `The same source contains multiple non-equivalent readings for ${d.key}: ${d.first.raw} versus ${d.repeated.raw}. This may be a current/baseline/reference value mix-up; re-read and time-label the source before calculating.` });
+    }
+  }
   for (const factsFromSource of sourceFacts) {
     for (const [key, reading] of Object.entries(factsFromSource)) {
       if (!readings.has(key)) readings.set(key, []);
@@ -470,15 +493,15 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
       }
     }
   }
-  // Model-extracted method constants/relations must be confirmed by the raw OCR extraction;
+  // Model-extracted method constants/relations must be confirmed by the separate source-reading pass;
   // otherwise the model could smuggle a made-up SC=fu relation or ethanol divisor into DATA.
-  if (facts.scequalsfu && !authorityFacts.scequalsfu) inputConflicts.push({ code: "sc-fu-relation-unverified", severity: "high", message: "The SC=fu relationship appears in model-extracted data but is not independently present in the OCR extraction. Do not cancel fu or calculate the infusion rate until the source is re-read." });
-  if (facts.ethanoldivisor && !authorityFacts.ethanoldivisor) inputConflicts.push({ code: "ethanol-divisor-unverified", severity: "high", message: "The ethanol divisor appears in model-extracted data but is not independently present in the OCR extraction. Do not use it as a validated coefficient." });
+  if (facts.scequalsfu && !authorityFacts.scequalsfu) inputConflicts.push({ code: "sc-fu-relation-unverified", severity: "high", message: "The SC=fu relationship appears in model-extracted data but is not present in the separate source-reading pass. Do not cancel fu or calculate the infusion rate until the source is re-read." });
+  if (facts.ethanoldivisor && !authorityFacts.ethanoldivisor) inputConflicts.push({ code: "ethanol-divisor-unverified", severity: "high", message: "The ethanol divisor appears in model-extracted data but is not present in the separate source-reading pass. Do not use it as a validated coefficient." });
   const combinedDomains = clinicalDomains(combined);
   const requiredFields = authorityFieldsRequired(facts, combinedDomains, combined);
   const missingAuthority = requireAuthorityInputs ? missingAuthorityFields(requiredFields, authorityFacts) : [];
   const missingModel = requireAuthorityInputs ? missingAuthorityFields(requiredFields, modelFacts) : [];
-  if (missingAuthority.length || missingModel.length) inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", message: `Critical calculation inputs must appear independently in both solver DATA and OCR. Missing from OCR: ${missingAuthority.length ? missingAuthority.join(", ") : "none"}; missing from solver DATA: ${missingModel.length ? missingModel.join(", ") : "none"}. Do not confirm the numerical answer from a single extraction channel.` });
+  if (missingAuthority.length || missingModel.length) inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", message: `Critical calculation inputs must appear independently in both solver DATA and a separate source-reading pass. Missing from source-reading pass: ${missingAuthority.length ? missingAuthority.join(", ") : "none"}; missing from solver DATA: ${missingModel.length ? missingModel.join(", ") : "none"}. Do not confirm the numerical answer from a single extraction channel.` });
   const mergedDataText = Object.values(facts).map((f) => `${f.key}=${f.value} ${f.unit}`.trim()).join("; ");
   const computed = computeFromFacts(inputConflicts.length ? {} : facts, combined);
   const claimsTriple = claimsTripleAcidBase(combined);
@@ -505,7 +528,7 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   const conflicts = [...inputConflicts, ...formulaFindings, ...valueConflicts, ...unsupportedOutputs];
   return {
     ...computed,
-    sourceVerification: { required: !!requireAuthorityInputs, authorityFieldsAvailable: Object.keys(authorityFacts).length, modelFieldsAvailable: Object.keys(modelFacts).length, missingOcrFields: missingAuthority, missingModelFields: missingModel },
+    sourceVerification: { required: !!requireAuthorityInputs, method: "separate source-reading pass; may be model-generated and is not human or orthogonal OCR verification", authorityFieldsAvailable: Object.keys(authorityFacts).length, modelFieldsAvailable: Object.keys(modelFacts).length, missingSourceFields: missingAuthority, missingModelFields: missingModel },
     conflicts,
     triggered: Object.values(computed.domains).some(Boolean) || conflicts.length > 0,
     status: conflicts.length ? "conflict" : computed.results.length ? "computed" : computed.inputCount ? "incomplete" : "no-structured-inputs",
@@ -520,7 +543,7 @@ export function formatClinicalCalculationAudit(audit) {
   for (const n of audit.notes) lines.push(`- Interpretation note: ${n}`);
   for (const c of audit.conflicts) lines.push(`- HARD CONFLICT: ${c.message}`);
   if (!audit.results.length && !audit.missingInputs.length && !audit.conflicts.length) lines.push("- No supported independent calculation could be completed; do not invent a numerical result.");
-  lines.push(audit.sourceVerification?.required ? "Every critical input must independently match between the solver DATA and OCR extraction before the numerical answer is accepted." : "Arithmetic was recalculated from the available extracted values; this alone does not independently verify image transcription, diagnosis or prescribing safety.");
+  lines.push(audit.sourceVerification?.required ? "Every critical input must match between solver DATA and a separate source-reading pass. When that pass is model-generated, it is not an orthogonal OCR system or human verification; high-risk inputs still require confirmation against the original source." : "Arithmetic was recalculated from available extracted values; this alone does not independently verify transcription, diagnosis or prescribing safety.");
   return lines.join("\n");
 }
 

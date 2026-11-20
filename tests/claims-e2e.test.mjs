@@ -20,7 +20,7 @@ const claims = [{ id: "s1", text: "Give 500 mg every 8 hours.", kind: "dose" }];
 
 test("claims go into the existing proof request; verdicts come back; the request count is unchanged", async () => {
   fresh();
-  const verdict = JSON.stringify({ fixes: [], v: [[1, "F", "Give 250 mg every 8 hours."]] });
+  const verdict = JSON.stringify({ fixes: [], v: [[1, "F", "Give 250 mg every 8 hours.", 1]] });
   script(G("gemini-3.8-flash"), { ok: TEXT }, { ok: verdict });
   for (const m of getModelLists(KEY).fast) if (m !== "gemini-3.8-flash") script(G(m), { ok: verdict });
   const res = await runTask(base({ claimsFor: () => claims }));
@@ -28,7 +28,7 @@ test("claims go into the existing proof request; verdicts come back; the request
   assert.equal(reqs.length, 2, "one author request + the one proofreading request (no extra)");
   const sent = proofReq()[0].body.contents[0].parts[0].text;
   assert.ok(/CLAIMS:\n1\. Give 500 mg/.test(sent), sent.slice(-200));
-  assert.deepEqual(res.verdicts, [{ n: 1, v: "F", fix: "Give 250 mg every 8 hours." }]);
+  assert.deepEqual(res.verdicts, [{ n: 1, v: "F", fix: "Give 250 mg every 8 hours.", sourceIndex: 1 }]);
   assert.equal(res.claimList.length, 1);
 });
 

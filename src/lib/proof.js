@@ -148,7 +148,7 @@ export function applyProof(text, fixes) {
 let _ground = false;
 export const setClaimsGrounding = (v) => { _ground = !!v; };     // OFF by default: whether grounding is free for the student's key was not testable in the build
 export const claimsGrounding = () => _ground;
-export const CLAIMS_SYSTEM_ADD = `\nSECOND TASK: after the text comes CLAIMS, numbered standalone sentences. Judge each from medical knowledge: T (true), F (false) or U (cannot tell; always allowed). Add "v":[[n,"T"|"F"|"U","corrected sentence, only for F"]] to the JSON.`;
+export const CLAIMS_SYSTEM_ADD = `\nSECOND TASK: after the text comes CLAIMS, numbered standalone sentences. Judge each from medical knowledge: T (true), F (false) or U (cannot tell; always allowed). Add "v":[[n,"T"|"F"|"U","corrected sentence, only for F",sourceIndex]] to the JSON. sourceIndex MUST be the 1-based index of a specific Google-grounded source that directly supports THIS claim; use 0 if no specific source supports it. Never reuse a source merely because it is reputable, and never invent a source index.`;
 const MAX_CLAIM_CHARS = 1100, MAX_CLAIMS = 25;
 
 export function foldClaims(chunks, claims) {
@@ -177,6 +177,6 @@ export function parseVerdicts(raw) {
   if (a < 0 || b <= a) return [];
   try {
     const j = JSON.parse(s.slice(a, b + 1));
-    return (Array.isArray(j.v) ? j.v : []).filter((x) => Array.isArray(x) && Number.isInteger(x[0]) && /^[TFU]$/.test(String(x[1]))).map((x) => ({ n: x[0], v: x[1], fix: typeof x[2] === "string" ? x[2].slice(0, 300) : "" }));
+    return (Array.isArray(j.v) ? j.v : []).filter((x) => Array.isArray(x) && Number.isInteger(x[0]) && /^[TFU]$/.test(String(x[1]))).map((x) => ({ n: x[0], v: x[1], fix: typeof x[2] === "string" ? x[2].slice(0, 300) : "", sourceIndex: Number.isInteger(x[3]) && x[3] > 0 ? x[3] : null }));
   } catch (e) { return []; }
 }

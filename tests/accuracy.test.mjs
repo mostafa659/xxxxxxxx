@@ -277,7 +277,7 @@ test("F3: claims ride inside the proof request without making it bigger; verdict
   assert.ok(f.claims.length > 0 && f.claims.length <= 25);
   assert.ok(f.chunks[0].length + f.systemAdd.length <= chunks[0].length, "request must not grow");
   assert.deepEqual(PR.foldClaims(["short text only"], claims).claims, [], "no room → claims wait");
-  assert.deepEqual(PR.parseVerdicts('{"fixes":[],"v":[[1,"T"],[2,"F","fix"],[3,"X"]]}'), [{ n: 1, v: "T", fix: "" }, { n: 2, v: "F", fix: "fix" }]);
+  assert.deepEqual(PR.parseVerdicts('{"fixes":[],"v":[[1,"T"],[2,"F","fix",2],[3,"X"]]}'), [{ n: 1, v: "T", fix: "", sourceIndex: null }, { n: 2, v: "F", fix: "fix", sourceIndex: 2 }]);
   const items = [{ id: "a", sentence: "Give 500 mg every 8 hours.", kind: "dose", label: "unverified" }, { id: "b", sentence: "Aspirin is contraindicated in x.", kind: "dose", label: "unverified" }];
   C.__clearVerdicts();
   const cl = [{ id: "a", text: "Give 500 mg every 8 hours.", kind: "dose" }, { id: "b", text: "Aspirin is contraindicated in x.", kind: "dose" }];
@@ -287,7 +287,9 @@ test("F3: claims ride inside the proof request without making it bigger; verdict
   const items2 = [{ id: "a", sentence: "Give 500 mg every 8 hours.", kind: "dose", label: "unverified" }];
   C.__clearVerdicts();
   C.applyVerdicts(items2, [cl[0]], [{ n: 1, v: "T", fix: "" }], { links: [{ url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", title: "who.int" }], profile: GEN });
-  assert.equal(items2[0].label, "verified");
+  assert.equal(items2[0].label, "unverified", "a generally trusted link is not mapped to this claim");
+  C.applyVerdicts(items2, [cl[0]], [{ n: 1, v: "T", fix: "", sourceIndex: 1 }], { links: [{ url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", title: "who.int" }], profile: GEN });
+  assert.equal(items2[0].label, "verified", "only this claim's explicit source mapping can verify it");
   assert.equal(C.allowlisted({ url: "https://seo-health-blog.com/a", title: "" }, GEN), false);
   assert.equal(C.allowlisted({ url: "https://med.stanford.edu/a", title: "" }, GEN), true);
   C.__clearVerdicts();

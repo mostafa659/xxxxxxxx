@@ -124,7 +124,7 @@ installFetch();
 let KEY = "AIzaSOL", seq = 0;
 const G = (m) => `gemini:${m}`;
 const fresh = () => { KEY = `AIzaSOL${String(++seq).padStart(8, "0")}`; reset(); RT.__resetRouter(); window.localStorage.clear(); setExtKeys({}); setEnginePrefs({ mode: "auto" }); };
-test("end to end: the premise rides in the brief to the lesson writer, the solve stays ONE request, and the analysis still makes 4 requests on a small key", async () => {
+test("end to end: visual transcription precedes solve, the premise rides in the brief, and the solve plus writers retain their expected request order", async () => {
   fresh();
   script(G("gemini-flash-latest"), { ok: "PREMISE: PREMMARK-5521 unstable patient.\nANSWER: B\nTYPE: priority\nKEYWORD: FIRST\nCONCEPTS: a; b\nOPTIONS:\nA) ❌ x\nB) ✅ y\nCONFIDENCE: high" });
   const done = {}, trust = [];
@@ -135,7 +135,7 @@ test("end to end: the premise rides in the brief to the lesson writer, the solve
   });
   assert.equal(done.err, undefined);
   const lanes = log.filter((l) => l.lane !== "list");
-  assert.equal(lanes.length, 4, "the same 4 requests as v3.42");
+  assert.equal(lanes.length, 5, "one source-transcription request precedes the four solve/writer requests");
   assert.equal(lanes.filter((l) => JSON.stringify(l.body).includes("PREMMARK-5521")).length, 1, "the brief (with its premise) reached the lesson request");
   assert.ok(lanes.some((l) => /TIER: (MEDIUM|LOW|HIGH)/.test(JSON.stringify(l.body))), "and its tier");
   const s = trust.find((t) => t.phase === "solve");

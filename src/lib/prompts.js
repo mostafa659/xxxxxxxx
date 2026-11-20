@@ -5,7 +5,7 @@
      user   → the short per-request message that goes next to the image
 
    Five focused jobs (each prompt does ONE thing well, and they run in parallel where possible):
-   1) OCR      → question text                          (fast model, no thinking)
+   1) SOURCE READ → question transcription (separate vision-model pass; not orthogonal OCR)
    2) WORDS    → every word at B2 level or higher                  (fast model, no thinking)
    3) SOLVE    → verified answer + per-option verdicts  (strong model, thinks, tiny output)
    4) LESSON A → ask · decode English · basics          (fast model, needs no answer → starts at t = 0)
@@ -20,21 +20,20 @@ const has = (chipIds, id) => chipIds.includes(id);
 const langRules = (chipIds) =>
   CHIPS.filter((c) => chipIds.includes(c.id)).map((c) => `- ${c.rule}`).join("\n");
 
-/* 1 ─ OCR */
+/* 1 ─ visual source transcription */
 export function buildOcrPrompt() {
   return {
-    system: `You are a precise OCR engine for exam question screenshots, including multi-part and Next-Gen style items.
+    system: `You transcribe exam screenshots; this is not independent OCR or human review.
 
-Transcribe ALL the text in the image exactly as written. Do NOT translate, summarize, correct, explain or answer it.
+Transcribe all visible text exactly. Do NOT translate, summarize, correct, infer, explain or answer. Mark unreadable text [unclear].
 
 Output PLAIN TEXT only (no markdown, no JSON, no code fences, no commentary):
-- First the question stem: every paragraph, the patient data, exhibit text, lab values and tables (one table row per line, cells separated by " | ").
-- NGN case studies: if several tabs or sections are visible (Nurses' Notes, History, Vital Signs, Lab Results, Orders …) transcribe each one under a short label line such as "[Nurses' Notes]".
-- NGN item types: for a drop-down (cloze) sentence write the sentence with [___1___], [___2___] for each blank, then one line per blank "1: choice | choice | choice"; for a matrix/grid write the column headings, then one row per line; for a bow-tie write the three groups and their choices; for highlight items write the passage once; for drag-and-drop or ordered-response write every item and every target box.
-- Then every answer option on its own line written as "A) …", "B) …", "C) …", "D) …" (continue with E, F … for select-all-that-apply). If the options use radio buttons, check boxes or numbers, still label them A), B), C) in order.
-- Keep the original English spelling, numbers, units and abbreviations.
-- Ignore app chrome (status bar, timers, buttons, "Question 3 of 75").
-- If something is unreadable write [unclear].`,
+- First the question stem: every paragraph, patient data, exhibit text, lab values and tables (one table row per line, cells separated by " | ").
+- NGN case studies: transcribe every visible tab/section under its label, e.g. [Nurses' Notes], [History], [Vital Signs], [Lab Results], [Orders].
+- NGN item types: for drop-downs write the sentence with [___1___], [___2___] and each blank's choices; for matrices write headings and rows; for bow-ties write all groups/choices; for highlight items write the passage once; for drag-and-drop or ordered-response write every item and target box.
+- Write every answer option on its own line as "A) …", "B) …", "C) …", "D) …" (continue E, F …). Label choices A), B), C) even when the image shows check boxes, radio buttons or numbers.
+- Keep the original spelling, numbers, units and abbreviations.
+- Ignore app chrome (status bar, timers, buttons, question counters).`,
     user: "Transcribe the question in the image.",
   };
 }

@@ -557,7 +557,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
     !isLesson && timing.reason?.stages && (timing.reason.stages.total !== undefined ? `حلّ ${timing.reason.stages.solve}ث · شرح وتريكات ${timing.reason.stages.total}ث` : `حلّ ${timing.reason.stages.solve}ث · أساس ${timing.reason.stages.a}ث · تفصيص ${timing.reason.stages.b}ث`),
   ].filter(Boolean).join(" · ");
   /* v3.32: the slowest stage, explained (latency.js): lost time (retries / 503 / timeouts) · waiting · thinking · writing. Only when there is something to explain. */
-  const STAGE_AR = { ocr: "القراءة", words: "الكلمات", reason: isLesson ? "الشرح" : "التفصيص" };
+  const STAGE_AR = { ocr: "قراءة النص", words: "الكلمات", reason: isLesson ? "الشرح" : "التفصيص" };
   const slow = ["ocr", "words", "reason"].map((k) => ({ k, lat: timing[k] && timing[k].lat })).filter((x) => x.lat && x.lat.totalMs >= 15000).sort((a, b) => b.lat.totalMs - a.lat.totalMs)[0];
   const qNote = quotaNote(apiKey);          // v3.33: which models finished their free daily quota and when they come back (empty when everything is fine)
   const latLine = slow ? `أبطأ مرحلة (${STAGE_AR[slow.k]}): ${describeLat(slow.lat)}` : "";

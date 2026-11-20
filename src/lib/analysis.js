@@ -1,14 +1,11 @@
 /* ───────────── Analysis orchestration ─────────────
-   v3.23 — FEWER REQUESTS (Google's quota counts every one):
+   Exam questions that arrive as images or scanned PDFs now receive a dedicated
+   source-transcription request before answer generation. This is a second model
+   reading pass, not an orthogonal OCR engine and not a human check. The answer
+   remains hidden until deterministic checks reconcile critical extracted values.
 
-     ocr      → LESSONS only (v3.40.10): the background study summary. A question no longer asks for a transcript of itself.
-     words    → new_words                                  fast model, no thinking
-     reason   → explanation + tricks, by LESSON_MODE (config.js / VITE_LESSON_MODE):
-                "fast" (default): silent solve → part A ∥ part B-main ∥ part B-traps  (three short streams at once, 6 requests)
-                "split": part A ∥ part B (4 requests)   ·   "single": one long request (3 requests, slowest)
-
-   Before v3.23: ocr + words + solve + lessonA + lessonB (+ glitch rewrites + duplicate "hedged" fallbacks).
-   Now: no rewrites, no duplicates; a busy moment is handled by the retry engine (2 s · 4 s · 8 s) in gemini.js. */
+   Text-first questions skip transcription. Lessons keep their separate source-reading
+   / study-summary stage. See config.js for quota and request-count behaviour. */
 
 import { MODES, LESSON_MODE, LESSON_SLICES, SLICE_MIN_PAGES } from "./config.js";
 import { buildOcrPrompt, buildWordsPrompt, buildSolvePrompt, buildLessonPrompt, buildLessonAPrompt, buildLessonBPrompt, buildStudySummaryPrompt, buildStudyLessonPrompt, buildStudyAPrompt, buildStudyBPrompt, buildStudyHeadPrompt, buildStudySlicePrompt, buildStudyTailPrompt, studyHeadings } from "./prompts.js";
@@ -25,6 +22,7 @@ import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
 import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { selectClaims, applyCached, applyVerdicts } from "./claims.js";
 import { addGaps } from "./reports.js";
 import { getModelLists, runTask } from "./gemini.js";
@@ -59,10 +57,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   const note = sourceNote(doc, extra, kind);   // "" for a plain screenshot
   const live = {};
 
-  /* ── v3.43 · the accuracy architecture around the SAME requests (no request, token or wait is added) ── */
+  /* Visual-question safety adds one source-transcription request before the solver; all final checks remain local. */
   let ocrText = "", assess = null, briefRaw = "";
   const verdictLog = [];                                        // {claimList, verdicts, links} of every proof request that carried claims
-  /* ONE source model for every source type (lib/provenance.js): text / Word / audio / a PDF's text layer / the extraction stage's OCR of a screenshot or scanned PDF */
+  /* ONE source model for every source type: text / Word / audio / PDF text layer / a separate model transcription of an image or scanned PDF. */
   let extraction = null;                                        // { sourceType, text, complete } — what the extraction STAGE read (the only text a screenshot or scanned PDF ever has)
   const srcItems = () => (doc ? itemsFromSaved(null, doc) : dataUrl ? [{ t: "image", name: "image" }] : []);
   const srcTypeOf = () => { const it = srcItems(); return it.some((x) => x.t === "image") ? "image" : it.some((x) => x.t === "pdf") ? "pdf" : "text"; };
@@ -75,6 +73,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   };
   let _prof = null, _profKey = "";
   const sample = () => (doc ? itemsFromSaved(null, doc).map((x) => (x.t === "text" ? x.text : x.t === "pdf" ? x.ptext || "" : "")).join("\n").slice(0, 20000) : "");   // a keyword scan needs a sample, not the whole book
+  const questionNeedsTranscript = !L && (!doc ? !!dataUrl : itemsFromSaved(null, doc).some((x) => x.t === "image" || x.t === "pdf"));
   const prof = () => {
     if (profileArg) return profileArg;
     const documentText = sample();
@@ -93,8 +92,9 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     if (!brief) return null;
     briefRaw = brief;
     try {
-      assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: ocrText, profile: prof(), sourceDataText: extractLabelledClinicalData(ocrText) });
-      /* when no OCR stage ran (small keys skip it), the solve brief IS the model's reading of the image: its DATA / KEYWORD / options become a PARTIAL extraction, so the image is never an empty source */
+      const sourceText = ocrText || sample();
+      assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: sourceText, profile: prof(), sourceDataText: extractLabelledClinicalData(sourceText) });
+      /* When the visual source-read stage did not run, the solve brief is only a partial model extraction—not an independent source. */
       if (!extraction) { const pb = parseBrief(brief); const t = cleanResidue([pb.data, pb.keyword, pb.concepts, ...pb.options.map((o) => o.why)].filter(Boolean).join("\n")); if (t.trim()) extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "solve-brief" }; }
       emitTrust({ phase: "solve", assess, banner: makeBanner(assess, has(chips, "en") ? "en" : "ar") });
       const calculationHandoff = formatClinicalCalculationAudit(assess.clinicalCalculationAudit);
@@ -125,19 +125,33 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       const briefData = brief.data || "";
       const hiddenData = [expBlock.dataText, trickBlock.dataText].filter(Boolean).join("; ");
       const ocrData = extractLabelledClinicalData(ocrText);
-      const primaryData = hiddenData || briefData || ocrData;
+      const localSourceData = extractLabelledClinicalData(sample());
+      const authorityData = ocrData || localSourceData;
+      const primaryData = hiddenData || briefData || authorityData;
+      const chosenOption = brief.options.find((o) => o.mark === "yes");
+      const chosenOptionText = chosenOption ? `${chosenOption.letter}) ${chosenOption.why}` : "";
       const audit = auditClinicalCalculations({
         dataText: primaryData,
-        secondaryDataText: [hiddenData ? briefData : "", hiddenData || briefData ? ocrData : ""].filter(Boolean),
-        authorityDataText: ocrData,
+        secondaryDataText: [hiddenData ? briefData : "", hiddenData || briefData ? ocrData : "", localSourceData].filter(Boolean),
+        authorityDataText: authorityData,
         modelDataText: hiddenData || briefData,
         requireAuthorityInputs: true,
         narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
         answerText: extractCorrectAnswerSection(cleanExplanation),
         calcText: brief.calc || "",
         contextText: `${ocrText}\n${briefRaw}\n${cleanExplanation}\n${cleanTricks}`,
-        optionText: (() => { const chosen = brief.options.find((o) => o.mark === "yes"); return chosen ? `${chosen.letter}) ${chosen.why}` : ""; })(),
+        optionText: chosenOptionText,
       });
+      const safetyAudit = auditClinicalSafety({
+        caseText: `${ocrText}\n${sample()}\n${briefRaw}`,
+        answerText: extractCorrectAnswerSection(cleanExplanation),
+        selectedOptionText: chosenOptionText,
+        narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
+      });
+      if (questionNeedsTranscript && !ocrText.trim() && safetyAudit.triggered) {
+        safetyAudit.conflicts.push({ code: "visual-source-transcription-unavailable", severity: "critical", message: "The source is an image/PDF, but the dedicated transcription pass did not complete. Critical patient values and answer options have not been independently cross-checked; do not accept a selected clinical answer." });
+        safetyAudit.status = "blocked";
+      }
       if (audit.triggered) {
         if (!assess && audit.conflicts.length) {
           assess = { tier: "LOW", answer: "", letters: [], runnerUp: null, perOption: [], perOptionAdvice: false, flags: [], concerns: [], reasons: [], issues: [], clinicalCalculationAudit: audit };
@@ -153,6 +167,21 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
           assess.concerns = [...(assess.concerns || []), ...audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }))];
           assess.issues = [...new Set([...(assess.issues || []), ...audit.conflicts.map((c) => c.message)])];
         }
+      }
+      if (safetyAudit.conflicts.length) {
+        const safetyFlags = safetyAudit.conflicts.map((c) => ({ code: c.code, msg: c.message }));
+        const safetyConcerns = safetyAudit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: c.message }));
+        if (!assess) assess = { tier: "LOW", answer: "", letters: [], runnerUp: null, perOption: [], perOptionAdvice: false, flags: [], concerns: [], reasons: [], issues: [] };
+        assess.clinicalSafetyAudit = safetyAudit;
+        assess.tier = "LOW";
+        assess.eligible = false;
+        assess.answer = "";
+        assess.letters = [];
+        assess.flags = [...(assess.flags || []), ...safetyFlags];
+        assess.concerns = [...(assess.concerns || []), ...safetyConcerns];
+        assess.issues = [...new Set([...(assess.issues || []), ...safetyAudit.conflicts.map((c) => c.message)])];
+      } else if (assess && safetyAudit.triggered) {
+        assess.clinicalSafetyAudit = safetyAudit;
       }
       const run = (t) => {
         const r = verifyText({ text: t, sourceModel: model, profile: p, part, brief: briefRaw, titles: (history || []).map((h) => h.title) });
@@ -173,26 +202,52 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
           ex = h ? `${ex.slice(0, h.index)}${calculationSection}\n\n${ex.slice(h.index)}` : `${ex}\n\n${calculationSection}`;
         }
       }
-      const rt = cleanTricks ? run(cleanTricks) : null;
+      const safetySection = safetyAudit.conflicts.length || safetyAudit.advisories.length
+        ? formatClinicalSafetyAudit(safetyAudit, has(chips, "en") ? "en" : "ar") : "";
+      if (safetyAudit.conflicts.length) {
+        // A hard, patient-specific safety conflict suppresses the generated clinical answer,
+        // not just its green checkmark. The user sees the exact reason and missing evidence.
+        ex = `## ⚠️ ${has(chips, "en") ? "Clinical answer not cleared" : "لم يتم اعتماد الإجابة السريرية"}\n\n${has(chips, "en") ? "The explanation and option-by-option recommendation are withheld because a high-impact safety rule was triggered. Reconcile the issue with a qualified clinician and current primary guidance." : "تم حجب الشرح والاختيار النهائي لأن قاعدة سلامة عالية الأهمية أطلقت تنبيهًا. يجب حل التعارض بالرجوع إلى مختص سريري وإرشاد أولي حديث."}\n\n${safetySection}`;
+      } else if (safetySection && !/CLINICAL SAFETY REVIEW|مراجعة السلامة السريرية/.test(ex)) {
+        ex = `${ex}\n\n## ⚠️ ${has(chips, "en") ? "Clinical safety review" : "مراجعة السلامة السريرية"}\n${safetySection}`;
+      }
+      const rt = cleanTricks && !safetyAudit.conflicts.length ? run(cleanTricks) : null;
       const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
       addGaps(p, gaps);
       const all = rt ? [rx, rt] : [rx];
       emitTrust({
         phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
         calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
+        clinicalSafetyAudit: safetyAudit.triggered ? safetyAudit : null,
         stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
         cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
         patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
       });
-      return { ...data, explanation: ex, tricks: rt ? rt.text : cleanTricks };
-    } catch (e) { return { ...data, explanation: stripPartialClinicalDataBlock(data.explanation || ""), tricks: stripPartialClinicalDataBlock(data.tricks || "") }; }
+      return { ...data, explanation: ex, tricks: safetyAudit.conflicts.length ? "" : (rt ? rt.text : cleanTricks) };
+    } catch (e) {
+      const clinical = kind === "question" || isPotentialClinicalContext(`${ocrText}\n${briefRaw}\n${data?.explanation || ""}\n${data?.tricks || ""}`);
+      if (!clinical) return { ...data, explanation: stripPartialClinicalDataBlock(data.explanation || ""), tricks: stripPartialClinicalDataBlock(data.tricks || "") };
+      // Fail closed: a validator exception must never turn into an unchecked clinical answer.
+      const msg = "تعذر إكمال التحقق المستقل بسبب خطأ داخلي. لم يتم اعتماد أي اختيار أو تشخيص أو جرعة؛ أعد المحاولة أو راجع السؤال يدويًا مع مصدر طبي موثوق.";
+      const failure = { tier: "LOW", calibrated: false, answer: "", letters: [], runnerUp: null, perOption: [], perOptionAdvice: false,
+        flags: [{ code: "clinical-validation-failed-closed", msg }], concerns: [{ code: "clinical-validation-failed-closed", en: msg, ar: msg }],
+        reasons: ["independent clinical validation failed"], issues: [String(e?.message || e || "unknown validation error")], eligible: false,
+        clinicalSafetyAudit: { triggered: true, status: "blocked", conflicts: [{ code: "clinical-validation-failed-closed", severity: "critical", message: msg }], advisories: [] } };
+      assess = failure;
+      // The fail-closed recovery path must not call a potentially failing profile resolver again.
+      let fallbackProfile = "unknown";
+      try { fallbackProfile = profileKey(prof()); } catch { /* preserve the safe fallback */ }
+      emitTrust({ phase: "final", profile: fallbackProfile, assess: failure, banner: makeBanner(failure, has(chips, "en") ? "en" : "ar"), clinicalSafetyAudit: failure.clinicalSafetyAudit, calculationAudit: null, validationFailed: true });
+      return { ...data, explanation: `## ⚠️ تعذر التحقق السريري\n\n${msg}`, tricks: "" };
+    }
   };
   { const _u = onUpdate; onUpdate = (name, data, meta) => {
     if (name !== "reason") return _u(name, data, meta);
     if (meta && meta.final) return _u(name, trustPass(data), meta);
     const safe = data && typeof data === "object" ? { ...data,
-      explanation: typeof data.explanation === "string" ? stripPartialClinicalDataBlock(data.explanation) : data.explanation,
-      tricks: typeof data.tricks === "string" ? stripPartialClinicalDataBlock(data.tricks) : data.tricks,
+      // Question answers are clinical exam outputs: never stream an unvalidated choice before the final guards run.
+      explanation: kind === "question" ? null : (typeof data.explanation === "string" ? stripPartialClinicalDataBlock(data.explanation) : data.explanation),
+      tricks: kind === "question" ? null : (typeof data.tricks === "string" ? stripPartialClinicalDataBlock(data.tricks) : data.tricks),
     } : data;
     return _u(name, safe, meta);
   }; }
@@ -217,7 +272,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         apiKey, task,
         /* v3.35: reading the question text off the screenshot and listing its words are easy jobs: the WEAKEST model first (Flash-Lite), the middle one next and the
            strong one only if nothing else can answer. (A lesson's "ocr" stage is a study summary, not a transcript: it keeps the old order.) */
-        models: orderForTask(apiKey, task, cfg.tier === "pro" ? proFirst : (task === "words" || (task === "ocr" && !L)) ? weakFirst(fastFirst) : fastFirst),      // v3.33: when the strong models are nearly spent today, the word list goes to Flash-Lite (quota.js)
+        models: orderForTask(apiKey, task, cfg.tier === "pro" || (task === "ocr" && !L) ? proFirst : task === "words" ? weakFirst(fastFirst) : fastFirst),      // v3.33: when the strong models are nearly spent today, the word list goes to Flash-Lite (quota.js)
         system: prompt.system + (L || task !== "ocr" ? ARABIC_RULE : ""),   // the OCR transcript must stay exactly as written
         parts: useFiles ? await files.swap(all, signal) : all,
         spec: { levels: cfg.levels, budget: cfg.budget },
@@ -591,7 +646,23 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   }
 
   return {
-    start() { tasksFor(kind).forEach(run); },   // v3.40.10: a question runs reason + words only (no transcript of the question: it is already in the attachment); a lesson also runs its background summary first
+    start() {
+      if (!questionNeedsTranscript) { tasksFor(kind).forEach(run); return; }
+      // For visual questions, run a separate vision-model transcription first so solver DATA can be compared
+      // with a second reading pass. This is not independent OCR; high-risk values still need human confirmation.
+      let launched = false;
+      const launchRemaining = () => {
+        if (launched) return;
+        launched = true;
+        run("reason");
+        run("words");
+      };
+      const previousDone = onDone;
+      const previousError = onError;
+      onDone = (name, m) => { previousDone(name, m); if (name === "ocr") launchRemaining(); };
+      onError = (name, e, last) => { previousError(name, e, last); if (name === "ocr") launchRemaining(); };
+      run("ocr");
+    },
     retry(name) { if (TASK_KEYS[name]) run(name); },
     stop(name) { live[name]?.abort(); },
     cancel() { Object.values(live).forEach((c) => c.abort()); files.cancel(); },

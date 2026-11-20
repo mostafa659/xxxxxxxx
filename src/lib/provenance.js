@@ -4,7 +4,7 @@
      page         PDF page (1-based) · block = paragraph inside it · index = running segment number over the whole source
      sentences    normalised sentence boundaries (cleanResidue, then the same splitter the accuracy layer uses on the output)
    The Part A pipeline (origin by overlap, analogy / mnemonic / framework stripping, KB conflicts, reference cards) reads ONLY this model, so a PDF or a screenshot
-   goes through exactly the code a pasted text goes through. Where a PDF or image has NO readable text (scanned, or an image before its OCR arrived) the model is
+   goes through exactly the code a pasted text goes through. Where a PDF or image has NO readable text (scanned, or an image before a source transcription arrived) the model is
    `strict`: origin stays UNKNOWN (never "source"), so invented mnemonics / frameworks are removed and nothing is memorize-eligible without a ✓. There is no bypass. */
 import { cleanResidue, splitText, indexSource, tokens, anchorsOf } from "./accuracy.js";
 
@@ -77,7 +77,7 @@ export function buildSourceModel({ items = [], extractions = [] } = {}) {
       } else missing.push({ itemId: it.id || "", name: it.name || "", sourceType: "pdf", reason: (it.prov && it.prov.reason) || "no-text-layer" });
     } else if (it.t === "image") missing.push({ itemId: it.id || "", name: it.name || "", sourceType: "image", reason: "needs-ocr" });
   }
-  /* the extraction stage (OCR of a screenshot, the model's reading of a scanned PDF) fills what the device could not read */
+  /* the extraction stage (model transcription of a screenshot, the separate model transcription of a scanned PDF) fills what the device could not read */
   const stageType = missing.some((m) => m.sourceType === "pdf") && !missing.some((m) => m.sourceType === "image") ? "pdf" : "image";
   /* the stage text is MODEL-written: it is used ONLY to fill a gap, never added next to real source text (a hallucinated line in a map must not become "source") */
   for (const ex of extractions) {
@@ -88,7 +88,7 @@ export function buildSourceModel({ items = [], extractions = [] } = {}) {
     if (!ex.complete) for (const g of segs) g.partial = true;        // model-written map / brief: usable as a stand-in index, NEVER as something a claim can be grounded in
     push(segs);
     ex.used = true;
-    if (ex.complete) missing = [];            // a full transcript (the OCR of a question) is the source text of those files; a short MAP of a study file is only a partial stand-in: strict stays
+    if (ex.complete) missing = [];            // a full source transcript of a question is the source text of those files; a short MAP of a study file is only a partial stand-in: strict stays
   }
   const filled = extractions.some((e) => e.used);
   const text = segments.map((s) => s.text).join("\n\n");

@@ -127,7 +127,7 @@ test("between equal models the one with more daily quota left goes first (the da
   assert.equal(r.text, "from FLASH2", "FLASH has 5 left, FLASH2 has 18");
 });
 
-test("QUESTION ANALYSIS: 4 requests on a small (free) key, 5 on a key that has proven to be big (no question-text request any more); the verified brief reaches every writer in both", async () => {
+test("QUESTION ANALYSIS: visual-question transcription is completed before solve; the verified brief reaches each configured writer", async () => {
   const BRIEF = "ANSWER: B\nKEY: BRIEFMARK-7731 the verified reasoning";             // what the silent solve returns: cleanBrief accepts it, so the verified path runs
   const run = async () => {
     script(G("gemini-flash-latest"), { ok: BRIEF });
@@ -145,14 +145,14 @@ test("QUESTION ANALYSIS: 4 requests on a small (free) key, 5 on a key that has p
   };
   fresh();
   const small = await run();
-  assert.deepEqual(small, { total: 4, withBrief: 1 }, "a key nothing is known about is treated as a free key: main + traps are ONE request, the verified brief is in it");
+  assert.deepEqual(small, { total: 5, withBrief: 1 }, "a visual question adds a source-transcription request before the small-key solve and writer path");
 
   fresh();
   /* evidence of a big quota (a learned per-minute limit of a paid size) → the fully parallel design of old: 5 requests, brief in both writers */
   Q.noteQuotaError(KEY, "gemini-flash-latest", Q.parseQuota({ details: quotaErr("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", 1000, "gemini-flash-latest", "5s").details }, ""));
   assert.equal(Q.isSmallKey(KEY), false);
   const big = await run();
-  assert.deepEqual(big, { total: 5, withBrief: 2 }, "big key: words · solve · A · B-main · B-traps (v3.40.10: no ocr)");
+  assert.deepEqual(big, { total: 6, withBrief: 2 }, "big key: transcript · words · solve · A · B-main · B-traps");
 });
 
 test("QUESTION ANALYSIS: when the strong models are nearly spent today, the word list goes to Flash-Lite and the strong model is kept for the rest", async () => {

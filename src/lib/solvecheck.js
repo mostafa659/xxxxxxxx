@@ -348,8 +348,12 @@ export function banner(a, lang = "ar") {
      Bookkeeping (uncalibrated subject, no probabilities, premise order, a moderate-but-not-low probability, no CALC line) stays in `a.reasons` / `a.issues` for the developer. */
   const why = [...(a.flags || []).map((f) => f.msg), ...(a.concerns || []).map((c) => (ar ? c.ar : c.en))].filter(Boolean).slice(0, 4);
   const head = ar ? (a.tier === "LOW" ? "الذكاء الاصطناعي مش متأكد من الإجابة دي" : "راجع الإجابة دي كويس") : (a.tier === "LOW" ? "AI is not sure about this answer" : "Double-check this answer");
-  const calculationConflict = !!(a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts && a.clinicalCalculationAudit.conflicts.length);
-  const likely = calculationConflict ? (ar ? "لا يمكن اعتماد اختيار قبل تصحيح التعارض الحسابي." : "No option can be confirmed until the calculation conflict is corrected.") : a.answer ? (ar ? `الأرجح: ${a.answer.split("\n")[0]}` : `Most likely: ${a.answer.split("\n")[0]}`) : "";
+  const guardConflicts = [
+    ...(a.clinicalCalculationAudit?.conflicts || []),
+    ...(a.clinicalSafetyAudit?.conflicts || []),
+  ];
+  const calculationConflict = guardConflicts.length > 0;
+  const likely = calculationConflict ? (ar ? "لا يمكن اعتماد اختيار قبل حل تعارض الحساب أو السلامة السريرية." : "No option can be confirmed until the calculation or clinical-safety conflict is resolved.") : a.answer ? (ar ? `الأرجح: ${a.answer.split("\n")[0]}` : `Most likely: ${a.answer.split("\n")[0]}`) : "";
   const ru = a.runnerUp ? (ar ? `البديل الأقرب: ${a.runnerUp.letter}` : `Runner-up: ${a.runnerUp.letter}`) : "";
   const adv = a.perOptionAdvice && a.perOption.length ? (ar ? "الامتحان ده بيخصم على الاختيار الغلط: اختار بس الاختيارات اللي ثقتها عالية." : "This exam penalises wrong picks: select only the high-confidence options.") : "";
   return { tier: a.tier, head, likely, runnerUp: ru, why, advice: adv, perOption: a.perOptionAdvice ? a.perOption : [] };
@@ -377,8 +381,10 @@ export function reconcileLesson(text, a, lang = "ar") {
   if (!a) return { text, mismatch: false, replaced: false };
   const t = String(text || "");
   const calcConflicts = a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts || [];
-  if (calcConflicts.length) {
-    const safeText = maskCalculationConflictsInLesson(t, lang, calcConflicts);
+  const safetyConflicts = a.clinicalSafetyAudit && a.clinicalSafetyAudit.conflicts || [];
+  const guardConflicts = [...calcConflicts, ...safetyConflicts];
+  if (guardConflicts.length) {
+    const safeText = maskCalculationConflictsInLesson(t, lang, guardConflicts);
     return { text: safeText, mismatch: true, replaced: true, calculationConflict: true };
   }
   if (!a.answer) return { text: t, mismatch: false, replaced: false };

@@ -294,8 +294,8 @@ test("ANALYSIS: every finished stage carries its latency summary (lat); a retrie
   });
   const a = await finished;
   assert.deepEqual(errors, []);
-  assert.equal(done.ocr, undefined, "v3.40.10: a question never asks for a transcript of itself");
-  for (const stage of ["words", "reason"]) {
+  assert.ok(done.ocr, "visual clinical questions must complete the source-transcription stage before solving");
+  for (const stage of ["ocr", "words", "reason"]) {
     const m = done[stage][0];
     assert.ok(m.lat, `${stage} must carry lat`);
     assert.equal(m.lat.ok, true);

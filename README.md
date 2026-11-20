@@ -1,3 +1,18 @@
+## v3.53.0 — Root-Cause Clinical Safety Layer
+
+This release addresses cross-cutting failure paths found in the v3.52.0 code review, rather than simply adding more medical knowledge or prompt warnings.
+
+- **Fail-closed clinical validation:** validator exceptions do not release unchecked exam answers; question explanations/options are withheld while streaming and evaluated only after final checks.
+- **Visual source-reading first:** image/scanned-PDF questions receive a separate model transcription before solving; unclear values must remain `[unclear]`. This is not a separate OCR engine or human verification.
+- **Data-integrity controls:** repeated measurements are preserved, conflicting values block calculations, labelled extraction captures repeated values, and Arabic/Persian numerals are normalized.
+- **Claim-specific source mapping:** a trusted URL cannot be attached to unrelated claims merely because it appears elsewhere in the response.
+- **Patient-specific high-risk checks:** partial HScore handling; non-specific fungal biomarkers; negative serum galactomannan in SOT; tacrolimus level/AKI and voriconazole interaction; TMP-SMX in hyperkalaemia/renal dysfunction; biopsy risk under hypoxaemia/coagulopathy; stress-dose hydrocortisone indication (documented septic shock/adrenal indication).
+- **Regression:** 471/471 tests passed after the final code change; 18/18 targeted clinical-safety tests passed.
+
+See [the full root-cause report](docs/ROOT_CAUSE_SAFETY_v3.53.0.md) for test results, external evidence, and limitations. Passing unit tests is not clinical validation. No live Gemini A/B comparison or successful Vite production build is claimed in this release.
+
+---
+
 ## v3.52.0 — Independent Clinical Calculation Guard
 
 This release adds deterministic calculation checks to the exam-answer pipeline. It is designed to prevent the specific error patterns identified in the critical-care example: wrong osmolality equations, unsupported SVR/OG/R0 numbers, inconsistent drug-clearance reasoning, assay-wide D-lactate claims, and overconfident Pringle-source conclusions.

@@ -67,17 +67,23 @@ function applyOne(it, v) {
   /* T without a source, or U → stays ؟ */
 }
 
-/* verdicts [{n,v,fix}] for claimList (the numbering of the request) + the grounding links of the answer */
+/*
+ * A verdict is claim-specific. A reputable URL elsewhere in a response does not
+ * support every sentence in that response. Only the explicitly mapped grounding
+ * source for this claim may be attached; otherwise the result remains unverified.
+ */
 export function applyVerdicts(items, claimList, verdicts, { links = [], profile, now = Date.now() } = {}) {
   const find = (claim) => items.find((i) => i.label === "unverified" && plain(i.sentence) === claim.text);
-  const good = (links || []).find((l) => allowlisted(l, profile));
   let applied = 0;
   for (const v of verdicts || []) {
     const claim = claimList[v.n - 1];
     const it = claim && find(claim);
     if (!it || it.label !== "unverified") continue;
     const fix = v.fix && v.fix.length <= 240 && !/https?:\/\//i.test(v.fix) ? v.fix : "";
-    const rec = { v: v.v, fix, url: good ? good.url : "", host: good ? hostOf(good) : "" };
+    const mapped = Number.isInteger(v.sourceIndex) ? links[v.sourceIndex - 1] : null;
+    const good = mapped && allowlisted(mapped, profile) ? mapped : null;
+    const rec = { v: v.v, fix: good ? fix : "", url: good ? good.url : "", host: good ? hostOf(good) : "" };
+    // An unsupported F is only a disagreement signal, never an automatic correction.
     remember(it.sentence, rec, now);
     applyOne(it, rec);
     applied += 1;
