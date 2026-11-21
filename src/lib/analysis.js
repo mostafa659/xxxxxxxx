@@ -21,7 +21,7 @@ import { prepareSpecializedPrompt } from "./kb/specialized-prompt.js";
 import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
-import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
 import { readSources } from "./sources.js";
@@ -153,6 +153,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         contextText: `${ocrText}\n${briefRaw}\n${cleanExplanation}\n${cleanTricks}`,
         optionText: chosenOptionText,
       });
+      const clinicalContextForGate = isPotentialClinicalContext(`${ocrText}\n${sample()}\n${briefRaw}\n${cleanExplanation}\n${cleanTricks}`);
+      const calculationSynthesisBlocked = !L && blocksClinicalSynthesisForCalculationConflict(audit, clinicalContextForGate);
       const safetyAudit = auditClinicalSafety({
         caseText: `${ocrText}\n${sample()}\n${briefRaw}`,
         answerText: extractCorrectAnswerSection(cleanExplanation),
@@ -226,25 +228,37 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       }
       const safetySection = safetyAudit.conflicts.length || safetyAudit.advisories.length
         ? formatClinicalSafetyAudit(safetyAudit, has(chips, "en") ? "en" : "ar") : "";
-      if (safetyAudit.conflicts.length) {
-        // A hard, patient-specific safety conflict suppresses the generated clinical answer,
-        // not just its green checkmark. The user sees the exact reason and missing evidence.
-        ex = `## ⚠️ ${has(chips, "en") ? "Clinical answer not cleared" : "لم يتم اعتماد الإجابة السريرية"}\n\n${has(chips, "en") ? "The explanation and option-by-option recommendation are withheld because a high-impact safety rule was triggered. Reconcile the issue with a qualified clinician and current primary guidance." : "تم حجب الشرح والاختيار النهائي لأن قاعدة سلامة عالية الأهمية أطلقت تنبيهًا. يجب حل التعارض بالرجوع إلى مختص سريري وإرشاد أولي حديث."}\n\n${safetySection}`;
+      if (safetyAudit.conflicts.length || calculationSynthesisBlocked) {
+        // A critical calculation contradiction in an integrated clinical case is a
+        // synthesis gate, not merely a warning below otherwise-visible generated prose.
+        // Suppress the whole generated explanation/tricks while retaining deterministic
+        // arithmetic only when the input readings themselves agree.
+        const ar = !has(chips, "en");
+        const sections = [];
+        if (safetySection) sections.push(safetySection);
+        if (calculationSynthesisBlocked) sections.push(renderClinicalCalculationConflictForStudent(audit, ar ? "ar" : "en"));
+        const heading = safetyAudit.conflicts.length
+          ? (ar ? "لم يتم اعتماد الإجابة السريرية" : "Clinical answer not cleared")
+          : (ar ? "تم إيقاف الشرح بسبب تعارض حسابي مؤثر" : "Clinical explanation withheld because of a material calculation conflict");
+        const body = safetyAudit.conflicts.length
+          ? (ar ? "تم حجب الشرح والتوصيات المولّدة لأن فحص السلامة وجد تعارضًا عالي الأهمية. لا تستخدم هذا الإخراج لاتخاذ قرار سريري." : "Generated explanation and recommendations are withheld because a high-impact safety conflict was detected. Do not use this output for clinical decisions.")
+          : (ar ? "تم حجب الشرح الطبي والنصائح المولّدة لأن النموذج ذكر قيمة حسابية لا تتفق مع إعادة الحساب المستقلة. لن نعرض استدلالًا سريريًا مبنيًا على حساب غير متسق." : "Generated clinical reasoning and teaching text are withheld because the model reported a calculation that disagrees with the deterministic recalculation. No clinical synthesis based on an inconsistent calculation is displayed.");
+        ex = `## ⚠️ ${heading}\n\n${body}\n\n${sections.filter(Boolean).join("\n\n")}`;
       } else if (safetySection && !/CLINICAL SAFETY REVIEW|مراجعة السلامة السريرية/.test(ex)) {
         ex = `${ex}\n\n## ⚠️ ${has(chips, "en") ? "Clinical safety review" : "مراجعة السلامة السريرية"}\n${safetySection}`;
       }
       const qualitySection = qualityAudit.advisories.length
         ? `## 🧭 ${has(chips, "en") ? "General healthcare quality checks" : "فحوص جودة الإجابة الصحية العامة"}\n${formatClinicalQualityAudit(qualityAudit, has(chips, "en") ? "en" : "ar")}`
         : "";
-      if (qualitySection && !safetyAudit.conflicts.length) ex = `${ex}\n\n${qualitySection}`;
+      if (qualitySection && !safetyAudit.conflicts.length && !calculationSynthesisBlocked) ex = `${ex}\n\n${qualitySection}`;
       const sourceSection = medicalSearchAttempted
         ? (formatGroundingSources(groundingSources.links, groundingSources.queries)
           || (has(chips, "en")
             ? "## External evidence check\nLive medical search was attempted, but no usable source links were returned. Time-sensitive claims remain unverified."
             : "## التحقق من المصادر الخارجية\nتمت محاولة البحث الطبي المباشر، لكن لم تُرجع المحاولة روابط مصادر قابلة للاستخدام. لذلك تظل الادعاءات المتغيرة بمرور الوقت غير متحققة خارجيًا."))
         : "";
-      if (sourceSection && !safetyAudit.conflicts.length) ex = `${ex}\n\n${sourceSection}`;
-      const rt = cleanTricks && !safetyAudit.conflicts.length ? run(cleanTricks) : null;
+      if (sourceSection && !safetyAudit.conflicts.length && !calculationSynthesisBlocked) ex = `${ex}\n\n${sourceSection}`;
+      const rt = cleanTricks && !safetyAudit.conflicts.length && !calculationSynthesisBlocked ? run(cleanTricks) : null;
       const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
       addGaps(p, gaps);
       const all = rt ? [rx, rt] : [rx];
@@ -252,13 +266,14 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
         calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
         clinicalSafetyAudit: safetyAudit.triggered ? safetyAudit : null,
+        calculationSynthesisBlocked,
         clinicalQualityAudit: qualityAudit.triggered ? qualityAudit : null,
         medicalSearch: medicalSearchAttempted ? { performed: medicalSearchPerformed, sources: groundingSources.links.length, queries: groundingSources.queries } : null,
         stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
         cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
         patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
       });
-      return { ...data, explanation: ex, tricks: safetyAudit.conflicts.length ? "" : (rt ? rt.text : cleanTricks) };
+      return { ...data, explanation: ex, tricks: safetyAudit.conflicts.length || calculationSynthesisBlocked ? "" : (rt ? rt.text : cleanTricks) };
     } catch (e) {
       const clinical = kind === "question" || isPotentialClinicalContext(`${ocrText}\n${briefRaw}\n${data?.explanation || ""}\n${data?.tricks || ""}`);
       if (!clinical) return { ...data, explanation: stripPartialClinicalDataBlock(data.explanation || ""), tricks: stripPartialClinicalDataBlock(data.tricks || "") };

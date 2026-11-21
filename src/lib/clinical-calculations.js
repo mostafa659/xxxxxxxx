@@ -414,10 +414,13 @@ function computeFromFacts(facts, contextText = "") {
     if (na != null && cl != null && hco3 != null) {
       if (unitIs(facts, "na", [/^mmol\/l$/, /^meq\/l$/]) && unitIs(facts, "chloride", [/^mmol\/l$/, /^meq\/l$/]) && unitIs(facts, "hco3", [/^mmol\/l$/, /^meq\/l$/])) {
         const ag = na - cl - hco3;
-        addResult(results, "ag", "Anion gap", ag, "mmol/L", "Na − (Cl + HCO₃)");
+        // Include the actual substitution in the handoff so the generation model
+        // does not have to reconstruct the arithmetic from memory.
+        addResult(results, "ag", "Anion gap", ag, "mmol/L", `Na − (Cl + HCO₃) = ${na} − (${cl} + ${hco3})`);
         const albumin = value(facts, "albumin");
         if (albumin != null && unitIs(facts, "albumin", [/^g\/dl$/])) {
-          addResult(results, "corrected-ag", "Albumin-corrected anion gap", ag + 2.5 * (4 - albumin), "mmol/L", "AG + 2.5×(4 − albumin[g/dL])", "Conventional correction; local laboratory reference/validated correction may differ.");
+          const correctedAg = ag + 2.5 * (4 - albumin);
+          addResult(results, "corrected-ag", "Albumin-corrected anion gap", correctedAg, "mmol/L", `AG + 2.5×(4 − albumin[g/dL]) = ${round(ag)} + 2.5×(4 − ${albumin})`, "Conventional correction; local laboratory reference/validated correction may differ.");
         }
         const agForDelta = albumin != null && unitIs(facts, "albumin", [/^g\/dl$/]) ? ag + 2.5 * (4 - albumin) : ag;
         const normalAg = value(facts, "normalag") ?? 12;
@@ -654,6 +657,7 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   const hasOutput = (re) => re.test(textToCheck);
   if (computed.domains.hemodynamics && !computed.results.some((r) => r.id === "svr") && hasOutput(/\b(?:SVR|systemic vascular resistance)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "svr-without-inputs", severity: "high", message: "An SVR result is reported, but the structured case inputs are insufficient to independently calculate it. Do not present the number as verified." });
   if (computed.domains.osmolality && !computed.results.some((r) => r.id === "og") && hasOutput(/\b(?:OG|osmolal gap|osmolar gap)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "og-without-inputs", severity: "high", message: "An osmolal-gap result is reported, but sodium, glucose, BUN, and measured osmolality (with a consistent ethanol method when applicable) were not all available. Do not present the number as verified." });
+  if (computed.domains.acidBase && !computed.results.some((r) => r.id === "ag") && hasOutput(/\b(?:albumin[- ]corrected\s+)?anion\s+gap\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "ag-without-inputs", severity: "high", message: "An anion-gap number is reported, but verified sodium, chloride and bicarbonate values in compatible units are not all available. Do not present the number as verified." });
   if (computed.domains.crRT && computed.domains.proteinPK && !computed.results.some((r) => r.id === "r0") && hasOutput(/(?:\bR\s*[₀0]|(?:maintenance\s+)?infusion\s+rate)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "r0-without-inputs", severity: "high", message: "An infusion rate is reported without all required drug-specific PK/CRRT inputs. Do not provide a numerical maintenance rate or substitute an assumed sieving coefficient." });
   const conflicts = [...inputConflicts, ...formulaFindings, ...valueConflicts, ...unsupportedOutputs];
   const activeCalculationDomain = computed.domains.hemodynamics || computed.domains.osmolality || computed.domains.acidBase
@@ -715,4 +719,35 @@ export function renderClinicalAuditForStudent(audit, lang = "ar") {
   const intro = ar ? "أُعيد حساب النتائج برمجيًا من القيم المستخرجة من السؤال:" : "These values were independently recalculated in application code from the values extracted from the question:";
   const notes = audit.notes.map((n) => `- ${n}`);
   return [head, intro, ...rows, ...notes].join("\n");
+}
+
+// A wrong AG or unreliable Na/Cl/HCO3 extraction can alter the entire acid-base
+// interpretation. In a clinical open case, do not display generated teaching or
+// management prose while one of these high-impact numeric conflicts remains.
+export function blocksClinicalSynthesisForCalculationConflict(audit, clinicalContext = false) {
+  if (!clinicalContext || !audit || !audit.domains?.acidBase || !Array.isArray(audit.conflicts)) return false;
+  const blocking = /^(?:reported-(?:corrected-)?ag-mismatch|ag-without-inputs|extraction-(?:na|chloride|hco3|albumin)-mismatch|within-source-(?:na|chloride|hco3|albumin)-ambiguous)$/;
+  return audit.conflicts.some((c) => c?.severity === "high" && blocking.test(String(c.code || "")))
+    || audit.conflicts.some((c) => c?.severity === "high" && c.code === "clinical-inputs-not-independently-confirmed");
+}
+
+// When the model's number is wrong but source channels agree, show only the
+// deterministic arithmetic and the conflict. Never expose recomputed values if
+// the inputs themselves disagree or were not independently corroborated.
+export function renderClinicalCalculationConflictForStudent(audit, lang = "ar") {
+  if (!audit || !audit.conflicts?.length) return "";
+  const ar = lang !== "en";
+  const inputConflict = audit.conflicts.some((c) => /^(?:extraction-|within-source-)/.test(String(c.code || "")) || c.code === "clinical-inputs-not-independently-confirmed");
+  const rows = !inputConflict && Array.isArray(audit.results)
+    ? audit.results.map((r) => `- **${r.label}: ${r.value} ${r.unit}** — ${r.formula}${r.note ? `. ${r.note}` : ""}`)
+    : [];
+  const conflicts = audit.conflicts.slice(0, 5).map((c) => `- ${c.message}`);
+  const head = ar ? "## 🧮 تدقيق الحسابات الذي أوقف اعتماد الإجابة" : "## 🧮 Calculation audit that blocked the generated answer";
+  const intro = inputConflict
+    ? (ar ? "توجد مشكلة في هوية/توافق مدخلات الحساب نفسها؛ لذلك لا نعرض ناتجًا محسوبًا باعتباره موثوقًا." : "The calculation inputs themselves conflict or are not independently corroborated, so no derived result is presented as reliable.")
+    : (ar ? "هذه إعادة حساب برمجية من القيم المستخرجة؛ وهي لا تثبت وحدها أن قراءة المصدر صحيحة. لم يُعتمد النص الطبي الذي ولّده النموذج." : "These are deterministic recalculations from the extracted values; they do not by themselves prove that source transcription is correct. The model-generated clinical text has not been cleared.");
+  const sourceCaveat = audit.sourceVerification?.required
+    ? (ar ? "طريقة القراءة الثانية قد تكون بواسطة نموذج آخر؛ وليست OCR مستقلاً أو مراجعة بشرية." : "The second reading may be model-generated; it is not independent OCR or human verification.")
+    : "";
+  return [head, intro, ...rows, ...(conflicts.length ? [ar ? "**سبب الإيقاف:**" : "**Blocking findings:**", ...conflicts] : []), sourceCaveat].filter(Boolean).join("\n");
 }

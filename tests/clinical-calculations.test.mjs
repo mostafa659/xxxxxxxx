@@ -13,6 +13,9 @@ import {
   maskOptionsWhenCalculationConflicts,
   stripOptionReviewSection,
   extractCorrectAnswerSection,
+  blocksClinicalSynthesisForCalculationConflict,
+  renderClinicalCalculationConflictForStudent,
+  formatClinicalCalculationAudit,
 } from "../src/lib/clinical-calculations.js";
 import { reconcileLesson, assessSolve } from "../src/lib/solvecheck.js";
 
@@ -559,4 +562,41 @@ test("final audit replaces an identical preliminary warning instead of duplicati
     { code: "other", msg: "keep me" },
     { code: "specific-conflict", msg: "same warning" },
   ]);
+});
+
+
+test("model-reported anion gap 129 is caught against the independent 21 / corrected 24.5 calculation and blocks clinical synthesis", () => {
+  const modelData = "Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L; Albumin=2.6 g/dL";
+  const audit = auditClinicalCalculations({
+    dataText: modelData,
+    secondaryDataText: modelData,
+    authorityDataText: modelData,
+    modelDataText: modelData,
+    requireAuthorityInputs: true,
+    narrative: "Anion gap: 129 mmol/L.",
+    answerText: "The anion gap is 129 mmol/L.",
+    contextText: "Open-ended critical care clinical case with metabolic acidosis and anion gap calculation.",
+  });
+  assert.equal(audit.results.find((x) => x.id === "ag").value, 21);
+  assert.equal(audit.results.find((x) => x.id === "corrected-ag").value, 24.5);
+  assert.ok(audit.conflicts.some((x) => x.code === "reported-ag-mismatch"));
+  assert.equal(blocksClinicalSynthesisForCalculationConflict(audit, true), true);
+  assert.equal(blocksClinicalSynthesisForCalculationConflict(audit, false), false);
+  assert.match(audit.results.find((x) => x.id === "ag").formula, /129 − \(94 \+ 14\)/);
+  assert.match(formatClinicalCalculationAudit(audit), /129 − \(94 \+ 14\)/);
+  const rendered = renderClinicalCalculationConflictForStudent(audit, "en");
+  assert.match(rendered, /Anion gap: 21 mmol\/L/);
+  assert.match(rendered, /Albumin-corrected anion gap: 24.5 mmol\/L/);
+  assert.match(rendered, /reports 129 mmol\/L/);
+});
+
+test("an unsupported anion-gap number without Na, chloride and bicarbonate is flagged and blocks a clinical open case", () => {
+  const audit = auditClinicalCalculations({
+    dataText: "Albumin=2.6 g/dL",
+    modelDataText: "Albumin=2.6 g/dL",
+    contextText: "Open-ended clinical case: anion gap and metabolic acidosis",
+    narrative: "The anion gap is 129 mmol/L.",
+  });
+  assert.ok(audit.conflicts.some((x) => x.code === "ag-without-inputs"));
+  assert.equal(blocksClinicalSynthesisForCalculationConflict(audit, true), true);
 });

@@ -1,3 +1,12 @@
+## v3.61.0 — Critical Calculation Conflict Gate and Explicit Numeric Substitutions
+
+- A high-impact acid-base calculation conflict in a clinical open case now withholds the entire generated explanation and tips, not only the final-answer section.
+- The user receives a deterministic calculation audit when source readings agree, including explicit substitutions for anion gap and albumin-corrected anion gap. If input readings conflict or are not independently corroborated, derived values are not presented as reliable.
+- A model-reported anion-gap number without verified Na, chloride and bicarbonate inputs is now a hard conflict.
+- Regression tests reproduce the submitted `AG = 129` versus extracted `Na 129, Cl 94, HCO3 14` case.
+
+Verification: `npm test` result is recorded in [the v3.61.0 test/build record](docs/TEST_RESULTS_v3.61.0.md). The production build status is explicitly recorded there. See [the v3.61.0 root-cause report](docs/ROOT_CAUSE_AG_MISMATCH_v3.61.0.md).
+
 ## v3.60.0 — Open-Case Table Parsing, Source Fusion and Safety Reliability
 
 - **OCR-table format parity:** parse pipe-separated lab rows whether or not the transcription includes Markdown's optional outer pipes. Historical and current columns retain separate identities.
