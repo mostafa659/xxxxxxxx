@@ -16,8 +16,10 @@ import {
   blocksClinicalSynthesisForCalculationConflict,
   renderClinicalCalculationConflictForStudent,
   formatClinicalCalculationAudit,
+  buildPreGenerationCalculationHandoff,
 } from "../src/lib/clinical-calculations.js";
 import { reconcileLesson, assessSolve } from "../src/lib/solvecheck.js";
+import { buildLessonAPrompt, buildLessonBPrompt, buildLessonPrompt } from "../src/lib/prompts.js";
 
 const eq = (a, b, eps = 0.01) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -600,3 +602,31 @@ test("an unsupported anion-gap number without Na, chloride and bicarbonate is fl
   assert.ok(audit.conflicts.some((x) => x.code === "ag-without-inputs"));
   assert.equal(blocksClinicalSynthesisForCalculationConflict(audit, true), true);
 });
+
+test("pre-generation calculation handoff supplies deterministic AG before lesson generation", () => {
+  const source = `Open-ended case with metabolic acidosis.
+Sodium 129 mmol/L
+Chloride 94 mmol/L
+Bicarbonate 14 mmol/L
+Albumin 2.6 g/dL`;
+  const handoff = buildPreGenerationCalculationHandoff(source);
+  assert.match(handoff, /Anion gap: 21 mmol\/L/);
+  assert.match(handoff, /129 − \(94 \+ 14\)/);
+  assert.match(handoff, /Albumin-corrected anion gap: 24.5 mmol\/L/);
+  assert.match(handoff, /does not independently verify transcription/i);
+});
+
+test("all clinical lesson writers receive and are instructed to obey calculation authority", () => {
+  const handoff = "APPLICATION CALCULATION AUDIT\n- Anion gap: 21 mmol/L. Formula: 129 − (94 + 14).";
+  const prompts = [
+    buildLessonAPrompt({ history: [], chips: [], words: 100, calculationHandoff: handoff }),
+    buildLessonBPrompt({ history: [], brief: null, chips: [], words: 100, calculationHandoff: handoff }),
+    buildLessonPrompt({ history: [], brief: null, chips: [], words: 100, calculationHandoff: handoff }),
+  ];
+  for (const prompt of prompts) {
+    assert.match(prompt.system, /APPLICATION CALCULATION AUTHORITY — NON-NEGOTIABLE/);
+    assert.match(prompt.user, /Anion gap: 21 mmol\/L/);
+    assert.match(prompt.user, /129 − \(94 \+ 14\)/);
+  }
+});
+

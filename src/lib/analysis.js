@@ -21,7 +21,7 @@ import { prepareSpecializedPrompt } from "./kb/specialized-prompt.js";
 import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
-import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, buildPreGenerationCalculationHandoff, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
 import { readSources } from "./sources.js";
@@ -78,6 +78,9 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   };
   let _prof = null, _profKey = "";
   const sample = () => (doc ? itemsFromSaved(null, doc).map((x) => (x.t === "text" ? x.text : x.t === "pdf" ? x.ptext || "" : "")).join("\n").slice(0, 20000) : "");   // a keyword scan needs a sample, not the whole book
+  // Precompute supported arithmetic from the already-read source before parallel lesson writers start.
+  // The final audit remains separate and still verifies the generated answer against the source channels.
+  const sourceCalculationHandoff = () => buildPreGenerationCalculationHandoff(mergeOriginalSourceText(ocrText, sample()));
   const questionNeedsTranscript = !L && (!doc ? !!dataUrl : itemsFromSaved(null, doc).some((x) => x.t === "image" || x.t === "pdf"));
   const prof = () => {
     if (profileArg) return profileArg;
@@ -424,6 +427,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const t0 = performance.now();
     const since = () => performance.now() - t0;
     let text = "", model = "", tSolve = 0, over = false, failure = null;
+    const preflightCalculationHandoff = !L ? sourceCalculationHandoff() : "";
 
     const compose = (final) => {
       const r = splitReason(text, final);
@@ -454,7 +458,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs }
         : L ? (mode.writeA || mode.write) : mode.write;
-      const prompt = L ? buildStudyLessonPrompt({ profile: prof(), history, extra, chips, words }) : buildLessonPrompt({ history, brief, extra, chips, words });
+      const handoff = /APPLICATION CALCULATION AUDIT/.test(String(brief || "")) ? "" : preflightCalculationHandoff;
+      const prompt = L ? buildStudyLessonPrompt({ profile: prof(), history, extra, chips, words }) : buildLessonPrompt({ history, brief, extra, chips, words, calculationHandoff: handoff });
       stageWithSpecialized(`lesson${brief ? "B" : "X"}:${mode.id}`, cfg, prompt, sig, (full, m) => {
         text = full; model = m; emit(false);
       }).then((res) => {
@@ -497,6 +502,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const since = () => performance.now() - t0;
     const S = { a: "", m: "", t: "", aDone: false, aFail: null, mDone: false, mFail: null, tDone: false, tFail: null, combined: false, aModel: "", mModel: "", t0s: {} };
     let over = false, failure = null;
+    const preflightCalculationHandoff = !L ? sourceCalculationHandoff() : "";
+    const handoffForBrief = (brief) => /APPLICATION CALCULATION AUDIT/.test(String(brief || "")) ? "" : preflightCalculationHandoff;
     const ready = (k) => S[k + "Done"] || !!S[k + "Fail"];
     const seg = (k, final) => splitReason(S[k], final || S[k + "Done"]);
 
@@ -547,7 +554,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     };
 
     /* part A: no answer needed → starts at once */
-    run("a", `lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }));
+    run("a", `lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a, calculationHandoff: preflightCalculationHandoff }));
 
     /* the two short parts that need the verified answer */
     const startBC = (brief) => {
@@ -557,7 +564,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         S.combined = true; S.tDone = true;
         const cfg = { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
           maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs };
-        return run("m", `lessonBx:${mode.id}`, cfg, buildLessonBPrompt({ history, brief: null, extra, chips, words: wordsCap.b }));
+        return run("m", `lessonBx:${mode.id}`, cfg, buildLessonBPrompt({ history, brief: null, extra, chips, words: wordsCap.b, calculationHandoff: preflightCalculationHandoff }));
       }
       const cfgM = { ...mode.write, maxOut: Math.min(mode.write.maxOut, 12000) };
       const cfgT = { ...mode.write, maxOut: 6000 };
@@ -566,14 +573,14 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
          number of requests changes (6 → 5 per question), which is the one thing a free key cannot afford: 20 strong-model requests a day, 5 a minute. */
       if (!L && !PAID && isSmallKey(apiKey)) {
         S.combined = true; S.tDone = true;
-        return run("m", `lessonBm:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b }));
+        return run("m", `lessonBm:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, calculationHandoff: handoffForBrief(brief) }));
       }
       if (L) {
         run("m", `lessonM:${mode.id}`, cfgM, buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b, part: "main" }));
         run("t", `lessonT:${mode.id}`, cfgT, buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b, part: "traps" }));
       } else {
-        run("m", `lessonM:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "main" }));
-        run("t", `lessonT:${mode.id}`, cfgT, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "traps" }));
+        run("m", `lessonM:${mode.id}`, cfgM, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "main", calculationHandoff: handoffForBrief(brief) }));
+        run("t", `lessonT:${mode.id}`, cfgT, buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, part: "traps", calculationHandoff: handoffForBrief(brief) }));
       }
     };
 
@@ -618,6 +625,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const since = () => performance.now() - t0;
     const S = { a: "", b: "", aDone: false, aFail: null, bDone: false, bFail: null, aModel: "", bModel: "", t: {} };
     let over = false;
+    const preflightCalculationHandoff = !L ? sourceCalculationHandoff() : "";
+    const handoffForBrief = (brief) => /APPLICATION CALCULATION AUDIT/.test(String(brief || "")) ? "" : preflightCalculationHandoff;
 
     /* part A streams as it is written; part B is appended once A is complete, so the text the student is reading never jumps */
     const compose = (final) => {
@@ -659,7 +668,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         startB(null);
       });
 
-    stage(`lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }), sig, (full, model) => {
+    stage(`lessonA:${mode.id}`, mode.writeA || mode.write, L ? buildStudyAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a }) : buildLessonAPrompt({ profile: prof(), history, extra, chips, words: wordsCap.a, calculationHandoff: preflightCalculationHandoff }), sig, (full, model) => {
       S.a = full; S.aModel = model; emit(false);
     }).then(({ text, model }) => {
       S.a = text; S.aModel = model; S.aDone = true; S.t.a = since();
@@ -676,7 +685,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? mode.write
         : { ...mode.write, tier: mode.solve.tier, levels: mode.solve.levels, budget: mode.solve.budget,
             maxOut: mode.write.maxOut + mode.solve.maxOut, idleMs: mode.solve.idleMs, firstMs: mode.solve.firstMs };
-      const bPrompt = L ? buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b });
+      const bPrompt = L ? buildStudyBPrompt({ profile: prof(), history, extra, chips, words: wordsCap.b }) : buildLessonBPrompt({ history, brief, extra, chips, words: wordsCap.b, calculationHandoff: handoffForBrief(brief) });
       stageWithSpecialized(`${brief ? "lessonB" : "lessonBx"}:${mode.id}`, cfg, bPrompt, sig, (full, model) => {
         S.b = full; S.bModel = model; emit(false);
       }).then(({ text, model }) => {

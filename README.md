@@ -1,3 +1,14 @@
+## v3.62.0 — Pre-generation Calculation Handoff to Every Lesson Writer
+
+- **Universal calculation preflight:** calculate supported quantities from the already-read source before any explanation writer begins, including the early parallel Part A writer.
+- **All lesson-generation paths receive the handoff:** single, fast, and split flows pass the deterministic application audit to each relevant writer. When a verified solve brief already contains the audit, it is not duplicated.
+- **Non-negotiable numeric authority:** prompts tell the model to copy application-computed values and substitutions, not independently recalculate or substitute an input (such as Na) for a derived result (such as anion gap).
+- **Safety remains independent:** the final source-backed calculation audit still runs after generation. Any material mismatch continues to withhold the full generated clinical explanation; the new handoff does not bypass the gate or certify transcription accuracy.
+
+Verification: `npm test` → **524/524 passed**. `npm run build` did not complete because `vite` is not installed in this environment. No live Gemini run, deployment, or clinician review is claimed. See [the v3.62.0 root-cause report](docs/ROOT_CAUSE_CALCULATION_HANDOFF_v3.62.0.md) and [test/build record](docs/TEST_RESULTS_v3.62.0.md).
+
+---
+
 ## v3.61.0 — Critical Calculation Conflict Gate and Explicit Numeric Substitutions
 
 - A high-impact acid-base calculation conflict in a clinical open case now withholds the entire generated explanation and tips, not only the final-answer section.

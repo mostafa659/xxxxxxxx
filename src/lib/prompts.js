@@ -157,6 +157,14 @@ const QUALITY = `QUALITY BAR:
 • Evidence: ground current claims in applicable sources; a URL alone does not prove a claim.
 • Economy: answer directly; no filler, invented distractors or unrequested hypotheticals.`;
 
+const CALCULATION_AUTHORITY_RULE = `APPLICATION CALCULATION AUTHORITY — NON-NEGOTIABLE:
+When an APPLICATION CALCULATION AUDIT is supplied, its computed values and exact numeric substitutions are the canonical application calculations for the extracted inputs. Copy those values exactly when relevant. Do NOT independently recalculate, alter, round differently, or substitute a raw input (for example Na) for a derived result (for example anion gap). If you believe the source data or calculation is inconsistent, state that it needs review without asserting a competing number. The audit establishes arithmetic from extracted values only; it does NOT prove that the source was transcribed correctly or establish a diagnosis.`;
+
+function calculationAuthorityBlock(handoff) {
+  const value = String(handoff || "").trim();
+  return value ? `\n\n${CALCULATION_AUTHORITY_RULE}\n\n${value}` : "";
+}
+
 /* the student's saved questions → the model links the new question to them, inside the sentence it belongs to */
 export function linkBlock(history, what = "question", extra = "") {
   if (!history || !history.length) return "";
@@ -206,7 +214,7 @@ function styleTail(chipIds, extra, profile) {
 const headings = (chipIds) => (has(chipIds, "en") ? HEADINGS.en : HEADINGS.ar);
 
 /* 4 ─ LESSON A — needs no answer, so it starts together with SOLVE */
-export function buildLessonAPrompt({ profile, history, extra, chips, words }) {
+export function buildLessonAPrompt({ profile, history, extra, chips, words, calculationHandoff = "" }) {
   const H = headings(chips);
   return {
     system: `${CORE(true)}
@@ -235,8 +243,9 @@ ${H.basics}
 - For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, clinical actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
 
 Length: aim for about ${words} words — as deep as the quality bar requires, never padded.
+${calculationHandoff ? CALCULATION_AUTHORITY_RULE : ""}
 ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}`,
-    user: "Write part 1 of the lesson for the question in the image.",
+    user: `Write part 1 of the lesson for the question in the image.${calculationAuthorityBlock(calculationHandoff)}`,
   };
 }
 
@@ -244,7 +253,7 @@ ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}`,
 /* part: undefined = steps · options · answer · vary · memo · tricks (one request)
          "main"  = steps · options · answer · vary          (v3.23 "fast" mode: runs in parallel with "traps")
          "traps" = memory sentences + tricks                 (short, runs in parallel with "main") */
-export function buildLessonBPrompt({ profile, history, brief, extra, chips, words, part }) {
+export function buildLessonBPrompt({ profile, history, brief, extra, chips, words, part, calculationHandoff = "" }) {
   const H = headings(chips);
   const hasMain = part !== "traps", hasTraps = part !== "main";
   const scope = part === "main"
@@ -263,7 +272,7 @@ YOU WRITE PART 2 OF 2. A first tutor writes part 1 (what the question asks, deco
 Inspect the supplied input carefully. It may be an exam question, an open clinical request, a patient-care scenario, a calculation, or a source-only task. Read all supplied text, exhibits and labs. Treat answer options as present only if they are actually visible.
 
 ${ground}
-
+${(calculationHandoff || /APPLICATION CALCULATION AUDIT/.test(String(brief || ""))) ? CALCULATION_AUTHORITY_RULE : ""}
 
 ${TEACH}
 • If real answer options are present, explain only those shown. If no options are present, do not invent distractors or letters; answer the actual request directly. Explain when a wrong option would be right only when such an option exists.
@@ -298,8 +307,8 @@ TRICKS:
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
     user: brief
-      ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite part 2 of the lesson for the question in the image.`
-      : "Write part 2 of the lesson for the question in the image.",
+      ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite part 2 of the lesson for the question in the image.${calculationAuthorityBlock(calculationHandoff)}`
+      : `Write part 2 of the lesson for the question in the image.${calculationAuthorityBlock(calculationHandoff)}`,
   };
 }
 
@@ -309,7 +318,7 @@ ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start
        ===EXPLANATION=== … ===TRICKS=== …
    (marker lines instead of JSON on purpose: they stream token by token, so the student still sees the text while it is written,
    and one broken quote can never throw the whole answer away.) */
-export function buildLessonPrompt({ profile, history, brief, extra, chips, words }) {
+export function buildLessonPrompt({ profile, history, brief, extra, chips, words, calculationHandoff = "" }) {
   const H = headings(chips);
   const ground = brief
     ? `The user message contains a preliminary solve brief. Use it as the starting analysis, NOT as unquestionable ground truth. Re-read the original question and options, verify that every stated datum is actually present, and independently check the decisive reasoning. Reconcile the brief with any supplied specialized references, their applicability conditions and exceptions. If the brief clearly conflicts with the question or a directly applicable, approved reference, correct the answer before teaching. Never invent missing case data.`
@@ -322,7 +331,7 @@ YOU WRITE THE WHOLE LESSON IN ONE ANSWER: the explanation AND the traps. Write O
 Inspect the supplied input carefully. It may be an exam question, an open clinical request, a patient-care scenario, a calculation, or a source-only task. Read all supplied text, exhibits and labs. Treat answer options as present only if they are actually visible.
 
 ${ground}
-
+${(calculationHandoff || /APPLICATION CALCULATION AUDIT/.test(String(brief || ""))) ? CALCULATION_AUTHORITY_RULE : ""}
 
 ${TEACH}
 • If real answer options are present, explain only those shown. If no options are present, do not invent distractors or letters; answer the actual request directly. Explain when a wrong option would be right only when such an option exists.
@@ -367,8 +376,8 @@ TRICKS:
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
     user: brief
-      ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite the whole lesson for the question in the image.`
-      : "Write the whole lesson for the question in the image.",
+      ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite the whole lesson for the question in the image.${calculationAuthorityBlock(calculationHandoff)}`
+      : `Write the whole lesson for the question in the image.${calculationAuthorityBlock(calculationHandoff)}`,
   };
 }
 

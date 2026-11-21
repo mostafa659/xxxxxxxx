@@ -685,6 +685,23 @@ export function formatClinicalCalculationAudit(audit) {
   return lines.join("\n");
 }
 
+// Calculate source-derived numerical checks before any lesson-writing model starts.
+// This is an arithmetic preflight only: it does not independently validate the source transcription.
+export function buildPreGenerationCalculationHandoff(sourceText = "") {
+  const source = String(sourceText || "").trim();
+  if (!source) return "";
+  const extracted = extractLabelledClinicalData(source);
+  if (!String(extracted || "").trim()) return "";
+  const audit = auditClinicalCalculations({
+    dataText: extracted,
+    modelDataText: extracted,
+    contextText: source,
+    requireAuthorityInputs: false,
+  });
+  if (!audit.triggered) return "";
+  return formatClinicalCalculationAudit(audit);
+}
+
 export function extractClinicalDataBlock(text = "") {
   const t = String(text || "");
   const re = /===CLINICAL_DATA===\s*([\s\S]*?)\s*===END_CLINICAL_DATA===/i;
