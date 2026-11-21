@@ -1,0 +1,94 @@
+{
+  "sources": [
+    {
+      "id": "warfarin-enantiomers-mdpi-2022",
+      "url": "https://www.mdpi.com/1999-4923/14/6/1141",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "Jin S, et al. Simultaneous Characterization and Determination of Warfarin and Its Hydroxylation Metabolites in Rat Plasma by Chiral LC-MS/MS. Pharmaceutics. 2022;14(6):1141. CC BY 4.0.",
+      "type": "peer-reviewed",
+      "passages": [
+        {
+          "id": "human-enantiomer-pathways",
+          "text": "S-Warfarin is primarily (>80%) metabolized by CYP2C9. R-warfarin is approximately 60% oxidized by CYP1A2 and 3A4. S-warfarin is a 3–5 times more potent inhibitor of the vitamin K epoxide reductase complex than R-warfarin."
+        },
+        {
+          "id": "minor-pathways",
+          "text": "Minor pathways involve CYP2C8, 2C18, 2C19, and CYP3A4 for S-warfarin. Several other CYP enzymes, including CYP1A1, 2C18, 2C8, 2C19, and 2C9, also demonstrate minor R-warfarin hydroxylation activities."
+        }
+      ]
+    },
+    {
+      "id": "ic50-ki-kd-mdpi-2025",
+      "url": "https://www.mdpi.com/1420-3049/30/17/3630",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "Kontopidis G, Patergiannakis IS. Comparative Analysis of Biochemical and Cellular Assay Conditions. Molecules. 2025;30(17):3630. CC BY 4.0.",
+      "type": "peer-reviewed",
+      "passages": [
+        {
+          "id": "ic50-kd-ki-definitions",
+          "text": "Kd reflects the affinity between a ligand and its target at equilibrium. IC50 represents the concentration of an inhibitor required to reduce activity by 50%, and is highly dependent on assay conditions, including enzyme concentrations. Ki represents the inhibition constant of an inhibitor for an enzyme and is related to IC50 through different equations depending on the type of inhibition."
+        },
+        {
+          "id": "cheng-prusoff",
+          "text": "In the case of competitive inhibition, Ki is related to IC50 via the Cheng-Prusoff equation: Ki = IC50 / (1 + [S]/Km). In competitive inhibition, IC50 values depend not only on intrinsic binding affinity but also on substrate concentration."
+        }
+      ]
+    },
+    {
+      "id": "feline-aldosterone-lcmsms-mdpi-2025",
+      "url": "https://www.mdpi.com/2076-2615/15/12/1687",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "Furlanello T, et al. Establishment and Validation of Sensitive LC-MS/MS Method for Aldosterone Quantification in Feline Serum. Animals. 2025;15(12):1687. CC BY 4.0.",
+      "type": "peer-reviewed",
+      "passages": [
+        {
+          "id": "healthy-cat-reference-interval",
+          "text": "Analysis of 49 healthy cats (40 young, 9 old) revealed a reference interval of 5.0–78.4 pg/mL (13.8–217.2 pmol/L)."
+        },
+        {
+          "id": "adrenal-mass-not-diagnostic",
+          "text": "The presence of adrenal masses does not always confirm functional aldosterone secretion, as non-secreting incidentalomas are common. PHA may occur without discernible adrenal enlargement."
+        }
+      ]
+    },
+    {
+      "id": "knot-henry-medial-plantar-nerve-mdpi-2020",
+      "url": "https://www.mdpi.com/2075-4418/10/3/160",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "Hung CY, et al. Advanced Ankle and Foot Sonoanatomy: Imaging Beyond the Basics. Diagnostics. 2020;10(3):160. CC BY 4.0.",
+      "type": "peer-reviewed",
+      "passages": [
+        {
+          "id": "knot-is-tendon-decussation",
+          "text": "The knot of Henry corresponds to the decussation of the flexor hallucis longus and flexor digitorum longus tendons at the medial plantar mid-foot."
+        },
+        {
+          "id": "medial-plantar-nerve-course",
+          "text": "The medial plantar nerve is a terminal branch of the tibial nerve. After passing through the tarsal tunnel, the nerve traverses between the abductor hallucis and quadratus plantae muscles to reach the knot of Henry, and then it courses along the medial border of the flexor digitorum brevis muscle."
+        }
+      ]
+    },
+    {
+      "id": "feline-abcb1-ivermectin-pmc-2022",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8899013/",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "Nürnberger S, et al. Detection of the ABCB1 1930_1931del TC Mutation in Two Suspected Ivermectin-Sensitive Cats. Veterinary Sciences. 2022. CC BY 4.0.",
+      "type": "peer-reviewed",
+      "passages": [
+        {
+          "id": "cat-ivermectin-sensitivity",
+          "text": "The present report describes two suspected ivermectin-sensitive Maine Coon cats, which exhibited neurological toxicity following subcutaneous application of therapeutic doses of ivermectin. Both cats showed a homozygous 2-bp deletion in the MDR1/ABCB1 coding sequence."
+        },
+        {
+          "id": "abcb1-transport-function",
+          "text": "The multidrug resistance gene MDR1 (syn. ABCB1) encodes for the multidrug efflux transporter P-glycoprotein (P-gp), which is highly expressed at the blood-brain barrier and protects the brain from potentially neurotoxic compounds, such as ivermectin."
+        }
+      ]
+    }
+  ]
+}

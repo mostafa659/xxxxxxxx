@@ -1,0 +1,128 @@
+{
+  "id": "specialized-pharmacogenomics-pilot-2026-09",
+  "source": "FDA Table of Pharmacogenetic Associations",
+  "sourceUrl": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",
+  "sourceUpdated": "2026-09-10",
+  "cases": [
+    {
+      "id": "pgx-tier-semantics",
+      "entryIds": [
+        "pgx.fda.evidence-tier-semantics",
+        "pgx.fda.table-inclusion-not-testing-mandate"
+      ],
+      "question": "An exam stem says a gene-drug pair appears in Section 3 of the FDA Table of Pharmacogenetic Associations. What does that establish about pharmacokinetics, clinical safety or response, and how is this different from Sections 1 and 2? Does mere inclusion mean every patient must be tested before prescribing?",
+      "rubric": [
+        "Section 1 supports therapeutic-management recommendations.",
+        "Section 2 indicates a potential safety or response impact.",
+        "Section 3 addresses pharmacokinetic properties only; safety or response impact is not established.",
+        "Table inclusion alone is not a universal pre-prescription testing mandate; consider companion-diagnostic status and labeling."
+      ],
+      "mustNotClaim": [
+        "Every listed gene-drug association mandates pre-prescription testing.",
+        "A pharmacokinetic association by itself proves improved efficacy or increased clinical toxicity."
+      ]
+    },
+    {
+      "id": "fda-table-testing-mandate",
+      "entryIds": [
+        "pgx.fda.table-inclusion-not-testing-mandate"
+      ],
+      "question": "A question says that a drug-gene pair appears in the FDA Table of Pharmacogenetic Associations. Does that alone mean every patient must undergo genetic testing before the drug is prescribed? Explain the companion-diagnostic caveat.",
+      "rubric": [
+        "Table inclusion alone does not mean FDA advocates testing every patient before prescribing.",
+        "Consider whether the relevant test is a companion diagnostic.",
+        "Check the specific medicine label and applicable regulatory requirements."
+      ],
+      "mustNotClaim": [
+        "Every gene-drug pair in the table requires routine pre-prescription testing.",
+        "The table caveat overrides a companion-diagnostic requirement or drug labeling."
+      ]
+    },
+    {
+      "id": "abacavir-hla-b-5701",
+      "entryIds": [
+        "pgx.fda.abacavir-hla-b-5701"
+      ],
+      "question": "A pharmacogenomics question states that a patient is HLA-B*57:01 positive and asks about abacavir. What is the key implication in the FDA pharmacogenetic table, and which risk is involved?",
+      "rubric": [
+        "The affected subgroup is HLA-B*57:01-positive patients.",
+        "The FDA table says not to use abacavir in this subgroup.",
+        "The associated risk is hypersensitivity reactions.",
+        "Do not confuse this allele with HLA-B*15:02 or another drug association."
+      ],
+      "mustNotClaim": [
+        "Only monitor the patient while continuing abacavir.",
+        "All HLA-B variants have the same drug implications."
+      ]
+    },
+    {
+      "id": "aficamten-cyp2c9",
+      "entryIds": [
+        "pgx.fda.aficamten-cyp2c9-pm"
+      ],
+      "question": "A question describes a CYP2C9 poor metabolizer taking aficamten. The genotype may be associated with higher systemic exposure and adverse-reaction risk. Does the FDA table call for a separate genotype-based dose adjustment? Explain the important exception.",
+      "rubric": [
+        "Recognize potential higher systemic concentrations and adverse-reaction risk.",
+        "The aficamten dose-titration and monitoring schedule accounts for CYP2C9 variation.",
+        "The FDA table says genotype-based dose adjustment is not necessary for this specific aficamten association.",
+        "Do not generalize this exception to other CYP2C9 substrates; refer to aficamten labeling for regimen details."
+      ],
+      "mustNotClaim": [
+        "All CYP2C9 poor metabolizers must receive a genotype-based dose reduction.",
+        "The aficamten result applies to every CYP2C9 substrate."
+      ]
+    },
+    {
+      "id": "mtrnr1-aminoglycoside",
+      "entryIds": [
+        "pgx.fda.mtrnr1-aminoglycoside-ototoxicity"
+      ],
+      "question": "A patient has the mitochondrial MT-RNR1 m.1555A>G variant and is being considered for amikacin. What pharmacogenetic risk does the FDA table identify, and what treatment consideration does it give?",
+      "rubric": [
+        "The variant is MT-RNR1 m.1555A>G.",
+        "The associated adverse reaction is ototoxicity with aminoglycosides.",
+        "Consider an alternative treatment outside the aminoglycoside class.",
+        "Do not generalize the exact association to unrelated variants or all antibiotics."
+      ],
+      "mustNotClaim": [
+        "The variant proves the patient already has hearing loss.",
+        "All antibiotic classes carry this same pharmacogenetic association."
+      ]
+    },
+    {
+      "id": "azathioprine-tpmt-nudt15",
+      "entryIds": [
+        "pgx.fda.azathioprine-tpmt-nudt15"
+      ],
+      "question": "A pharmacogenomics question reports intermediate-metabolizer phenotypes for both TPMT and NUDT15 in a patient considered for azathioprine. What is the clinically important interpretation, and why should the answer avoid inventing an exact dose from the FDA table summary?",
+      "rubric": [
+        "TPMT and NUDT15 influence thiopurine active-metabolite exposure and dose requirements.",
+        "The relevant toxicity is myelosuppression.",
+        "Intermediate metabolizers may require dose reduction; dual-intermediate phenotypes may require larger reductions.",
+        "Detailed dosing must come from current drug labeling and indication-specific specialist guidance."
+      ],
+      "mustNotClaim": [
+        "The FDA table provides one exact dose for every azathioprine indication.",
+        "An untested gene can be assumed to have a normal phenotype."
+      ]
+    },
+    {
+      "id": "carbamazepine-hla-b-1502",
+      "entryIds": [
+        "pgx.fda.carbamazepine-hla-b-1502"
+      ],
+      "question": "A patient is HLA-B*15:02 positive and the question asks about carbamazepine. State the FDA table's recommendation precisely, including its exception and the role of clinical vigilance.",
+      "rubric": [
+        "The associated risk is severe skin reactions, including SJS/TEN risk.",
+        "Avoid carbamazepine unless potential benefits outweigh risks.",
+        "This wording is not the same as an unconditional contraindication.",
+        "Genotyping does not replace clinical vigilance.",
+        "Do not confuse HLA-B*15:02 with HLA-B*57:01."
+      ],
+      "mustNotClaim": [
+        "The FDA wording is an unconditional ban in every circumstance.",
+        "A genotype result removes the need for clinical monitoring."
+      ]
+    }
+  ]
+}
