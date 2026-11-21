@@ -630,3 +630,73 @@ test("all clinical lesson writers receive and are instructed to obey calculation
   }
 });
 
+
+test("structured underscore labels preserve BP and current-versus-historical hemoglobin identities", () => {
+  const facts = parseClinicalData("systolic_bp=82 mmHg; diastolic_bp=48 mmHg; historical_hb=11.2 g/dL; current_hb=7.6 g/dL");
+  assert.equal(facts.sbp.value, 82);
+  assert.equal(facts.dbp.value, 48);
+  assert.equal(facts.hb_baseline.value, 11.2);
+  assert.equal(facts.hb.value, 7.6);
+});
+
+test("formula-specific source corroboration does not demand unrelated Fick/SVR fields and retains valid AG/Winter calculations", () => {
+  const data = "systolic_bp=82 mmHg; diastolic_bp=48 mmHg; sodium=129 mmol/L; chloride=94 mmol/L; bicarbonate=14 mmol/L; albumin=2.6 g/dL; potassium=6.4 mmol/L; paco2=30 mmHg; historical_hb=11.2 g/dL; current_hb=7.6 g/dL";
+  const audit = auditClinicalCalculations({
+    dataText: data,
+    modelDataText: data,
+    authorityDataText: data,
+    contextText: "Open-ended critical-care case. Calculate MAP, anion gap and Winter compensation for metabolic acidosis. Discuss hemodynamics; do not calculate Fick cardiac output or SVR unless their required measurements are supplied.",
+    narrative: "Estimated mean arterial pressure = 59.3 mmHg. Anion gap = 129 mmol/L. Albumin-corrected anion gap = 24.5 mmol/L. Winter expected PaCO2 = 1.5 mmHg.",
+    requireAuthorityInputs: true,
+  });
+  eq(audit.results.find((r) => r.id === "map").value, 59.33);
+  eq(audit.results.find((r) => r.id === "ag").value, 21);
+  eq(audit.results.find((r) => r.id === "corrected-ag").value, 24.5);
+  eq(audit.results.find((r) => r.id === "winter").value, 29);
+  assert.ok(audit.conflicts.some((r) => r.code === "reported-ag-mismatch"));
+  assert.ok(audit.conflicts.some((r) => r.code === "reported-winter-mismatch"));
+  assert.ok(!audit.conflicts.some((r) => r.code === "clinical-inputs-not-independently-confirmed"), "all inputs actually needed by the reported calculations are corroborated");
+  assert.deepEqual(audit.sourceVerification.missingSourceFields, []);
+  assert.deepEqual(audit.sourceVerification.missingModelFields, []);
+  const studentAudit = renderClinicalCalculationConflictForStudent(audit, "en");
+  assert.match(studentAudit, /Anion gap: 21 mmol\/L/);
+  assert.match(studentAudit, /Winter expected PaCO₂: 29 mmHg/);
+});
+
+test("numeric SVR claims require CVP and CO, but do not invent Fick prerequisites when Fick is not claimed", () => {
+  const data = "systolic_bp=82 mmHg; diastolic_bp=48 mmHg; sodium=129 mmol/L; chloride=94 mmol/L; bicarbonate=14 mmol/L; albumin=2.6 g/dL";
+  const audit = auditClinicalCalculations({
+    dataText: data,
+    modelDataText: data,
+    authorityDataText: data,
+    contextText: "Critical-care hemodynamics and acid-base assessment.",
+    narrative: "Estimated MAP = 59.33 mmHg. SVR = 900 dyn.s/cm5. Anion gap = 21 mmol/L.",
+    requireAuthorityInputs: true,
+  });
+  const provenance = audit.conflicts.find((r) => r.code === "clinical-inputs-not-independently-confirmed");
+  assert.ok(provenance);
+  assert.match(provenance.message, /cvp, co/);
+  assert.doesNotMatch(provenance.message, /vo2|sao2|pao2|svo2|pvo2/i);
+  assert.ok(audit.results.some((r) => r.id === "ag"), "unrelated acid-base arithmetic remains available");
+  const studentAudit = renderClinicalCalculationConflictForStudent(audit, "en");
+  assert.match(studentAudit, /Anion gap: 21 mmol\/L/, "verified acid-base math stays visible while the unverified SVR result is withheld");
+  assert.doesNotMatch(studentAudit, /SVR: 900/);
+});
+
+test("numeric Fick cardiac-output claims require the Fick oxygen-delivery inputs specifically", () => {
+  const data = "systolic_bp=82 mmHg; diastolic_bp=48 mmHg";
+  const audit = auditClinicalCalculations({
+    dataText: data,
+    modelDataText: data,
+    authorityDataText: data,
+    contextText: "Hemodynamic calculation.",
+    narrative: "Fick cardiac output = 5 L/min.",
+    requireAuthorityInputs: true,
+  });
+  const provenance = audit.conflicts.find((r) => r.code === "clinical-inputs-not-independently-confirmed");
+  assert.ok(provenance);
+  assert.match(provenance.message, /vo2/);
+  assert.match(provenance.message, /hb/);
+  assert.match(provenance.message, /sao2/);
+  assert.match(provenance.message, /svo2/);
+});

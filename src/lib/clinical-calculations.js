@@ -12,14 +12,15 @@ const PAIR_RE = new RegExp(`(?:^|[;|,\\n])\\s*([A-Za-z][A-Za-z0-9_]*)\\s*=\\s*($
 
 const KEY_ALIASES = {
   map: ["map", "mean arterial pressure"],
-  sbp: ["sbp", "systolic blood pressure"],
-  dbp: ["dbp", "diastolic blood pressure"],
+  sbp: ["sbp", "systolic blood pressure", "systolic bp", "systolic_bp"],
+  dbp: ["dbp", "diastolic blood pressure", "diastolic bp", "diastolic_bp"],
   cvp: ["cvp", "central venous pressure"],
   co: ["co", "cardiac output"],
   vo2: ["vo2", "oxygen consumption"],
   cao2: ["cao2", "arterial oxygen content"],
   cvo2: ["cvo2", "venous oxygen content"],
-  hb: ["hb", "hemoglobin", "haemoglobin"],
+  hb: ["hb", "hemoglobin", "haemoglobin", "current hb", "current_hb", "current hemoglobin", "current haemoglobin"],
+  hb_baseline: ["historical hb", "historical_hb", "baseline hb", "baseline_hb", "historical hemoglobin", "baseline hemoglobin", "historical haemoglobin", "baseline haemoglobin"],
   sao2: ["sao2", "arterial oxygen saturation"],
   pao2: ["pao2", "arterial oxygen partial pressure"],
   svo2: ["svo2", "venous oxygen saturation"],
@@ -278,7 +279,7 @@ function compareLabeled(text, result) {
     og: ["osmolal gap", "osmolar gap", "OG"],
     co: ["cardiac output", "CO"],
     ag: ["corrected anion gap", "anion gap", "AG"],
-    winter: ["expected PaCO2", "Winter expected PaCO2", "Winter's formula"],
+    winter: ["Winter expected PaCO2", "expected PaCO2", "expected PaCO₂"],
     r0: ["R0", "R₀", "maintenance infusion rate", "infusion rate"],
   };
   const conflicts = [];
@@ -531,38 +532,79 @@ function narrativeRuleFindings(text = "", dataText = "") {
   return findings;
 }
 
-function authorityFieldsRequired(facts, domains, text) {
-  const required = new Set();
-  if (domains.hemodynamics) {
-    if (fact(facts, "map")) required.add("map");
-    else if (fact(facts, "sbp") && fact(facts, "dbp")) { required.add("sbp"); required.add("dbp"); }
-    else required.add("map-or-sbp+dbp");
-    required.add("cvp");
-    if (fact(facts, "co")) required.add("co");
-    else {
-      required.add("vo2");
-      if (fact(facts, "cao2")) required.add("cao2");
-      else { required.add("hb"); required.add("sao2"); required.add("pao2"); }
-      if (fact(facts, "cvo2")) required.add("cvo2");
-      else { required.add("hb"); required.add("svo2"); required.add("pvo2"); }
-    }
-  }
-  if (domains.osmolality) {
-    required.add("na"); required.add("glucose"); required.add("measuredosm");
-    required.add(fact(facts, "bun") ? "bun" : fact(facts, "urea") ? "urea" : "bun-or-urea");
-    if (fact(facts, "ethanol")) { required.add("ethanol"); required.add("ethanoldivisor"); }
-  }
-  if (domains.acidBase) {
-    required.add("na"); required.add("chloride"); required.add("hco3");
-    if (claimsTripleAcidBase(text)) { required.add("ph"); required.add("paco2"); }
-  }
-  if (domains.crRT && domains.proteinPK) {
-    required.add("fu"); required.add("clint"); required.add("qeff"); required.add("cssu");
-    required.add(fact(facts, "sc") ? "sc" : fact(facts, "scequalsfu") ? "scequalsfu" : "sc-or-scequalsfu");
-  }
-  return [...required];
-}
+function authorityInputRequirements(facts, computed, generatedText = "", contextText = "") {
+  // Each result owns only the inputs used by its formula. A missing CVP/Fick
+  // measurement must never suppress independently confirmed acid-base math.
+  const requirements = [];
+  const hasNumber = (aliases) => labelledNumber(generatedText, aliases) != null;
+  const mapClaim = hasNumber(["estimated mean arterial pressure", "mean arterial pressure", "MAP"]);
+  const svrClaim = hasNumber(["systemic vascular resistance", "SVR"]);
+  const fickCoClaim = hasNumber(["Fick cardiac output", "cardiac output by Fick", "cardiac output"])
+    && /fick/i.test(generatedText);
+  const agClaim = hasNumber(["albumin-corrected anion gap", "corrected anion gap", "anion gap", "AG"]);
+  const correctedAgClaim = hasNumber(["albumin-corrected anion gap", "corrected anion gap"]);
+  const winterClaim = hasNumber(["Winter expected PaCO2", "expected PaCO2", "expected PaCO₂"]);
+  const ogClaim = hasNumber(["osmolal gap", "osmolar gap", "OG"]);
+  const r0Claim = hasNumber(["maintenance infusion rate", "infusion rate", "R0", "R₀"]);
+  const resultIds = new Set(computed.results.map((r) => r.id));
+  const add = (id, fields, resultIdsForGate = [id]) => requirements.push({ id, fields: [...new Set(fields)], resultIds: resultIdsForGate });
+  const mapFields = [fact(facts, "map") ? "map" : "map-or-sbp+dbp"];
 
+  if (resultIds.has("map") || mapClaim) add("map", mapFields);
+
+  if (resultIds.has("co") || fickCoClaim) {
+    const fields = ["vo2"];
+    if (fact(facts, "cao2")) fields.push("cao2");
+    else fields.push("hb", "sao2", "pao2");
+    if (fact(facts, "cvo2")) fields.push("cvo2");
+    else fields.push("hb", "svo2", "pvo2");
+    add("co", fields, ["co", ...(svrClaim || resultIds.has("svr") ? ["svr"] : [])]);
+  }
+
+  if (resultIds.has("svr") || svrClaim) {
+    const fields = [...mapFields, "cvp"];
+    if (fact(facts, "co")) fields.push("co");
+    else if (fact(facts, "vo2") || fickCoClaim || /\bfick\b/i.test(contextText)) {
+      fields.push("vo2");
+      if (fact(facts, "cao2")) fields.push("cao2");
+      else fields.push("hb", "sao2", "pao2");
+      if (fact(facts, "cvo2")) fields.push("cvo2");
+      else fields.push("hb", "svo2", "pvo2");
+    } else fields.push("co");
+    add("svr", fields, ["svr"]);
+  }
+
+  if (resultIds.has("calculated-osmolality")) {
+    const fields = ["na", "glucose", fact(facts, "bun") ? "bun" : fact(facts, "urea") ? "urea" : "bun-or-urea"];
+    if (fact(facts, "ethanol")) fields.push("ethanol", "ethanoldivisor");
+    add("calculated-osmolality", fields);
+  }
+  if (resultIds.has("og") || ogClaim) {
+    const fields = ["na", "glucose", "measuredosm", fact(facts, "bun") ? "bun" : fact(facts, "urea") ? "urea" : "bun-or-urea"];
+    if (fact(facts, "ethanol")) fields.push("ethanol", "ethanoldivisor");
+    add("og", fields);
+  }
+
+  if (resultIds.has("ag") || agClaim || /anion\s+gap|\bAG\b|الفجوة الأنيونية/i.test(contextText)) {
+    add("ag", ["na", "chloride", "hco3"]);
+  }
+  if (resultIds.has("corrected-ag") || correctedAgClaim) {
+    add("corrected-ag", ["na", "chloride", "hco3", "albumin"]);
+  }
+  if (resultIds.has("delta-gap")) {
+    add("delta-gap", ["na", "chloride", "hco3", ...(fact(facts, "albumin") ? ["albumin"] : [])]);
+  }
+  if (resultIds.has("winter") || winterClaim || /winter|respiratory compensation|تعويض تنفسي/i.test(contextText)) {
+    add("winter", ["hco3", "paco2"]);
+  }
+  if (claimsTripleAcidBase(generatedText)) add("triple-acid-base", ["na", "chloride", "hco3", "ph", "paco2"]);
+
+  if (resultIds.has("r0") || r0Claim) {
+    const fields = ["fu", "clint", "qeff", "cssu", fact(facts, "sc") ? "sc" : fact(facts, "scequalsfu") ? "scequalsfu" : "sc-or-scequalsfu"];
+    add("r0", fields);
+  }
+  return requirements;
+}
 function missingAuthorityFields(required, authorityFacts) {
   const labels = {
     "map-or-sbp+dbp": "MAP or SBP+DBP", "bun-or-urea": "BUN or urea",
@@ -595,7 +637,8 @@ export function extractCorrectAnswerSection(text = "") {
 }
 
 export function auditClinicalCalculations({ dataText = "", secondaryDataText = "", authorityDataText = "", modelDataText = "", requireAuthorityInputs = false, narrative = "", answerText = "", calcText = "", contextText = "", optionText = "" } = {}) {
-  const combined = [contextText, narrative, answerText, calcText, optionText].filter(Boolean).join("\n");
+  const generatedText = [narrative, answerText, calcText, optionText].filter(Boolean).join("\n");
+  const combined = [contextText, generatedText].filter(Boolean).join("\n");
   const sourceTexts = [dataText, ...(Array.isArray(secondaryDataText) ? secondaryDataText : [secondaryDataText]), authorityDataText].filter((x) => String(x || "").trim());
   const sourceReports = sourceTexts.map(parseClinicalDataDiagnostics);
   const sourceFacts = sourceReports.map((x) => x.facts).filter((x) => Object.keys(x).length);
@@ -631,14 +674,40 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   if (facts.scequalsfu && !authorityFacts.scequalsfu) inputConflicts.push({ code: "sc-fu-relation-unverified", severity: "high", message: "The SC=fu relationship appears in model-extracted data but is not present in the separate source-reading pass. Do not cancel fu or calculate the infusion rate until the source is re-read." });
   if (facts.ethanoldivisor && !authorityFacts.ethanoldivisor) inputConflicts.push({ code: "ethanol-divisor-unverified", severity: "high", message: "The ethanol divisor appears in model-extracted data but is not present in the separate source-reading pass. Do not use it as a validated coefficient." });
   const combinedDomains = clinicalDomains(combined);
-  const requiredFields = authorityFieldsRequired(facts, combinedDomains, combined);
-  const missingAuthority = requireAuthorityInputs ? missingAuthorityFields(requiredFields, authorityFacts) : [];
-  const missingModel = requireAuthorityInputs ? missingAuthorityFields(requiredFields, modelFacts) : [];
-  if (missingAuthority.length || missingModel.length) inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", message: `Critical calculation inputs must appear independently in both solver DATA and a separate source-reading pass. Missing from source-reading pass: ${missingAuthority.length ? missingAuthority.join(", ") : "none"}; missing from solver DATA: ${missingModel.length ? missingModel.join(", ") : "none"}. Do not confirm the numerical answer from a single extraction channel.` });
   const mergedDataText = Object.values(facts).map((f) => `${f.key}=${f.value} ${f.unit}`.trim()).join("; ");
-  const computed = computeFromFacts(inputConflicts.length ? {} : facts, combined);
+  // A conflict in one formula's inputs must not erase unrelated verified math.
+  // Remove only fields with source-extraction disagreements before recomputation.
+  const conflictedKeys = new Set();
+  for (const item of inputConflicts) {
+    const m = /^(?:within-source|extraction)-([a-z0-9_]+)-(?:ambiguous|mismatch)$/.exec(item.code || "");
+    if (m) conflictedKeys.add(m[1]);
+  }
+  const calculationFacts = Object.fromEntries(Object.entries(facts).filter(([key]) => !conflictedKeys.has(key)));
+  if (inputConflicts.some((item) => item.code === "sc-fu-relation-unverified")) delete calculationFacts.scequalsfu;
+  if (inputConflicts.some((item) => item.code === "ethanol-divisor-unverified")) delete calculationFacts.ethanoldivisor;
+  const rawComputed = computeFromFacts(calculationFacts, combined);
+  const requirements = requireAuthorityInputs
+    ? authorityInputRequirements(calculationFacts, rawComputed, generatedText, contextText)
+    : [];
+  const missingByRequirement = requirements.map((requirement) => ({
+    requirement,
+    authority: missingAuthorityFields(requirement.fields, authorityFacts),
+    model: missingAuthorityFields(requirement.fields, modelFacts),
+  }));
+  const failedRequirements = missingByRequirement.filter((x) => x.authority.length || x.model.length);
+  const missingAuthority = [...new Set(failedRequirements.flatMap((x) => x.authority))];
+  const missingModel = [...new Set(failedRequirements.flatMap((x) => x.model))];
+  const unverifiedResultIds = new Set(failedRequirements.flatMap((x) => x.requirement.resultIds));
+  if (failedRequirements.length) {
+    const detail = failedRequirements.map((x) => `${x.requirement.id}: source ${x.authority.length ? x.authority.join(", ") : "complete"}; solver ${x.model.length ? x.model.join(", ") : "complete"}`).join(" | ");
+    inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", message: `Inputs required for these specific numerical calculations were not independently confirmed: ${detail}. Do not confirm those results from a single extraction channel.` });
+  }
+  const computed = {
+    ...rawComputed,
+    results: rawComputed.results.filter((result) => !unverifiedResultIds.has(result.id)),
+  };
   const claimsTriple = claimsTripleAcidBase(combined);
-  if (claimsTriple && !inputConflicts.length) {
+  if (claimsTriple && !["na", "chloride", "hco3", "ph", "paco2"].some((key) => conflictedKeys.has(key))) {
     const deltaGap = computed.results.find((r) => r.id === "delta-gap");
     const winter = computed.results.find((r) => r.id === "winter");
     const measuredPaco2 = value(facts, "paco2");
@@ -754,15 +823,20 @@ export function blocksClinicalSynthesisForCalculationConflict(audit, clinicalCon
 export function renderClinicalCalculationConflictForStudent(audit, lang = "ar") {
   if (!audit || !audit.conflicts?.length) return "";
   const ar = lang !== "en";
-  const inputConflict = audit.conflicts.some((c) => /^(?:extraction-|within-source-)/.test(String(c.code || "")) || c.code === "clinical-inputs-not-independently-confirmed");
-  const rows = !inputConflict && Array.isArray(audit.results)
+  // `audit.results` has already been filtered per formula: only outputs whose
+  // own inputs passed source corroboration remain. A missing CVP must not hide
+  // a separately corroborated anion gap or Winter calculation.
+  const rows = Array.isArray(audit.results)
     ? audit.results.map((r) => `- **${r.label}: ${r.value} ${r.unit}** — ${r.formula}${r.note ? `. ${r.note}` : ""}`)
     : [];
+  const hasInputIssue = audit.conflicts.some((c) => /^(?:extraction-|within-source-)/.test(String(c.code || "")) || c.code === "clinical-inputs-not-independently-confirmed");
   const conflicts = audit.conflicts.slice(0, 5).map((c) => `- ${c.message}`);
   const head = ar ? "## 🧮 تدقيق الحسابات الذي أوقف اعتماد الإجابة" : "## 🧮 Calculation audit that blocked the generated answer";
-  const intro = inputConflict
-    ? (ar ? "توجد مشكلة في هوية/توافق مدخلات الحساب نفسها؛ لذلك لا نعرض ناتجًا محسوبًا باعتباره موثوقًا." : "The calculation inputs themselves conflict or are not independently corroborated, so no derived result is presented as reliable.")
-    : (ar ? "هذه إعادة حساب برمجية من القيم المستخرجة؛ وهي لا تثبت وحدها أن قراءة المصدر صحيحة. لم يُعتمد النص الطبي الذي ولّده النموذج." : "These are deterministic recalculations from the extracted values; they do not by themselves prove that source transcription is correct. The model-generated clinical text has not been cleared.");
+  const intro = rows.length
+    ? (hasInputIssue
+      ? (ar ? "نعرض فقط الحسابات التي اجتازت مطابقة مدخلاتها الخاصة؛ أما الحسابات التي تنقصها مدخلات أو تختلف قراءاتها فقد حُجبت." : "Only calculations whose own inputs passed corroboration are shown; calculations with missing or conflicting inputs have been withheld.")
+      : (ar ? "هذه إعادة حساب برمجية من القيم المستخرجة؛ وهي لا تثبت وحدها أن قراءة المصدر صحيحة. لم يُعتمد النص الطبي الذي ولّده النموذج." : "These are deterministic recalculations from the extracted values; they do not by themselves prove that source transcription is correct. The model-generated clinical text has not been cleared."))
+    : (ar ? "توجد مشكلة في هوية/توافق مدخلات الحساب نفسها؛ لذلك لم نعرض ناتجًا محسوبًا باعتباره موثوقًا." : "The calculation inputs themselves conflict or are not independently corroborated, so no derived result is presented as reliable.");
   const sourceCaveat = audit.sourceVerification?.required
     ? (ar ? "طريقة القراءة الثانية قد تكون بواسطة نموذج آخر؛ وليست OCR مستقلاً أو مراجعة بشرية." : "The second reading may be model-generated; it is not independent OCR or human verification.")
     : "";
