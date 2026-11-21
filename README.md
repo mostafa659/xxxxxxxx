@@ -1,3 +1,14 @@
+## v3.63.0 — Close TrustPanel Supplementary-Content Bypass
+
+- **Confirmed leak fixed:** when the critical clinical synthesis gate blocked the generated explanation, AI-authored analogies and memory aids were still emitted on a separate TrustPanel payload and could contain patient-specific advice.
+- **Fail-closed trust payload:** a blocked synthesis now strips analogies, memory aids, reference cards, source/reference conflict snippets, patches, sentence items, and other generated leftovers from the student-facing trust payload.
+- **Defense in depth:** `lessonView()` and developer-mode TrustPanel rendering independently honor the block flag. The safety banner, source-reading display, aggregate counters, and deterministic calculation audit remain available.
+- **No bypass:** the original numeric conflict remains blocked; this change does not accept the model's incorrect anion-gap value.
+
+Verification: `npm test` → **526/526 passed**. `npm run build` did not complete because `vite` is not installed in this environment. No live Gemini run, deployment, or clinician review is claimed. See [the v3.63.0 root-cause report](docs/ROOT_CAUSE_TRUST_PANEL_LEAK_v3.63.0.md) and [test/build record](docs/TEST_RESULTS_v3.63.0.md).
+
+---
+
 ## v3.62.0 — Pre-generation Calculation Handoff to Every Lesson Writer
 
 - **Universal calculation preflight:** calculate supported quantities from the already-read source before any explanation writer begins, including the early parallel Part A writer.

@@ -39,6 +39,9 @@ const SCOPE_AR = "قاعدة بتختلف حسب التخصص أو البلد: �
 /* trust payload → what to draw. `quiet` = there is nothing to say to the student at all. */
 export function lessonView(trust) {
   if (!trust) return { quiet: true, banner: null, fixes: [], warnings: [], notes: [], conflicts: [], cards: [], analogies: [], memoAids: [], audit: null };
+  if (trust.clinicalSynthesisBlocked) {
+    return { quiet: false, banner: trust.banner || null, fixes: [], warnings: [], notes: [], conflicts: [], cards: [], analogies: [], memoAids: [], audit: trust.stats || null, clinicalSynthesisBlocked: true };
+  }
   const items = trust.items || [];
   const patched = new Map((trust.patches || []).map((p) => [p.id, p]));
   const fixes = [], warnings = [], notes = [];
@@ -59,6 +62,20 @@ export function lessonView(trust) {
     cards: (trust.cards || []).map((c) => ({ id: c.id, title: c.title, lines: c.lines, note: c.note, notCovered: c.notCovered || [], source: c.source, version: c.version, verified: c.label === "verified" })),
     analogies: trust.analogies || [], memoAids: trust.memoAids || [],
     audit: trust.stats || null,                                           // developers only: the raw counters
+  };
+}
+
+
+/* High-impact clinical synthesis gate: supplementary AI-authored material must not
+   bypass the hidden main explanation through the TrustPanel (analogies, mnemonics,
+   patches, reference cards, or developer-visible sentence items). Keep the safety
+   banner and aggregate audit counters, but expose no generated clinical claims. */
+export function filterTrustForBlockedClinicalSynthesis(trust) {
+  if (!trust || !trust.clinicalSynthesisBlocked) return trust;
+  return {
+    ...trust,
+    cards: [], conflicts: [], analogies: [], memoAids: [],
+    patches: [], items: [], stripped: [],
   };
 }
 

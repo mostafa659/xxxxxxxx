@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as KB from "../src/lib/kb/index.js";
 import { verifyText, ensureKb } from "../src/lib/trust.js";
 import { buildSourceModel } from "../src/lib/provenance.js";
-import { itemSeverity, lessonView, examView, isDeveloper } from "../src/lib/studentview.js";
+import { itemSeverity, lessonView, examView, isDeveloper, filterTrustForBlockedClinicalSynthesis } from "../src/lib/studentview.js";
 import { tagExamItem } from "../src/lib/examtrust.js";
 import { recordAnswer, mistakeEligible, concernOf, __setState } from "../src/lib/mistakes.js";
 import { listGaps, clearReports } from "../src/lib/reports.js";
@@ -13,6 +13,37 @@ import * as S from "../src/lib/solvecheck.js";
 const GEN = { discipline: "general", exam: "", region: "" };
 await ensureKb(GEN);
 const payload = (r) => ({ stats: r.stats, patches: r.patches, cards: r.cards, conflicts: r.conflicts, analogies: [], memoAids: [], items: r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text })) });
+
+test("critical clinical synthesis gate removes every supplementary generated claim from the TrustPanel payload", () => {
+  const raw = {
+    clinicalSynthesisBlocked: true,
+    banner: { tier: "LOW", head: "Clinical answer not cleared", why: ["anion-gap mismatch"] },
+    stats: { sentences: 8, analogies: 2 },
+    cards: [{ title: "Clinical reference", lines: ["patient-specific treatment claim"] }],
+    conflicts: [{ source: "x", reference: "y" }],
+    analogies: ["Stop all medications immediately."],
+    memoAids: ["Use this treatment shortcut."],
+    patches: [{ before: "unsafe claim", after: "corrected claim" }],
+    items: [{ id: "x", label: "conflict", sentence: "unsafe generated clinical claim" }],
+    stripped: [{ sentence: "another generated claim", reason: "x" }],
+  };
+  const safe = filterTrustForBlockedClinicalSynthesis(raw);
+  for (const field of ["cards", "conflicts", "analogies", "memoAids", "patches", "items", "stripped"]) assert.deepEqual(safe[field], [], `${field} must not bypass the synthesis gate`);
+  assert.equal(safe.banner, raw.banner, "retain the safety banner");
+  assert.equal(safe.stats, raw.stats, "retain aggregate diagnostic counters");
+  const view = lessonView(safe);
+  assert.equal(view.clinicalSynthesisBlocked, true);
+  assert.equal(view.banner, raw.banner);
+  for (const field of ["fixes", "warnings", "notes", "conflicts", "cards", "analogies", "memoAids"]) assert.deepEqual(view[field], [], `${field} must stay hidden in the student view`);
+});
+
+test("clinical analysis applies the synthesis gate before emitting the TrustPanel payload", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../src/lib/analysis.js", import.meta.url), "utf8");
+  assert.match(src, /const synthesisSuppressed = !!\(safetyAudit\.conflicts\.length \|\| calculationSynthesisBlocked\)/);
+  assert.match(src, /clinicalSynthesisBlocked: synthesisSuppressed/);
+  assert.match(src, /emitTrust\(filterTrustForBlockedClinicalSynthesis\(/);
+});
 
 test("an uncovered high-risk statement: internal label + gap stay, the student view is completely quiet (no warning, no count)", () => {
   clearReports();

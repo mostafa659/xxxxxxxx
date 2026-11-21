@@ -16,6 +16,9 @@ export default function TrustPanel({ trust, onSecondOpinion, second }) {
   const v = lessonView(trust);
   const dev = isDeveloper();
   const { assess, stats, items = [], patches = [] } = trust;
+  const blocked = !!trust.clinicalSynthesisBlocked;
+  const safeItems = blocked ? [] : items;
+  const safePatches = blocked ? [] : patches;
   const { banner } = v;
   const save = () => {
     try {
@@ -76,8 +79,8 @@ export default function TrustPanel({ trust, onSecondOpinion, second }) {
           </button>
           {open && (
             <div>
-              {patches.map((p, i) => <p key={"p" + i}>⚠ اتصحّح: «{p.before}» ← «{p.after}»</p>)}
-              {items.filter((i) => i.label !== "verified").map((it) => (
+              {safePatches.map((p, i) => <p key={"p" + i}>⚠ اتصحّح: «{p.before}» ← «{p.after}»</p>)}
+              {safeItems.filter((i) => i.label !== "verified").map((it) => (
                 <p key={it.id}>{ICON[it.label]} {WORD[it.label] || it.label}{it.note ? ` — ${it.note}` : ""}{it.prov ? ` · ${it.prov.sourceType === "pdf" ? "PDF" : it.prov.sourceType}${it.prov.page ? " ص " + it.prov.page : ""}` : ""}: {it.sentence}{" "}
                   <button type="button" disabled={sent[it.id]} onClick={() => report(it)}>{sent[it.id] ? "اتسجّل" : "بلّغ عن غلط"}</button></p>
               ))}

@@ -22,6 +22,7 @@ import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
 import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, buildPreGenerationCalculationHandoff, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { filterTrustForBlockedClinicalSynthesis } from "./studentview.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
 import { readSources } from "./sources.js";
@@ -265,17 +266,18 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
       addGaps(p, gaps);
       const all = rt ? [rx, rt] : [rx];
-      emitTrust({
+      const synthesisSuppressed = !!(safetyAudit.conflicts.length || calculationSynthesisBlocked);
+      emitTrust(filterTrustForBlockedClinicalSynthesis({
         phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
         calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
         clinicalSafetyAudit: safetyAudit.triggered ? safetyAudit : null,
-        calculationSynthesisBlocked,
+        calculationSynthesisBlocked, clinicalSynthesisBlocked: synthesisSuppressed,
         clinicalQualityAudit: qualityAudit.triggered ? qualityAudit : null,
         medicalSearch: medicalSearchAttempted ? { performed: medicalSearchPerformed, sources: groundingSources.links.length, queries: groundingSources.queries } : null,
         stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
         cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
         patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
-      });
+      }));
       return { ...data, explanation: ex, tricks: safetyAudit.conflicts.length || calculationSynthesisBlocked ? "" : (rt ? rt.text : cleanTricks) };
     } catch (e) {
       const clinical = kind === "question" || isPotentialClinicalContext(`${ocrText}\n${briefRaw}\n${data?.explanation || ""}\n${data?.tricks || ""}`);
