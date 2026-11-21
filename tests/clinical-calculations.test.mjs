@@ -5,6 +5,9 @@ import {
   parseClinicalData,
   parseClinicalDataDiagnostics,
   extractLabelledClinicalData,
+  mergeOriginalSourceText,
+  mergeExtractedClinicalData,
+  replaceAuditItemsByMessage,
   extractClinicalDataBlock,
   stripPartialClinicalDataBlock,
   maskOptionsWhenCalculationConflicts,
@@ -479,4 +482,81 @@ test("same-site repeated readings remain a real conflict after site scoping", ()
   const report = parseClinicalDataDiagnostics(extracted);
   assert.equal(report.duplicates.length, 1);
   assert.equal(report.duplicates[0].key, "maprightradial");
+});
+
+test("unwrapped pipe-separated temporal lab tables preserve current and historical columns", () => {
+  const source = `Open-ended clinical case (not a multiple-choice examination).\nParameter | Historical baseline (2 months ago) | Current sample\nHemoglobin | 11.2 g/dL | 7.6 g/dL\nCreatinine | 1.3 mg/dL | 3.1 mg/dL\nSodium | 137 mmol/L | 129 mmol/L\nChloride | 101 mmol/L | 94 mmol/L\nBicarbonate | 24 mmol/L | 14 mmol/L\nBlood pressure: 82/48 mmHg\nAlbumin: 2.6 g/dL`;
+  const extracted = extractLabelledClinicalData(source);
+  const facts = parseClinicalData(extracted);
+  assert.equal(facts.na.value, 129);
+  assert.equal(facts.nabaseline.value, 137);
+  assert.equal(facts.chloride.value, 94);
+  assert.equal(facts.chloridebaseline.value, 101);
+  assert.equal(facts.hco3.value, 14);
+  assert.equal(facts.hco3baseline.value, 24);
+  assert.equal(facts.hb.value, 7.6);
+  assert.equal(facts.hbbaseline.value, 11.2);
+  assert.equal(facts.creatinine.value, 3.1);
+  assert.equal(facts.creatininebaseline.value, 1.3);
+  assert.equal(facts.sbp.value, 82);
+  assert.equal(facts.dbp.value, 48);
+
+  const modelData = "SBP=82 mmHg; DBP=48 mmHg; Hb=7.6 g/dL; Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L; Albumin=2.6 g/dL";
+  const audit = auditClinicalCalculations({
+    dataText: modelData,
+    secondaryDataText: extracted,
+    authorityDataText: extracted,
+    modelDataText: modelData,
+    requireAuthorityInputs: true,
+    contextText: `${source} Calculate the anion gap and assess metabolic acidosis.`,
+  });
+  assert.equal(audit.conflicts.length, 0);
+  assert.equal(audit.sourceVerification.missingSourceFields.length, 0);
+  assert.equal(audit.results.find((x) => x.id === "ag").value, 21);
+  assert.equal(audit.results.find((x) => x.id === "corrected-ag").value, 24.5);
+});
+
+
+test("merging partial source readings keeps complementary fields and preserves disagreements", () => {
+  const visionText = "Sodium 129 mmol/L; Chloride 94 mmol/L";
+  const documentText = "Bicarbonate 14 mmol/L; Sodium 129 mmol/L";
+  const mergedSource = mergeOriginalSourceText(visionText, documentText);
+  assert.match(mergedSource, /Sodium 129/);
+  assert.match(mergedSource, /Bicarbonate 14/);
+  const readings = mergeExtractedClinicalData(
+    extractLabelledClinicalData(visionText),
+    extractLabelledClinicalData(documentText),
+  );
+  const audit = auditClinicalCalculations({
+    dataText: "Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L",
+    secondaryDataText: [extractLabelledClinicalData(visionText), extractLabelledClinicalData(documentText)],
+    authorityDataText: readings,
+    modelDataText: "Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L",
+    requireAuthorityInputs: true,
+    contextText: "anion gap metabolic acidosis",
+  });
+  assert.equal(audit.conflicts.length, 0);
+
+  const disagree = mergeExtractedClinicalData(
+    extractLabelledClinicalData("Sodium 129 mmol/L"),
+    extractLabelledClinicalData("Sodium 137 mmol/L"),
+  );
+  const blocked = auditClinicalCalculations({
+    dataText: "Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L",
+    authorityDataText: disagree,
+    modelDataText: "Na=129 mmol/L; Chloride=94 mmol/L; HCO3=14 mmol/L",
+    requireAuthorityInputs: true,
+    contextText: "anion gap metabolic acidosis",
+  });
+  assert.ok(blocked.conflicts.some((x) => x.code === "within-source-na-ambiguous"));
+});
+
+
+test("final audit replaces an identical preliminary warning instead of duplicating it", () => {
+  const first = [{ code: "clinical-calculation", msg: "same warning" }, { code: "other", msg: "keep me" }];
+  const final = [{ code: "specific-conflict", msg: "same warning" }];
+  assert.deepEqual(replaceAuditItemsByMessage(first, final, (item) => item.msg), [
+    { code: "other", msg: "keep me" },
+    { code: "specific-conflict", msg: "same warning" },
+  ]);
 });

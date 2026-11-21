@@ -1,5 +1,5 @@
 /*
- * ClinixStudy · General Healthcare Answer Quality Layer (v3.58)
+ * ClinixStudy · General Healthcare Answer Quality Layer (v3.60)
  *
  * Scope: cross-specialty quality controls for medicine, nursing, pharmacy,
  * dentistry, surgery, diagnostics, laboratory medicine, public health,
@@ -8,7 +8,7 @@
  * uncertain patterns are advisories, never automatic clinical authorization.
  */
 
-export const CLINICAL_QUALITY_VERSION = "3.58.0";
+export const CLINICAL_QUALITY_VERSION = "3.60.0";
 
 const RX_HEALTH = /\b(?:healthcare|health care|medical|medicine|clinical|patient|diagnos(?:is|e|tic)|differential|treatment|therapy|therapeutic|management|prescri(?:be|ption)|medication|drug|dose|dosage|pharmacolog\w*|nurs(?:e|ing)|midwi\w*|surg(?:ery|ical)|anesthe\w*|anaesthe\w*|radiolog\w*|patholog\w*|laboratory|lab result|blood test|biomarker|symptom|signs? of|disease|disorder|syndrome|infection|antibiotic|vaccine|immuniz\w*|pregnan\w*|neonat\w*|paediatric|pediatric|geriatr\w*|renal|kidney|hepatic|liver|cardiac|cardiovascular|respiratory|oncolog\w*|cancer|tumou?r|sarcoma|fibrosarcoma|ameloblast|neoplasm|histopatholog\w*|biopsy|troponin|chest pain|diabetes|hypertension|stroke|sepsis|heart failure|asthma|epilepsy|physiotherap\w*|rehabilitat\w*|public health|epidemiolog\w*|veterinary|veterinarian|animal health|mental health|psychiatr\w*|depress\w*|anxiety|psychosis|bipolar|ptsd|ocd|addiction|substance use|nutrition|dietary|sleep disorder|pain management|dental|odontolog\w*|oral health|periodontal|orthodont\w*|ophthalmolog\w*|vision|audiolog\w*|dermatolog\w*|obstetric\w*|gynaecolog\w*|gynecolog\w*|urolog\w*|endocrinolog\w*|gastroenterolog\w*|infectious disease|immunolog\w*|hematolog\w*|haematolog\w*|mmol\s*\/|mg\s*\/|mcg\s*\/|mmhg|\bINR\b|\bECG\b|\bEEG\b|\bMRI\b|\bCT\b|\bCBC\b|\bABG\b|\bECMO\b|\bICU\b)\b/i;
 const RX_AR = /صحة|صحي|طبي|طب|سريري|مريض|مريضة|تشخيص|تفريقي|علاج|إدارة|تدبير|دواء|أدوية|جرعة|صيدلة|تمريض|جراحة|تخدير|أشعة|تحاليل|مختبر|فحص|مؤشر حيوي|أعراض|علامات|مرض|اضطراب|متلازمة|عدوى|مضاد حيوي|لقاح|تطعيم|حمل|حديث الولادة|أطفال|كبار السن|كلية|كلى|كبد|قلب|أورام|سرطان|تأهيل|صحة عامة|وبائيات|بيطري|حيوان|ضغط الدم|سكر الدم|سكري|غدة درقية|تروبوبين|ألم الصدر|سكتة دماغية|إنتان|ربو|صرع|ملغم|مليمول|مجم|جرام|وحدة دولية|اكتئاب|قلق|صحة نفسية|اضطراب نفسي|إدمان|تغذية|حمية|نوم|ألم مزمن|أسنان|لثة|تقويم الأسنان|عيون|نظر|سمع|جلدية|نساء وتوليد|مسالك بولية|غدد صماء|جهاز هضمي|مناعة|دمويات|عدوى/i;

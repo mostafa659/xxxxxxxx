@@ -64,7 +64,7 @@ test("benchmark covers distinct evidence-backed high-risk and reasoning weakness
 });
 
 test("universal protocol now addresses empirical failure modes without listing case-specific diagnoses", () => {
-  assert.equal(CLINICAL_QUALITY_VERSION, "3.58.0");
+  assert.equal(CLINICAL_QUALITY_VERSION, "3.60.0");
   assert.match(CLINICAL_QUALITY_INSTRUCTION, /UPDATE WITH NEW EVIDENCE/i);
   assert.match(CLINICAL_QUALITY_INSTRUCTION, /SUPPORTED, CONTRADICTED, NOT FOUND, and OUT OF SCOPE/i);
   assert.match(CLINICAL_QUALITY_INSTRUCTION, /Not documented.*not asked.*not tested/i);
@@ -96,7 +96,7 @@ test("blind pack masks condition names and contains every paired case", () => {
   const responses = {
     benchmark_id: benchmark.benchmark_id,
     benchmark_version: benchmark.version,
-    run_metadata: { baseline_model: "Gemini-Test", candidate_model: "Gemini-Test", same_model_version: true, same_generation_settings: true, same_search_availability_and_state: true, baseline_app_version: "3.57.0", candidate_app_version: "3.58.0", run_date_utc: "2026-11-21T00:00:00Z" },
+    run_metadata: { baseline_model: "Gemini-Test", candidate_model: "Gemini-Test", same_model_version: true, same_generation_settings: true, same_search_availability_and_state: true, baseline_app_version: "3.57.0", candidate_app_version: "3.59.0", run_date_utc: "2026-11-21T00:00:00Z" },
     prompt_sha256: Object.fromEntries(benchmark.cases.map((c) => [c.id, promptHash(c.prompt)])),
     response_completion: { baseline: Object.fromEntries(benchmark.cases.map((c) => [c.id, "completed"])), candidate: Object.fromEntries(benchmark.cases.map((c) => [c.id, "completed"])) },
     baseline: Object.fromEntries(benchmark.cases.map((c) => [c.id, responseFor(c, "baseline")])),

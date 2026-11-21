@@ -21,7 +21,7 @@ import { prepareSpecializedPrompt } from "./kb/specialized-prompt.js";
 import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
-import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
 import { readSources } from "./sources.js";
@@ -97,7 +97,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     if (!brief) return null;
     briefRaw = brief;
     try {
-      const sourceText = ocrText || sample();
+      // Keep every available representation of the original source. Choosing the
+      // first non-empty transcription silently discarded text-layer fields when
+      // an OCR pass was only partially complete.
+      const sourceText = mergeOriginalSourceText(ocrText, sample());
       assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: sourceText, profile: prof(), sourceDataText: extractLabelledClinicalData(sourceText) });
       /* When the visual source-read stage did not run, the solve brief is only a partial model extraction—not an independent source. */
       if (!extraction) { const pb = parseBrief(brief); const t = cleanResidue([pb.data, pb.keyword, pb.concepts, ...pb.options.map((o) => o.why)].filter(Boolean).join("\n")); if (t.trim()) extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "solve-brief" }; }
@@ -131,7 +134,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       const hiddenData = [expBlock.dataText, trickBlock.dataText].filter(Boolean).join("; ");
       const ocrData = extractLabelledClinicalData(ocrText);
       const localSourceData = extractLabelledClinicalData(sample());
-      const authorityData = ocrData || localSourceData;
+      // Merge original-source readings rather than taking the first non-empty
+      // channel. Partial OCR must not hide fields available in a document text layer;
+      // disagreements remain visible to auditClinicalCalculations as conflicts.
+      const authorityData = mergeExtractedClinicalData(ocrData, localSourceData);
       const primaryData = hiddenData || briefData || authorityData;
       const chosenOption = brief.options.find((o) => o.mark === "yes");
       const chosenOptionText = chosenOption ? `${chosenOption.letter}) ${chosenOption.why}` : "";
@@ -177,8 +183,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
           assess.eligible = false;
           assess.answer = "";
           assess.letters = [];
-          assess.flags = [...(assess.flags || []), ...audit.conflicts.map((c) => ({ code: c.code, msg: c.message }))];
-          assess.concerns = [...(assess.concerns || []), ...audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }))];
+          const calculationFlags = audit.conflicts.map((c) => ({ code: c.code, msg: c.message }));
+          const calculationConcerns = audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }));
+          assess.flags = replaceAuditItemsByMessage(assess.flags || [], calculationFlags, (item) => item.msg);
+          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], calculationConcerns, (item) => item.en);
           assess.issues = [...new Set([...(assess.issues || []), ...audit.conflicts.map((c) => c.message)])];
         }
       }

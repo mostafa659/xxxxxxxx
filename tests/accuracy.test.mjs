@@ -132,6 +132,26 @@ test("B3: a mismatched ✅ set, wrong select-N, missing parts and bad polarity a
   assert.ok(miss2.flags.some((f) => f.code === "letter-missing"));
 });
 
+test("open-ended clinical cases are not forced into MCQ polarity or answer-shape checks", () => {
+  const raw = [
+    "PREMISE: The case contains several simultaneous life threats.",
+    "ANSWER: Prioritize emergency stabilization and explain the differential.",
+    "TYPE: open-ended clinical case",
+    "KEYWORD: NOT APPLICABLE",
+    "CONCEPTS: shock; hyperkalaemia; bleeding",
+    "DATA: K=6.7 mmol/L; Hb=7.6 g/dL",
+    "OPTIONS:",
+    "NONE — no answer choices supplied",
+    "CONFIDENCE: medium — complex case",
+  ].join("\n");
+  const longCase = "Do NOT invent missing data. Do NOT assume a single diagnosis. Do NOT treat a normal result as exclusion.\n" + "The patient has several abnormalities. ".repeat(30);
+  const assessed = S.assessSolve({ raw, stem: longCase, profile: { discipline: "general", exam: "" } });
+  assert.equal(assessed.format, "open");
+  assert.equal(assessed.letters.length, 0);
+  assert.equal(assessed.flags.some((f) => f.code === "polarity" || f.code === "shape"), false);
+  assert.equal(S.itemFormat("open-ended clinical case", longCase), "open");
+});
+
 test("B4: a wrong dose calculation and a wrong unit conversion are caught by recomputing in code; a right one passes", () => {
   const bad = S.assessSolve({ raw: brief({ type: "calculation", calc: "15 mg/kg × 70 kg = 1100 mg; 1100 mg ÷ 3 = 366.7 mg" }), profile: nurse });
   assert.equal(bad.tier, "LOW"); assert.ok(bad.flags.some((f) => f.code === "calc"));

@@ -29,6 +29,33 @@ test("labelled extractor keeps current and baseline lab readings rather than tak
   assert.equal(facts.nabaseline.value, 139, "baseline values are retained under a distinct temporal identity");
 });
 
+test("combined blood-pressure table cells and electrolytes feed independent MAP and anion-gap calculations", () => {
+  const source = `Blood pressure | 82/48 mmHg\nSodium | 128 mmol/L\nChloride | 96 mmol/L\nBicarbonate | 15 mmol/L`;
+  const data = extractLabelledClinicalData(source);
+  const audit = auditClinicalCalculations({
+    dataText: data,
+    authorityDataText: data,
+    modelDataText: data,
+    requireAuthorityInputs: true,
+    contextText: "shock and metabolic acidosis; calculate mean arterial pressure and anion gap",
+  });
+  assert.equal(audit.conflicts.length, 0);
+  assert.equal(audit.results.find((x) => x.id === "map")?.value, 59.33);
+  assert.equal(audit.results.find((x) => x.id === "ag")?.value, 17);
+});
+
+test("Markdown lab tables and baseline section headings preserve current-vs-historical identity", () => {
+  const source = `### Baseline information\nTwo months ago:\nHemoglobin | 11.2 g/dL\n\n### Initial investigations\n### Laboratory results\nHemoglobin | 7.6 g/dL\nSodium | 128 mmol/L\nChloride | 96 mmol/L\nBicarbonate | 15 mmol/L`;
+  const extracted = extractLabelledClinicalData(source);
+  const facts = parseClinicalData(extracted);
+  assert.equal(facts.hbbaseline.value, 11.2);
+  assert.equal(facts.hb.value, 7.6);
+  assert.equal(facts.na.value, 128);
+  assert.equal(facts.chloride.value, 96);
+  assert.equal(facts.hco3.value, 15);
+  assert.equal(parseClinicalDataDiagnostics(extracted).duplicates.length, 0, "historical and current haemoglobin are not duplicate readings");
+});
+
 test("Arabic numerals are parsed deterministically", () => {
   const facts = parseClinicalData("Na=١٢٦ mmol/L; Glucose=٩٠ mg/dL; BUN=١٤ mg/dL; MeasuredOsm=٣٠٠ mOsm/kg");
   assert.equal(facts.na.value, 126);
@@ -139,11 +166,26 @@ test("transbronchial biopsy is blocked when severe hypoxemia and coagulopathy ar
   assert.ok(audit.conflicts.some((x) => x.code === "transbronchial-biopsy-procedure-risk"));
 });
 
-test("TMP-SMX in hyperkalaemia requires kidney-adjusted dosing and potassium monitoring", () => {
+test("severe hyperkalaemia with ECG toxicity surfaces an emergency-response omission advisory", () => {
+  const highRiskCase = "Potassium, initial sample: 7.1 mmol/L (reported hemolyzed). Potassium, repeat non-hemolyzed sample: 6.7 mmol/L. ECG: peaked T waves, QRS 136 ms and bradycardia 40 bpm.";
+  const omitted = auditClinicalSafety({ caseText: highRiskCase, answerText: "Consider dehydration, infection and renal dysfunction; obtain further tests." });
+  const potassiumAdvisory = omitted.advisories.find((x) => x.code === "high-risk-hyperkalaemia-with-ecg-changes-needs-emergency-response");
+  assert.ok(potassiumAdvisory);
+  assert.match(potassiumAdvisory.message, /K 6\.7/, "the repeat non-hemolysed sample must outrank the hemolysed initial result");
+  const addressed = auditClinicalSafety({ caseText: highRiskCase, answerText: "This requires emergency escalation, continuous ECG monitoring and urgent hospital-based cardiac stabilisation including IV calcium under local protocol, with potassium-shifting treatment and serial glucose/potassium checks." });
+  assert.equal(addressed.advisories.some((x) => x.code === "high-risk-hyperkalaemia-with-ecg-changes-needs-emergency-response"), false);
+});
+
+test("TMP-SMX guard is action-specific: it blocks unsafe continuation, not history mentions or appropriate holding", () => {
   const highRiskCase = `${transplantCase} Potassium 5.6 mEq/L; creatinine 2.9 mg/dL.`;
   const unsafe = auditClinicalSafety({ caseText: highRiskCase, selectedOptionText: "Initiate high-dose intravenous TMP-SMX.", answerText: "Start high-dose TMP-SMX now." });
   assert.ok(unsafe.conflicts.some((x) => x.code === "tmp-smx-renal-hyperkalemia-safety"));
-  const safe = auditClinicalSafety({ caseText: highRiskCase, selectedOptionText: "Initiate TMP-SMX.", answerText: "Use renal-adjusted dosing based on kidney function; monitor potassium and creatinine serially." });
+  assert.doesNotMatch(unsafe.conflicts.find((x) => x.code === "tmp-smx-renal-hyperkalemia-safety").message, /PJP/);
+  const historyOnly = auditClinicalSafety({ caseText: highRiskCase, answerText: "TMP-SMX appears in the medication history for a presumed urinary infection." });
+  assert.equal(historyOnly.conflicts.some((x) => x.code === "tmp-smx-renal-hyperkalemia-safety"), false);
+  const held = auditClinicalSafety({ caseText: highRiskCase, answerText: "Hold TMP-SMX now while hyperkalaemia and acute renal dysfunction are addressed." });
+  assert.equal(held.conflicts.some((x) => x.code === "tmp-smx-renal-hyperkalemia-safety"), false);
+  const safe = auditClinicalSafety({ caseText: highRiskCase, selectedOptionText: "Continue TMP-SMX.", answerText: "Continue only if still indicated; use renal-adjusted dosing based on kidney function; monitor potassium and renal function serially." });
   assert.equal(safe.conflicts.some((x) => x.code === "tmp-smx-renal-hyperkalemia-safety"), false);
 });
 
@@ -291,4 +333,28 @@ test("AFS Ki-67 supports proliferation but no universal 30-percent diagnostic th
     answerText: "Stromal Ki-67 proliferation index: markedly elevated (> 30%) is a diagnostic cut-off for AFS."
   });
   assert.ok(audit.advisories.some((x) => x.code === "afs-ki67-not-universal-diagnostic-threshold"));
+});
+
+test("current K 6.4 with ECG toxicity is not missed when an earlier 7.1 sample is hemolyzed", () => {
+  const caseText = `Initial potassium: 7.1 mmol/L, from a visibly hemolyzed sample. Repeat potassium: 6.4 mmol/L, from a non-hemolyzed sample collected 35 minutes later. ECG: sinus bradycardia 40 beats/min, peaked T waves and QRS duration 124 ms.`;
+  const omitted = auditClinicalSafety({ caseText, answerText: "The patient has AKI and possible infection; obtain further investigations." });
+  const alert = omitted.advisories.find((x) => x.code === "high-risk-hyperkalaemia-with-ecg-changes-needs-emergency-response");
+  assert.ok(alert);
+  assert.match(alert.message, /K 6\.4/);
+  assert.doesNotMatch(alert.message, /7\.1|PJP/);
+
+  const held = auditClinicalSafety({
+    caseText: `${caseText} Creatinine 3.1 mg/dL; historical creatinine 1.3 mg/dL. TMP-SMX was prescribed for a suspected urinary infection.`,
+    answerText: "Hold TMP-SMX pending reassessment of the indication, renal function and potassium.",
+  });
+  assert.equal(held.conflicts.some((x) => x.code === "tmp-smx-renal-hyperkalemia-safety"), false);
+
+  const continued = auditClinicalSafety({
+    caseText: `${caseText} Creatinine 3.1 mg/dL; historical creatinine 1.3 mg/dL. TMP-SMX was prescribed for a suspected urinary infection.`,
+    answerText: "Continue TMP-SMX if the urinary infection is suspected.",
+  });
+  const tmp = continued.conflicts.find((x) => x.code === "tmp-smx-renal-hyperkalemia-safety");
+  assert.ok(tmp);
+  assert.match(tmp.message, /K 6\.4/);
+  assert.doesNotMatch(tmp.message, /PJP/);
 });

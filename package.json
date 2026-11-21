@@ -1,8 +1,8 @@
 {
   "name": "clinixstudy",
   "productName": "ClinixStudy",
-  "version": "3.58.0",
-  "description": "ClinixStudy \u2014 health-professions study app (Android via Capacitor, Windows via Electron)",
+  "version": "3.60.0",
+  "description": "ClinixStudy — health-professions study app (Android via Capacitor, Windows via Electron)",
   "author": "MOSTAFA HAMMAD",
   "private": true,
   "type": "module",

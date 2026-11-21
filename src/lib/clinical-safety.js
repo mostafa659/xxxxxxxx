@@ -1,7 +1,7 @@
 import { isHealthDomainContext } from "./clinical-quality.js";
 
 /*
- * Clinical safety rules (v3.55).
+ * Clinical safety rules (v3.60).
  *
  * This is a conservative contradiction detector, not a diagnostic engine.
  * It only blocks narrowly defined, high-impact overclaims / missing safety
@@ -301,8 +301,20 @@ export function auditClinicalSafety({ caseText = "", answerText = "", selectedOp
     rule("transbronchial-biopsy-procedure-risk", `The proposed plan includes lung/transbronchial biopsy while the supplied case documents ${[severeHypoxemia ? `severe hypoxemia (SpO₂ ${spo2}%)` : "", coagulopathyRisk ? `bleeding risk (platelets ${platelets ?? "not supplied"}; INR ${inr ?? "not supplied"})` : ""].filter(Boolean).join(" and ")}. Do not present an immediate biopsy as routine; require stabilisation, bleeding-risk correction/assessment and specialist procedural judgement.`);
   }
 
-  // TMP-SMX can still be indicated for PJP, but hyperkalaemia/AKI demand renal-aware dosing and monitoring.
-  const potassium = number(/(?:potassium|serum potassium|\bK\+?)\s*[:=]?\s*([\d,.]+)\s*(?:mmol\s*\/\s*l|meq\s*\/\s*l)/i);
+  // TMP-SMX safety is triggered only by a proposed start/continuation, not by a history mention or a recommendation to hold it.
+  const potassium = (() => {
+    const source = n(context);
+    const re = /(?:serum\s+potassium|potassium|\bK\+?)\b[^0-9]{0,100}([\d,.]+)\s*(mmol\s*\/\s*l|meq\s*\/\s*l)/ig;
+    const candidates = [...source.matchAll(re)].map((m) => {
+      const before = m[0].slice(0, m[0].lastIndexOf(m[1]));
+      const around = source.slice(m.index, m.index + m[0].length + 70);
+      const invalidSample = /(?<!non[- ])hemoly[sz]ed|contaminated/i.test(around);
+      const preferredRepeat = /repeat|non[- ]?hemoly[sz]ed|confirmed|second sample/i.test(before);
+      return { value: Number(m[1].replace(/,/g, "")), invalidSample, score: preferredRepeat ? 2 : 1 };
+    }).filter((x) => Number.isFinite(x.value) && !x.invalidSample);
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.value ?? null;
+  })();
   const creatinine = number(/(?:serum )?creatinine\s*[:=]?\s*([\d,.]+)\s*mg\s*\/\s*dl/i);
   const baselineCreatinine = (() => {
     const pair = /(?:serum\s+)?creatinine\s*[:=]?\s*[\d,.]+\s*mg\s*\/\s*dl\s*\(\s*baseline\s+([\d,.]+)\s*mg\s*\/\s*dl\s*\)/i.exec(n(context));
@@ -321,10 +333,34 @@ export function auditClinicalSafety({ caseText = "", answerText = "", selectedOp
     const tacroMonitoring = /\b(?:repeat|monitor|trend|check|recheck).{0,45}(?:tacrolimus|trough)|(?:tacrolimus|trough).{0,45}(?:repeat|monitor|trend|check|recheck)\b/i.test(proposedPlan);
     if (!tacroAction || !tacroMonitoring) rule("supratherapeutic-tacrolimus-with-aki", `Tacrolimus trough ${tacrolimusLevel} ng/mL exceeds the stated upper target ${targetHigh} ng/mL while creatinine is ${creatinine} mg/dL versus baseline ${baselineCreatinine} mg/dL. The plan must explicitly hold/review or adjust tacrolimus and repeat/monitor trough levels with the transplant team.`);
   }
-  if (/\b(?:TMP[- ]?SMX|trimethoprim[- ]sulfamethoxazole)\b/i.test(proposedPlan) && renalRisk) {
+  const tmpSmxDrug = /\b(?:TMP[- ]?SMX|trimethoprim[- ]sulfamethoxazole)\b/i;
+  const tmpSmxMentioned = tmpSmxDrug.test(proposedPlan);
+  const tmpSmxAction = String(proposedPlan).split(/(?<=[.;!?])\s+|\n+/).some((sentence) => {
+    const drugAt = tmpSmxDrug.exec(sentence)?.index;
+    const action = /\b(?:start|initiat(?:e|ing)|prescrib(?:e|ing)|administer|give|continu(?:e|es|ed|ing)|resum(?:e|es|ed|ing)|restart(?:ed|ing)?|maintain(?:ed|ing)?|us(?:e|es|ed|ing))\b/i.exec(sentence);
+    if (drugAt == null || !action || Math.abs(drugAt - action.index) > 90) return false;
+    const actionContext = sentence.slice(Math.max(0, action.index - 65), Math.min(sentence.length, action.index + action[0].length + 25));
+    // Negated recommendations ("should not continue", "avoid restarting", "do not use")
+    // are not affirmative prescribing actions and must not trigger a continuation warning.
+    return !/\b(?:not|never|avoid|hold|withhold|stop|discontinue|defer|contraindicat(?:ed|ion)|recommend\w*\s+against)\b/i.test(actionContext);
+  });
+  if (tmpSmxMentioned && tmpSmxAction && renalRisk) {
     const renalDosePlan = /\b(?:renal[- ]adjusted|adjust(?:ed|ment)? for renal|dose adjustment for renal|kidney[- ]adjusted|adjust dose based on (?:renal|kidney)|creatinine clearance[- ]based)\b/i.test(proposedPlan);
-    const potassiumMonitor = /\b(?:monitor|repeat|serial|trend).{0,45}(?:potassium|K\+)|(?:potassium|K\+).{0,45}(?:monitor|repeat|serial|trend)\b/i.test(proposedPlan);
-    if (!renalDosePlan || !potassiumMonitor) rule("tmp-smx-renal-hyperkalemia-safety", `The plan includes TMP-SMX in a patient with ${potassium != null && potassium >= 5.5 ? `hyperkalaemia (K ${potassium})` : "acute renal dysfunction"}. Require kidney-function-based dosing plus explicit potassium and renal monitoring; do not let a PJP treatment recommendation bypass this patient-specific safety constraint.`);
+    const potassiumMonitor = /\b(?:monitor|repeat|serial|trend|recheck).{0,45}(?:potassium|K\+)|(?:potassium|K\+).{0,45}(?:monitor|repeat|serial|trend|recheck)\b/i.test(proposedPlan);
+    const renalMonitor = /\b(?:monitor|repeat|serial|trend|recheck).{0,45}(?:renal function|creatinine|eGFR)|(?:renal function|creatinine|eGFR).{0,45}(?:monitor|repeat|serial|trend|recheck)\b/i.test(proposedPlan);
+    if (!renalDosePlan || !potassiumMonitor || !renalMonitor) rule("tmp-smx-renal-hyperkalemia-safety", `The proposed plan starts or continues TMP-SMX in a patient with ${potassium != null && potassium >= 5.5 ? `hyperkalaemia (K ${potassium})` : "acute renal dysfunction"}. Verify that TMP-SMX remains indicated, use kidney-function-based dosing, and explicitly monitor potassium and renal function. A plan to hold TMP-SMX does not require dose adjustment.`);
+  }
+
+  // A high-consequence omission check: severe hyperkalaemia plus ECG toxicity needs an explicit emergency response.
+  // This is an advisory, not an automatic treatment order or a replacement for local protocols.
+  const hyperkalaemicEcgThreat = /peaked\s+t\s+waves?|widen(?:ed|ing)?\s+qrs|qrs.{0,30}(?:wide|widen|prolong)|bradycardia|heart block|conduction abnormalit|hyperkalaemic ecg|hyperkalemic ecg/i.test(context);
+  // 6.0–6.4 mmol/L is not ignored when the patient is acutely unwell or has ECG toxicity.
+  // The July 2026 UKKA guidance specifically includes clinically unwell patients in this range
+  // among those needing continuous cardiac monitoring; this is a software alert, not a treatment order.
+  const highRiskHyperkalaemia = potassium != null && (potassium >= 6.5 || (potassium >= 6.0 && hyperkalaemicEcgThreat));
+  const acuteHyperkalaemiaResponse = /(?:urgent|emergency|immediate).{0,70}(?:hyperkala|potassium|ecg|cardiac)|(?:hyperkala|potassium).{0,70}(?:urgent|emergency|immediate)|continuous ecg|continuous cardiac monitor|cardiac monitoring|iv calcium|intravenous calcium|calcium gluconate|calcium chloride|membrane stabilis|insulin.{0,30}(?:glucose|dextrose)/i.test(proposedPlan);
+  if (highRiskHyperkalaemia && hyperkalaemicEcgThreat && !acuteHyperkalaemiaResponse) {
+    advisories.push({ code: "high-risk-hyperkalaemia-with-ecg-changes-needs-emergency-response", message: `The verified non-hemolyzed/current potassium pattern includes K ${potassium} mmol/L with an ECG/conduction warning. The plan should explicitly address immediate emergency escalation, continuous ECG monitoring and urgent hospital-based assessment under the applicable local protocol; do not treat slow potassium-removal measures as immediate cardiac protection.` });
   }
 
   // VA-ECMO with femoral arterial return can create two differently oxygenated arterial territories.

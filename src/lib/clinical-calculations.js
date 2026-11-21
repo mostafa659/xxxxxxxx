@@ -1,5 +1,5 @@
 /*
- * Deterministic clinical calculation audit (v3.52).
+ * Deterministic clinical calculation audit (v3.60).
  *
  * This module never diagnoses or prescribes. It independently recomputes a small,
  * explicit set of examination calculations from values in the solver DATA field
@@ -33,6 +33,8 @@ const KEY_ALIASES = {
   ethanoldivisor: ["ethanoldivisor", "ethanol divisor"],
   chloride: ["chloride", "cl"],
   hco3: ["hco3", "bicarbonate"],
+  potassium: ["potassium", "serum potassium", "k"],
+  creatinine: ["creatinine", "serum creatinine"],
   albumin: ["albumin", "alb"],
   ph: ["ph"],
   paco2: ["paco2", "arterial carbon dioxide"],
@@ -89,7 +91,9 @@ function qualifierForMeasurement(source, index) {
   const lineEndRaw = t.indexOf("\n", index);
   const lineEnd = lineEndRaw < 0 ? t.length : lineEndRaw;
   const line = t.slice(lineStart, lineEnd).toLowerCase();
-  const before = t.slice(Math.max(lineStart, index - 90), index).toLowerCase();
+  const beforeOnLine = t.slice(lineStart, index).toLowerCase();
+  const lastHeading = [...t.slice(0, index).matchAll(/(?:^|\n)\s*#{1,6}\s*([^\n]+)/g)].at(-1);
+  const headingText = String(lastHeading?.[1] || "").toLowerCase();
   const tags = [];
   if (/post[-\s]?(?:oxygenator|membrane)|ecmo\s+post/.test(line)) tags.push("ecmo_post_oxygenator");
   else if (/pre[-\s]?(?:oxygenator|membrane)|ecmo\s+pre/.test(line)) tags.push("ecmo_pre_oxygenator");
@@ -98,53 +102,149 @@ function qualifierForMeasurement(source, index) {
   else if (/left\s+(?:femoral|pedal|toe)|femoral\s*\/\s*pedal/.test(line)) tags.push("left_femoral_pedal");
   else if (/right\s+(?:femoral|pedal|toe)/.test(line)) tags.push("right_femoral_pedal");
   else if (/pulmonary\s+artery\s+catheter|\bPAC\b/.test(line)) tags.push("pulmonary_artery_catheter");
-  if (/\b(?:baseline|prior|previous|preoperative|pre-op)\b/.test(before)) tags.push("baseline");
+  // Do not let a baseline column header leak into unrelated rows later in the section.
+  // Markdown tables are handled with explicit column identity below.
+  if (/\b(?:baseline|historical|prior|previous|preoperative|pre-op)\b/.test(`${headingText} ${beforeOnLine}`)
+      || /\b(?:two|three|four|six|twelve)\s+(?:days?|weeks?|months?|years?)\s+ago\b/.test(beforeOnLine)) tags.push("baseline");
   return tags.length ? tags.join("_") : "";
+}
+
+function markdownCells(line) {
+  // The visual transcription prompt specifies pipe-separated cells, but models
+  // often omit Markdown's decorative leading/trailing pipes. Accept both forms.
+  const trimmed = String(line || "").trim();
+  if (!trimmed.includes("|")) return null;
+  const cells = trimmed.split("|").map((cell) => cell.trim());
+  if (cells[0] === "") cells.shift();
+  if (cells.at(-1) === "") cells.pop();
+  return cells.length >= 2 ? cells : null;
+}
+
+function tableColumnIdentity(header, index, dataColumnCount) {
+  const h = String(header || "").toLowerCase();
+  if (/\b(?:historical|baseline|prior|previous|pre[- ]?admission|before|2\s*months?\s*ago)\b/.test(h)) return "baseline";
+  if (/\b(?:current|latest|present|today|admission|repeat|second|now)\b/.test(h)) return "current";
+  return dataColumnCount === 1 ? "current" : `column${index}`;
+}
+
+function numericCell(cell) {
+  const m = new RegExp(`^\\s*(${NUM})\\s*(.*?)\\s*$`).exec(String(cell || ""));
+  if (!m || !m[2]) return null;
+  return { value: m[1], unit: m[2].replace(/\s+/g, " ").trim() };
+}
+
+function extractMarkdownTablePairs(source) {
+  const lines = String(source || "").split(/\r?\n/);
+  const excluded = new Set();
+  const pairs = [];
+  for (let i = 0; i < lines.length; i++) {
+    const headers = markdownCells(lines[i]);
+    if (!headers || headers.length < 2) continue;
+    const first = headers[0].toLowerCase();
+    const hasTemporalColumns = headers.slice(1).some((h) => /historical|baseline|prior|previous|current|latest|present|admission|repeat|2\s*months?\s*ago/i.test(h));
+    const looksLikeHeader = /^(?:parameter|test|analyte|measurement|laboratory\s+test|lab\s+test|item)$/i.test(first);
+    if (!hasTemporalColumns || !looksLikeHeader) continue;
+
+    excluded.add(i);
+    let row = i + 1;
+    const separator = markdownCells(lines[row] || "");
+    if (separator && separator.length === headers.length && separator.every((c) => /^:?-{2,}:?$/.test(c))) {
+      excluded.add(row);
+      row++;
+    }
+    const dataColumnCount = headers.length - 1;
+    for (; row < lines.length; row++) {
+      const cells = markdownCells(lines[row]);
+      if (!cells) break;
+      excluded.add(row);
+      if (cells.length < headers.length) continue;
+      const baseKey = canonicalKey(cells[0]);
+      if (!Object.hasOwn(KEY_ALIASES, baseKey)) continue;
+      for (let col = 1; col < headers.length; col++) {
+        const parsed = numericCell(cells[col]);
+        if (!parsed) continue;
+        const identity = tableColumnIdentity(headers[col], col, dataColumnCount);
+        const suffix = identity === "current" ? "" : `_${identity}`;
+        pairs.push(`${baseKey}${suffix}=${parsed.value} ${parsed.unit}`);
+      }
+    }
+    i = row - 1;
+  }
+  return { pairs, excluded };
+}
+
+export function mergeOriginalSourceText(...sources) {
+  return sources.map((x) => String(x || "").trim()).filter(Boolean).join("\n\n");
+}
+
+export function mergeExtractedClinicalData(...readings) {
+  // Keep the individual extractor outputs as a concatenated audit trail. Do not
+  // collapse duplicate labels here: disagreements must remain detectable below.
+  return readings.map((x) => String(x || "").trim()).filter(Boolean).join("; ");
+}
+
+export function replaceAuditItemsByMessage(existing = [], incoming = [], getMessage = (item) => item?.msg ?? item?.message ?? item?.en ?? "") {
+  // A preliminary solve audit and the final source-backed audit can report the
+  // same finding. Keep the final finding (which may carry a more specific code)
+  // once, instead of showing duplicate warnings to the learner.
+  const incomingMessages = new Set(incoming.map((item) => String(getMessage(item) || "").trim()).filter(Boolean));
+  return [...existing.filter((item) => !incomingMessages.has(String(getMessage(item) || "").trim())), ...incoming];
 }
 
 export function extractLabelledClinicalData(text = "") {
   const source = String(text || "");
+  const table = extractMarkdownTablePairs(source);
+  const scanSource = source.split(/\r?\n/).map((line, i) => table.excluded.has(i) ? "" : line).join("\n");
   const specs = [
-    ["map", new RegExp(`(?:mean\\s+arterial\\s+pressure|\\bMAP\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["sbp", new RegExp(`(?:systolic\\s+blood\\s+pressure|\\bSBP\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["dbp", new RegExp(`(?:diastolic\\s+blood\\s+pressure|\\bDBP\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["cvp", new RegExp(`(?:central\\s+venous\\s+pressure|\\bCVP\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["co", new RegExp(`(?:cardiac\\s+output|\\bCO\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(L\\s*\\/\\s*min)`, "i")],
-    ["vo2", new RegExp(`(?:oxygen\\s+consumption|\\bVO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mL\\s*\\/\\s*min)`, "i")],
-    ["cao2", new RegExp(`(?:arterial\\s+oxygen\\s+content|\\bCaO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
-    ["cvo2", new RegExp(`(?:venous\\s+oxygen\\s+content|\\bCvO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
-    ["hb", new RegExp(`(?:hemoglobin|haemoglobin|\\bHb\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
-    ["sao2", new RegExp(`(?:arterial\\s+oxygen\\s+saturation|\\bSaO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(%)`, "i")],
-    ["pao2", new RegExp(`(?:arterial\\s+oxygen\\s+partial\\s+pressure|\\bPaO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["svo2", new RegExp(`(?:venous\\s+oxygen\\s+saturation|\\bSvO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(%)`, "i")],
-    ["pvo2", new RegExp(`(?:venous\\s+oxygen\\s+partial\\s+pressure|\\bPvO2\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["fu", new RegExp(`(?:unbound\\s+fraction|free\\s+fraction|\\bfu\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})`, "i")],
-    ["sc", new RegExp(`(?:sieving\\s+coefficient|\\bSC\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})`, "i")],
-    ["clint", new RegExp(`(?:intrinsic\\s+clearance|\\bCLint\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
-    ["qeff", new RegExp(`(?:delivered\\s+effluent\\s+flow|effective\\s+effluent\\s+flow|\\bQeff\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
-    ["cssu", new RegExp(`(?:target\\s+unbound\\s+concentration|unbound\\s+Css|\\bCssu\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mg\\s*\\/\\s*L)`, "i")],
-    ["ethanoldivisor", new RegExp(`(?:ethanol\\s+(?:conversion\\s+)?divisor|ethanol\\s+coefficient|\\bEthanolDivisor\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})`, "i")],
-    ["na", new RegExp(`(?:sodium|\\bNa\\+?)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["glucose", new RegExp(`(?:glucose|blood\\s+sugar)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["bun", new RegExp(`(?:blood\\s+urea\\s+nitrogen|\\bBUN\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["urea", new RegExp(`\\burea\\b\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["measuredosm", new RegExp(`(?:measured\\s+(?:serum\\s+)?osmolality)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mOsm\\s*\\/\\s*kg)`, "i")],
-    ["ethanol", new RegExp(`(?:ethanol|alcohol\\s+level)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL)`, "i")],
-    ["ph", new RegExp(`\\bpH\\b\\s*(?:was|is|of|[:=])?\\s*(${NUM})`, "i")],
-    ["chloride", new RegExp(`(?:chloride|\\bCl-?)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["hco3", new RegExp(`(?:bicarbonate|\\bHCO3-?)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["albumin", new RegExp(`(?:albumin|\\bAlb\\b)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
-    ["paco2", new RegExp(`(?:PaCO2|arterial\\s+carbon\\s+dioxide)\\s*(?:was|is|of|[:=])?\\s*(${NUM})\\s*(mm\\s*\\/?\\s*hg)`, "i")],
+    ["map", new RegExp(`(?:mean\\s+arterial\\s+pressure|\\bMAP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["sbp", new RegExp(`(?:systolic\\s+blood\\s+pressure|\\bSBP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["dbp", new RegExp(`(?:diastolic\\s+blood\\s+pressure|\\bDBP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["cvp", new RegExp(`(?:central\\s+venous\\s+pressure|\\bCVP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["co", new RegExp(`(?:cardiac\\s+output|\\bCO\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*min)`, "i")],
+    ["vo2", new RegExp(`(?:oxygen\\s+consumption|\\bVO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*min)`, "i")],
+    ["cao2", new RegExp(`(?:arterial\\s+oxygen\\s+content|\\bCaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
+    ["cvo2", new RegExp(`(?:venous\\s+oxygen\\s+content|\\bCvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
+    ["hb", new RegExp(`(?:hemoglobin|haemoglobin|\\bHb\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
+    ["sao2", new RegExp(`(?:arterial\\s+oxygen\\s+saturation|\\bSaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(%)`, "i")],
+    ["pao2", new RegExp(`(?:arterial\\s+oxygen\\s+partial\\s+pressure|\\bPaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["svo2", new RegExp(`(?:venous\\s+oxygen\\s+saturation|\\bSvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(%)`, "i")],
+    ["pvo2", new RegExp(`(?:venous\\s+oxygen\\s+partial\\s+pressure|\\bPvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
+    ["fu", new RegExp(`(?:unbound\\s+fraction|free\\s+fraction|\\bfu\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
+    ["sc", new RegExp(`(?:sieving\\s+coefficient|\\bSC\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
+    ["clint", new RegExp(`(?:intrinsic\\s+clearance|\\bCLint\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
+    ["qeff", new RegExp(`(?:delivered\\s+effluent\\s+flow|effective\\s+effluent\\s+flow|\\bQeff\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
+    ["cssu", new RegExp(`(?:target\\s+unbound\\s+concentration|unbound\\s+Css|\\bCssu\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*L)`, "i")],
+    ["ethanoldivisor", new RegExp(`(?:ethanol\\s+(?:conversion\\s+)?divisor|ethanol\\s+coefficient|\\bEthanolDivisor\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
+    ["na", new RegExp(`(?:sodium|\\bNa\\+?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
+    ["glucose", new RegExp(`(?:glucose|blood\\s+sugar)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
+    ["bun", new RegExp(`(?:blood\\s+urea\\s+nitrogen|\\bBUN\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
+    ["urea", new RegExp(`\\burea\\b\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
+    ["measuredosm", new RegExp(`(?:measured\\s+(?:serum\\s+)?osmolality)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mOsm\\s*\\/\\s*kg)`, "i")],
+    ["ethanol", new RegExp(`(?:ethanol|alcohol\\s+level)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL)`, "i")],
+    ["ph", new RegExp(`\\bpH\\b\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
+    ["chloride", new RegExp(`(?:chloride|\\bCl-?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
+    ["hco3", new RegExp(`(?:bicarbonate|\\bHCO3-?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
+    ["albumin", new RegExp(`(?:albumin|\\bAlb\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
+    ["paco2", new RegExp(`(?:PaCO2|arterial\\s+carbon\\s+dioxide)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*\\/?\\s*hg)`, "i")],
   ];
-  const pairs = [];
+  const pairs = [...table.pairs];
+  // A combined BP cell (for example, "Blood pressure | 82/48 mmHg") carries two inputs.
+  // Extract SBP and DBP separately so MAP can be recomputed without inventing either value.
+  const bpPattern = /(?:blood\s+pressure|\bBP\b)\s*(?:was|is|of|[:=]|\|)?\s*(\d{2,3})\s*\/\s*(\d{2,3})\s*(mm\s*hg)/ig;
+  for (const match of scanSource.matchAll(bpPattern)) {
+    const qualifier = qualifierForMeasurement(scanSource, match.index);
+    const suffix = qualifier ? `_${qualifier}` : "";
+    pairs.push(`sbp${suffix}=${match[1]} ${String(match[3]).replace(/\s+/g, "")}`);
+    pairs.push(`dbp${suffix}=${match[2]} ${String(match[3]).replace(/\s+/g, "")}`);
+  }
   for (const [key, re] of specs) {
     // Preserve every occurrence: selecting only the first match can silently pick a baseline,
     // reference-range value, or earlier time point instead of the current result.
     const global = new RegExp(re.source, `${re.flags.replace(/g/g, "")}g`);
-    for (const match of source.matchAll(global)) {
+    for (const match of scanSource.matchAll(global)) {
       // Site/sample qualifiers are part of a measurement's identity. Right-radial
       // patient gas and post-oxygenator gas, for example, are not competing readings.
-      const qualifier = qualifierForMeasurement(source, match.index);
+      const qualifier = qualifierForMeasurement(scanSource, match.index);
       const scopedKey = qualifier ? `${key}_${qualifier}` : key;
       pairs.push(`${scopedKey}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
     }
@@ -165,7 +265,7 @@ function labelledNumber(text, aliases) {
   for (const alias of aliases) {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const boundary = /^[A-Za-z0-9]+$/.test(alias) ? `\\b${escaped}\\b` : escaped;
-    const re = new RegExp(`${boundary}\\s*(?:[:=]|is|of)?\\s*(${NUM})`, "i");
+    const re = new RegExp(`${boundary}\\s*(?:[:=]|is|of|\\|)?\\s*(${NUM})`, "i");
     const m = re.exec(t);
     if (m) return num(m[1]);
   }
@@ -222,11 +322,18 @@ function computeFromFacts(facts, contextText = "") {
   const domains = clinicalDomains(contextText);
   const results = [], missingInputs = [], notes = [];
 
+  const suppliedMap = value(facts, "map");
+  const systolic = value(facts, "sbp"), diastolic = value(facts, "dbp");
+  if (suppliedMap == null && systolic != null && diastolic != null
+      && unitIs(facts, "sbp", [/^mmhg$/]) && unitIs(facts, "dbp", [/^mmhg$/])) {
+    addResult(results, "map", "Estimated mean arterial pressure", (systolic + 2 * diastolic) / 3, "mmHg", "(SBP + 2×DBP) ÷ 3", "Approximation; use a directly measured MAP when available.");
+    notes.push("MAP was estimated from SBP/DBP using (SBP + 2×DBP)/3; use directly measured MAP when supplied.");
+  }
+
   if (domains.hemodynamics) {
-    let map = value(facts, "map");
+    let map = suppliedMap;
     if (map == null && value(facts, "sbp") != null && value(facts, "dbp") != null) {
       map = (value(facts, "sbp") + 2 * value(facts, "dbp")) / 3;
-      notes.push("MAP was estimated from SBP/DBP using (SBP + 2×DBP)/3; use directly measured MAP when supplied.");
     }
     let co = value(facts, "co");
     let cao2 = value(facts, "cao2"), cvo2 = value(facts, "cvo2");

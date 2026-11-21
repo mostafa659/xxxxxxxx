@@ -44,30 +44,65 @@ export function parseBrief(raw) {
   };
 }
 
-/* the item format of the TYPE line / stem, mapped to the exam module's format ids */
-export function itemFormat(type, stem) {
-  const t = `${type} ${stem}`.toLowerCase();
-  if (/sata|select all|all that apply|multiple response/.test(t)) return "sata";
+/* Detect structured exam formats only when the source, solver type, or real option list supports it. */
+function sourceHasAnswerOptions(source = "") {
+  const labels = [...String(source || "").matchAll(/^\s*([A-H])\s*[).:]\s+\S/gim)].map((m) => m[1].toUpperCase());
+  return new Set(labels).size >= 2;
+}
+
+export function itemFormat(type, stem, hasOptions = false, profile) {
+  const typeText = String(type || "").toLowerCase();
+  const source = String(stem || "");
+  const t = `${typeText} ${source}`.toLowerCase();
+  if (/\b(?:sata|select all|all that apply|multiple response)\b/.test(t)) return "sata";
   if (/matrix/.test(t)) return "matrix";
   if (/bow[- ]?tie/.test(t)) return "bowtie";
   if (/cloze|drop[- ]?down/.test(t)) return "cloze";
   if (/highlight/.test(t)) return "highlight";
   if (/drag/.test(t)) return "dragdrop";
-  if (/order|rank|sequence/.test(t)) return "ordered";
-  return "mcq";
+  if (/order|rank|sequence/.test(typeText)) return "ordered";
+
+  // The source itself takes precedence over a broad label such as "priority".
+  // In particular, "NOT a multiple-choice examination" is an explicit open-task
+  // statement, not evidence that the source contains answer choices.
+  const sourceOptions = sourceHasAnswerOptions(source);
+  const explicitOpen = /\b(?:open[- ]ended|open question|open case|clinical reasoning|case analysis|essay|free response)\b/i.test(typeText)
+    || (!sourceOptions && /\b(?:open[- ]ended|open clinical|open case|clinical reasoning|free response)\b/i.test(source));
+  if (explicitOpen && !sourceOptions) return "open";
+
+  const positiveChoiceCue = /\b(?:multiple[- ]choice|single[- ]best[- ]answer|single[- ]answer|MCQ|SBA|which of the following|choose one|select one|pick one|most appropriate option)\b/i.test(source);
+  const negatedChoiceCue = /\b(?:not|is not|isn't|never|rather than|not intended as|not designed as)\s+(?:an?\s+)?(?:multiple[- ]choice|single[- ]best[- ]answer|single[- ]answer|MCQ|SBA)\b/i.test(source);
+  if (sourceOptions || (hasOptions && !explicitOpen) || (positiveChoiceCue && !negatedChoiceCue) || /\b(?:mcq|multiple[- ]choice|single[- ]best[- ]answer|single[- ]answer|sba)\b/.test(typeText)) return "mcq";
+  // Preserve the exam module's default only for an explicitly selected exam profile.
+  if (examOf(profile)) return "mcq";
+  return "open";
+}
+
+function finalQuestionDirective(stem = "") {
+  const lines = String(stem || "").replace(/\r/g, "").split("\n").map((x) => x.trim()).filter(Boolean);
+  // A negative keyword counts only when it belongs to an actual question directive,
+  // not to general safety instructions such as "Do NOT invent missing data".
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].includes("?") && lines[i].length <= 700) return lines[i];
+    if (/^(?:please\s+)?(?:select|choose|pick)\s+(?:\d+|one|two|three|four|five|six)\b/i.test(lines[i])) return lines[i];
+  }
+  return "";
 }
 
 /* ── B3 · format and logic checks (zero tokens) ── */
-const NEG_STEM = /\b(?:EXCEPT|NOT|LEAST|further teaching|needs? further|requires? follow[- ]?up|incorrect|false|unsafe)\b/;
+const NEG_STEM = /\b(?:EXCEPT|NOT|LEAST|further teaching|needs? further|requires? follow[- ]?up|incorrect|false|unsafe)\b/i;
 const NEG_BRIEF = /\b(?:negative|EXCEPT|NOT|LEAST|further teaching|incorrect|false|wrong statement)\b/i;
 const NUMWORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
 
 export function formatChecks(b, { stem = "", profile } = {}) {
   const flags = [];
   const add = (code, msg) => flags.push({ code, msg });
-  const fmt = itemFormat(b.type, stem);
+  const fmt = itemFormat(b.type, stem, (b.options || []).length > 0, profile);
   const ex = examOf(profile);
+  const directive = finalQuestionDirective(stem);
   if (!b.answerRaw) { add("no-answer", "no ANSWER line"); return flags; }
+  // Ignore model-invented OPTIONS for an open task; only the original source can establish choices.
+  if (fmt === "open") return flags;
   const optLetters = b.options.map((o) => o.letter);
   const multiPart = b.answerLines.length > 1 && !/^[A-H](?:\s*[,&]\s*[A-H])*\.?$/.test(b.answerLines[0]);
   // answer letters exist among the options
@@ -81,8 +116,9 @@ export function formatChecks(b, { stem = "", profile } = {}) {
   // an option verdict that contradicts itself
   const seen = new Map();
   for (const o of b.options) { if (seen.has(o.letter) && seen.get(o.letter) !== o.mark) add("option-contradiction", `option ${o.letter} judged both ways`); seen.set(o.letter, o.mark); }
-  // "select N" must match the number of answers
-  const sel = /\b(?:select|choose|pick)\s+(\d+|one|two|three|four|five|six)\b(?!\s+of\s+the\s+following\s+(?:is|are)\s+correct)/i.exec(stem);
+  // "select N" must match the number of answers in the actual question directive,
+  // never a generic instruction elsewhere in a long case.
+  const sel = /\b(?:select|choose|pick)\s+(\d+|one|two|three|four|five|six)\b(?!\s+of\s+the\s+following\s+(?:is|are)\s+correct)/i.exec(directive);
   if (sel && !multiPart) {
     const n = /^\d+$/.test(sel[1]) ? parseInt(sel[1], 10) : NUMWORD[sel[1].toLowerCase()];
     if (n && b.letters.length !== n) add("select-count", `the stem says select ${n}, ANSWER has ${b.letters.length}`);
@@ -91,11 +127,11 @@ export function formatChecks(b, { stem = "", profile } = {}) {
   // every blank / row / part answered
   if (["cloze", "matrix", "bowtie", "dragdrop", "highlight"].includes(fmt) && b.answerLines.length < 2 && !/,|;/.test(b.answerRaw)) add("parts-missing", `a ${fmt} item needs one answer per blank, row or part`);
   // polarity
-  const stemNeg = NEG_STEM.test(stem), briefNeg = NEG_BRIEF.test(`${b.keyword} ${b.type}`);
-  if (stem && stemNeg !== briefNeg && (stemNeg || /EXCEPT|NOT|LEAST/.test(b.keyword))) add("polarity", stemNeg ? "the stem has a negative keyword the analysis does not treat as negative" : "the analysis assumes negative polarity the stem does not show");
-  if (ex && ex.negativeKeywords && stem) for (const k of ex.negativeKeywords) if (new RegExp(`\\b${k}\\b`, k === k.toUpperCase() ? "" : "i").test(stem) && !briefNeg) { add("polarity", `"${k}" in the stem`); break; }
+  const stemNeg = !!directive && NEG_STEM.test(directive), briefNeg = NEG_BRIEF.test(`${b.keyword} ${b.type}`);
+  if (directive && stemNeg !== briefNeg && (stemNeg || /EXCEPT|NOT|LEAST/i.test(b.keyword))) add("polarity", stemNeg ? "the actual question directive has negative polarity but the analysis does not" : "the analysis assumes negative polarity not present in the question directive");
+  if (ex && ex.negativeKeywords && directive) for (const k of ex.negativeKeywords) if (new RegExp(`\\b${k}\\b`, k === k.toUpperCase() ? "" : "i").test(directive) && !briefNeg) { add("polarity", `"${k}" in the question directive`); break; }
   // answer shape vs the profile's exam item types
-  if (ex && !ex.itemFormats.includes(fmt)) add("shape", `item type "${fmt}" is not in the ${ex.label} module`);
+  if (ex && fmt !== "open" && !ex.itemFormats.includes(fmt)) add("shape", `item type "${fmt}" is not in the ${ex.label} module`);
   if (fmt === "mcq" && b.letters.length > 1 && !multiPart) add("shape", "a single-answer item has several answers");
   return flags;
 }
@@ -251,7 +287,9 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
   const reasons = [];
   const concerns = [];                                       // v3.45: the CONCRETE risks only (what a student may be told); `issues` stays the fuller internal list
   const issues = [];                                         // audit fix #1: SPECIFIC problems with THIS answer (the only things that justify a MEDIUM banner); bookkeeping reasons (uncalibrated, no logprobs, premise order) never go here
-  const fmt = itemFormat(b.type, stem);
+  const sourceOptions = sourceHasAnswerOptions(stem);
+  const fmt = itemFormat(b.type, stem, sourceOptions, profile);
+  const usableOptions = fmt === "open" ? [] : b.options;
 
   // B5 · what the model read from the image: KB range check of every lab in DATA, with the patient's sex / age from DATA + stem
   const dataFlags = [];
@@ -263,7 +301,7 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
       dataFlags.push({ text: part.trim(), analyte: info.analyte, status: info.noStratum ? "no-range" : [...info.statuses].join("/"), range: info.noStratum ? "" : describeRange(info) });
     }
     // an option verdict that calls a lab normal / abnormal against the code's reading
-    for (const o of b.options) {
+    for (const o of usableOptions) {
       const rc = rangeContradiction(o.why, patient, profile);
       if (rc) flags.push({ code: "kb-range", msg: `option ${o.letter}: ${rc.text}` });
     }
@@ -271,8 +309,10 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
   for (const f of kbFlags) flags.push(f);
 
   // B4 · CALC
-  const yes = b.options.find((o) => o.mark === "yes");
-  const calc = b.calc ? checkCalc(b.calc, { yesWhy: yes ? yes.why : "" }) : null;
+  const yes = usableOptions.find((o) => o.mark === "yes");
+  // A numerical CALC result may only be compared with a selected answer when the
+  // original source contains real answer options. Open cases have no "✅ option".
+  const calc = b.calc ? checkCalc(b.calc, { yesWhy: sourceOptions && fmt !== "open" && yes ? yes.why : "" }) : null;
   if (calc && !calc.ok) flags.push({ code: "calc", msg: calc.steps.filter((s) => !s.ok).map((s) => s.why).join("; ") });
   const clinicalCalculationAudit = auditClinicalCalculations({
     dataText: b.data,
@@ -294,7 +334,7 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
   if (/\b(?:calculat|dose|dosage|mL\/h|drip|rate|conversion)\w*/i.test(`${b.type} ${stem}`) && !b.calc) { reasons.push("a calculation item without a CALC line"); issues.push("a calculation item without a CALC line"); }   // bookkeeping: internal only
 
   // B2 · confidence
-  const conf = L ? answerConfidence(L, b.options.map((o) => o.letter)) : null;
+  const conf = L ? answerConfidence(L, usableOptions.map((o) => o.letter)) : null;
   const doubts = dataDoubts(L);
   let tier;
   if (conf) {
@@ -353,7 +393,12 @@ export function banner(a, lang = "ar") {
     ...(a.clinicalSafetyAudit?.conflicts || []),
   ];
   const calculationConflict = guardConflicts.length > 0;
-  const likely = calculationConflict ? (ar ? "لا يمكن اعتماد اختيار قبل حل تعارض الحساب أو السلامة السريرية." : "No option can be confirmed until the calculation or clinical-safety conflict is resolved.") : a.answer ? (ar ? `الأرجح: ${a.answer.split("\n")[0]}` : `Most likely: ${a.answer.split("\n")[0]}`) : "";
+  const openTask = a.format === "open";
+  const likely = calculationConflict
+    ? (openTask
+      ? (ar ? "لا يمكن اعتماد الاستنتاج أو الخطة السريرية قبل حل تعارض الحساب أو السلامة." : "The clinical conclusion or plan cannot be cleared until the calculation or safety conflict is resolved.")
+      : (ar ? "لا يمكن اعتماد الاختيار قبل حل تعارض الحساب أو السلامة السريرية." : "No option can be confirmed until the calculation or clinical-safety conflict is resolved."))
+    : a.answer ? (ar ? `${openTask ? "الخلاصة المبدئية" : "الأرجح"}: ${a.answer.split("\n")[0]}` : `${openTask ? "Preliminary synthesis" : "Most likely"}: ${a.answer.split("\n")[0]}`) : "";
   const ru = a.runnerUp ? (ar ? `البديل الأقرب: ${a.runnerUp.letter}` : `Runner-up: ${a.runnerUp.letter}`) : "";
   const adv = a.perOptionAdvice && a.perOption.length ? (ar ? "الامتحان ده بيخصم على الاختيار الغلط: اختار بس الاختيارات اللي ثقتها عالية." : "This exam penalises wrong picks: select only the high-confidence options.") : "";
   return { tier: a.tier, head, likely, runnerUp: ru, why, advice: adv, perOption: a.perOptionAdvice ? a.perOption : [] };

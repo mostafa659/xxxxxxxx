@@ -1,3 +1,28 @@
+## v3.60.0 — Open-Case Table Parsing, Source Fusion and Safety Reliability
+
+- **OCR-table format parity:** parse pipe-separated lab rows whether or not the transcription includes Markdown's optional outer pipes. Historical and current columns retain separate identities.
+- **No first-nonempty-source loss:** combine all available original-source representations (vision transcription and document text layer); disagreements remain conflicts instead of one partial pass masking another.
+- **Open-case classification:** explicit open-ended source wording now takes precedence over a broad `priority` brief label; model-invented options do not activate MCQ polarity/shape checks.
+- **Calculation consistency:** compare a `CALC` result against a ✅ option only when the original question really contains answer options.
+- **Potassium safety:** a valid K 6.0–6.4 mmol/L plus ECG toxicity/acute illness is no longer ignored just because a preceding sample was hemolyzed; the non-hemolyzed repeat takes precedence.
+- **Duplicate warning control:** the final audit replaces identical preliminary calculation flags/concerns rather than displaying the same warning twice.
+- **PWA cache invalidation:** the service-worker cache key is advanced so deployed clients discard the previous shell on activation.
+
+Verification: `npm test` → **520/520 passed**. `npm run build` could not complete because Vite is not installed in this offline source environment. No production build, deployed-app verification, live Gemini A/B, or clinician adjudication is claimed. See [the v3.60.0 root-cause report](docs/ROOT_CAUSE_OPEN_CASE_v3.60.0.md) and [test/build record](docs/TEST_RESULTS_v3.60.0.md).
+
+---
+
+## v3.59.0 — Open Clinical Case, Temporal Data and Safety-Guard Fixes
+
+- **Open-case fidelity:** the solver now handles open clinical reasoning without forcing MCQ labels/options or misreading general “Do NOT” instructions as exam polarity.
+- **Temporal lab identity:** baseline and current results remain distinct, and pipe-separated table values are parsed by the independent extraction pass.
+- **Clinical calculations:** combined BP rows are split into SBP/DBP; MAP and anion gap are independently recomputed when source inputs support them.
+- **Safety rules:** TMP-SMX warnings require an actual start/continuation proposal and do not contain PJP boilerplate.
+
+Verification: `npm test` → **514/514 passed**. `npm run build` could not complete because Vite is not installed. See [the submitted stress-case root-cause report](docs/ROOT_CAUSE_STRESS_CASE_v3.59.0.md) and [test/build record](docs/TEST_RESULTS_v3.59.0.md).
+
+---
+
 ## v3.58.0 — General Healthcare Reliability and Evaluation Integrity
 
 This release uses the supplied 26-case baseline/candidate response file to find real failure modes and repair the causes in the prompt, generation and evaluation pipeline.

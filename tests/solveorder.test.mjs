@@ -31,6 +31,15 @@ test("the solve prompt orders the fields PREMISE → ANSWER → … and tells th
   }
 });
 
+test("the solve prompt preserves open-ended clinical tasks and only evaluates options that actually exist", () => {
+  const sys = P.buildSolvePrompt(GEN).system;
+  assert.match(sys, /Never force an open case into MCQ format/);
+  assert.match(sys, /If no options exist, answer the requested open task directly/);
+  assert.match(sys, /NONE — no answer choices supplied/);
+  assert.match(sys, /Separate current from historical\/baseline values/);
+  assert.match(sys, /general instructions or negative clinical findings/);
+});
+
 test("the solver DATA field preserves explicit numeric inputs for the deterministic calculator without inflating lesson prompts", () => {
   const solve = P.buildSolvePrompt(GEN).system;
   assert.match(solve, /DATA: <all decisive numerical inputs relevant to calculations/);
@@ -142,3 +151,17 @@ test("end to end: visual transcription precedes solve, the premise rides in the 
   assert.equal(s.assess.premise, "PREMMARK-5521 unstable patient."); assert.equal(s.assess.premiseFirst, true);
 });
 
+
+test("an open-ended case remains open when the brief invents a priority label and an option", () => {
+  const stem = `This is an open-ended clinical reasoning and decision-support exercise, NOT a multiple-choice examination. Provide a full clinical synthesis.`;
+  const raw = `PREMISE: The case requires an integrated synthesis and explicit uncertainty.\nANSWER: Open-ended clinical synthesis; no answer letter applies.\nTYPE: priority\nKEYWORD: NOT APPLICABLE\nCONCEPTS: acute illness; medication safety\nDATA: Hb=7.6 g/dL\nOPTIONS:\nA) ✅ K=6.4 mmol/L\nCALC: 11.2 - 7.6 = 3.6 g/dL\nCONFIDENCE: medium`;
+  const assessed = S.assessSolve({ raw, stem, profile: GEN });
+  assert.equal(assessed.format, "open");
+  assert.deepEqual(assessed.flags, []);
+  assert.equal(assessed.answer, "Open-ended clinical synthesis; no answer letter applies.");
+});
+
+test("the task-format classifier honors explicit negative wording rather than matching a negated MCQ cue", () => {
+  const stem = "This is NOT a multiple-choice examination. It is an open-ended clinical case.";
+  assert.equal(S.itemFormat("priority", stem, false, GEN), "open");
+});
