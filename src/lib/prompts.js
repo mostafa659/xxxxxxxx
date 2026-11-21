@@ -154,16 +154,18 @@ const HEADINGS = {
 };
 
 const QUALITY = `QUALITY BAR:
-• Depth: explain the MECHANISM (what happens inside the body, step by step) before the rule.
-• Specificity: concrete numbers, ranges, drug names, antidotes, lab values, positions and thresholds, never "monitor the patient" when you can say WHAT to monitor and which value triggers action.
-• Exam lens: say what the examiner is testing and why each wrong option is tempting.
-• Transfer: show how a small change in the situation would change the answer.
-• Honesty: when two answers look defensible, say which one the exam prefers and why.
-• Economy: every line adds information. No filler, no repetition.`;
+• Task fidelity: identify exam, open question, patient-care, source-only, calculation or study-material task. Match the format. If no choices are supplied, never invent options or answer letters; if choices exist, assess only those shown. Real patient-care/emergency requests need action-first answers, not exam headings.
+• Context: preserve exact facts, units, times, samples and population. Never invent doses, ranges, findings or citations. Use prior history only when directly relevant or requested; never inject unrelated past cases into a self-contained question.
+• Reasoning: distinguish facts, assumptions and inferences; consider alternatives and revise when evidence changes. Separate best exam option from a complete clinical plan.
+• Evidence: ground current claims in applicable sources; a URL alone does not prove a claim.
+• Economy: answer directly; no filler, invented distractors or unrequested hypotheticals.`;
 
 /* the student's saved questions → the model links the new question to them, inside the sentence it belongs to */
-export function linkBlock(history, what = "question") {
+export function linkBlock(history, what = "question", extra = "") {
   if (!history || !history.length) return "";
+  // Cross-question memory can contaminate a self-contained clinical case or emergency answer.
+  // Keep it opt-in: the user must explicitly request links/comparisons to earlier items.
+  if (!/(?:link|connect|compare|relate|reference).{0,40}(?:previous|earlier|past|saved|prior)|(?:previous|earlier|past|saved|prior).{0,40}(?:question|case|item)|اربط.{0,30}(?:السابق|سابقة|قبل)|قارن.{0,30}(?:السابق|سابقة|قبل)|الأسئلة السابقة|سؤال سابق/i.test(String(extra || ""))) return "";
   const lines = history.slice(0, 120).map((h) => `- «${h.title}» — ${h.terms.join(", ")}`).join("\n");
   return `\n\nEARLIER ITEMS THE STUDENT HAS ALREADY STUDIED (use them ONLY to connect ideas):\n${lines}\n\nCONNECTION RULE: if — and only if — this ${what} truly shares a disease, drug, lab value, trap, priority rule or decision logic with one of them, say so INLINE: inside the exact sentence or bullet where that piece of information appears, add ONE short clause wrapped in double equals signs, for example ==🔗 نفس فخ سؤال «Digoxin toxicity» اللي ذاكرته قبل كده== or ==🔗 مرتبط بسؤال «Cushing syndrome» (نفس العلامة)==. Copy the title exactly as written inside « ». Put every connection right beside the fact it belongs to; never in a separate section, heading or list, never gathered in one place, at most 4 in total, never invent a connection, and add none when nothing is truly related. Write the clause in the language of the surrounding text.`;
 }
@@ -216,7 +218,7 @@ YOU WRITE PART 1 OF 2. A second tutor writes part 2 (step-by-step thinking, ever
 • Write ONLY the three sections below, nothing before them and nothing after them.
 • Do NOT say or hint which option is correct. Do NOT analyse the options one by one.
 
-The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+Inspect the supplied input carefully. It may be an exam question, an open clinical request, a patient-care scenario, a calculation, or a source-only task. Read all supplied text, exhibits and labs. Treat answer options as present only if they are actually visible.
 
 ${TEACH}
 
@@ -236,7 +238,7 @@ ${H.basics}
 - For each concept the question needs (1 to 4 concepts): **Term** — a simple English definition (A2 words); then 1 to 3 lines that explain it from zero with an everyday analogy; then WHY it happens inside the body (2 to 3 simple cause → effect lines); then the key facts to memorize (signs and symptoms, causes, normal ranges, clinical actions) — each fact on its own line, English first; then ONE "clinical pearl" line: the number, threshold or red flag the exam loves.
 
 Length: aim for about ${words} words — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra, profile)}${linkBlock(history, "question")}`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}`,
     user: "Write part 1 of the lesson for the question in the image.",
   };
 }
@@ -255,19 +257,19 @@ export function buildLessonBPrompt({ profile, history, brief, extra, chips, word
       : "";
   const ground = brief
     ? `The user message contains a preliminary solve brief. Use it as the starting analysis, NOT as unquestionable ground truth. Re-read the original question and options, verify that every stated datum is actually present, and independently check the decisive reasoning. Reconcile the brief with any supplied specialized references, their applicability conditions and exceptions. If the brief clearly conflicts with the question or a directly applicable, approved reference, correct the answer before teaching. Never invent missing case data.`
-    : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else) and double-check it against every option. Then teach.`;
+    : `No verified analysis is available, so FIRST identify the actual task and solve it carefully. Compare options only if the source actually contains options; otherwise answer the open question directly. Then teach only to the extent the task calls for it.`;
   return {
     system: `${CORE(true)}
 
 YOU WRITE PART 2 OF 2. A first tutor writes part 1 (what the question asks, decoding the English, the basics) at the same moment. Do NOT repeat those; write ONLY the sections below.${scope}
 
-The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+Inspect the supplied input carefully. It may be an exam question, an open clinical request, a patient-care scenario, a calculation, or a source-only task. Read all supplied text, exhibits and labs. Treat answer options as present only if they are actually visible.
 
 ${ground}
 
 
 ${TEACH}
-• For every wrong option, say what it would be right for ("this would be correct if …"), so one question teaches him the whole topic.
+• If real answer options are present, explain only those shown. If no options are present, do not invent distractors or letters; answer the actual request directly. Explain when a wrong option would be right only when such an option exists.
 
 ${QUALITY}
 
@@ -277,7 +279,9 @@ OUTPUT FORMAT — plain text, ${hasTraps ? "exactly two parts separated by marke
 
 ${LAYOUT}
 
-EXPLANATION — use exactly these headings, in this order:
+TASK FORMAT: use only supplied options; if absent, omit ${H.options} and answer directly. For real care, lead with action.
+
+EXPLANATION — use these headings only when they fit the actual task:
 ${hasMain ? `${H.steps}
 1. 2 to 5 numbered steps that apply the reasoning framework that fits this item type and show HOW to think, not only what to pick.
 ${H.options}
@@ -295,7 +299,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra, profile)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
     user: brief
       ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite part 2 of the lesson for the question in the image.`
       : "Write part 2 of the lesson for the question in the image.",
@@ -312,19 +316,19 @@ export function buildLessonPrompt({ profile, history, brief, extra, chips, words
   const H = headings(chips);
   const ground = brief
     ? `The user message contains a preliminary solve brief. Use it as the starting analysis, NOT as unquestionable ground truth. Re-read the original question and options, verify that every stated datum is actually present, and independently check the decisive reasoning. Reconcile the brief with any supplied specialized references, their applicability conditions and exceptions. If the brief clearly conflicts with the question or a directly applicable, approved reference, correct the answer before teaching. Never invent missing case data.`
-    : `No verified analysis is available, so FIRST work out the correct answer with maximum care (accuracy matters more than anything else): work it twice (predict from the stem alone, then eliminate option by option), check the decisive keyword (FIRST, BEST, EXCEPT, NEXT …) and its polarity, and double-check against every option. Then teach.`;
+    : `No verified analysis is available, so FIRST identify the actual task and solve it carefully. If the source is an MCQ, predict from the stem and evaluate only the supplied options, including negative polarity. If no options are present, do not invent them or force a letter; answer the open request directly. Then teach only to the extent the task calls for it.`;
   return {
     system: `${CORE(true)}
 
 YOU WRITE THE WHOLE LESSON IN ONE ANSWER: the explanation AND the traps. Write ONLY the sections below.
 
-The image is a screenshot of ONE exam-style question (possibly a Next-Gen item: case study, drop-down, matrix, bow-tie …). Read everything in it: stem, exhibits, labs, every option.
+Inspect the supplied input carefully. It may be an exam question, an open clinical request, a patient-care scenario, a calculation, or a source-only task. Read all supplied text, exhibits and labs. Treat answer options as present only if they are actually visible.
 
 ${ground}
 
 
 ${TEACH}
-• For every wrong option, say what it would be right for ("this would be correct if …"), so one question teaches him the whole topic.
+• If real answer options are present, explain only those shown. If no options are present, do not invent distractors or letters; answer the actual request directly. Explain when a wrong option would be right only when such an option exists.
 
 ${QUALITY}
 
@@ -336,7 +340,9 @@ OUTPUT FORMAT — plain text, exactly two parts separated by marker lines, nothi
 
 ${LAYOUT}
 
-EXPLANATION — use exactly these headings, in this order:
+TASK FORMAT: use only supplied options; if absent, omit ${H.options} and answer directly. For real care, lead with action.
+
+EXPLANATION — use these headings only when they fit the actual task:
 ${H.ask}
 - One bullet: the question type in English (for example **priority**, **safety**, **pharmacology**, **lab values** …) and, in one line, what the examiner wants from the student.
 - One more bullet: the exam topic category this item tests (in English, with a short Arabic gloss).
@@ -362,7 +368,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra, profile)}${linkBlock(history, "question")}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
     user: brief
       ? `VERIFIED ANALYSIS:\n${brief}\n\nWrite the whole lesson for the question in the image.`
       : "Write the whole lesson for the question in the image.",
@@ -439,7 +445,7 @@ ${H.english}
 - 6 to 12 bullets: an important English phrase or sentence pattern that the material uses — **the phrase** — its meaning, and when the exam uses it.
 
 Length: aim for about ${words} words — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}`,
     user: "Write part 1 of the lesson for the study material.",
   };
 }
@@ -483,7 +489,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
     user: "Write part 2 of the lesson for the study material.",
   };
 }
@@ -530,7 +536,7 @@ TRICKS:
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
     user: "Write the whole lesson for the study material.",
   };
 }
@@ -578,7 +584,7 @@ ${H.english}
 - 6 to 12 bullets: an important English phrase or sentence pattern that the material uses — **the phrase** — its meaning, and when the exam uses it.
 
 Length: aim for about ${words} words for the two sections together. Never pad.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===PLAN===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===PLAN===.`,
     user: "Plan the study material and write the first part of the lesson.",
   };
 }
@@ -613,7 +619,7 @@ ${LAYOUT}
 ===MUST=== — a compact checklist of everything worth memorizing from YOUR topics (ranges, signs, drugs and antidotes, actions, priorities): one fact per line, a "- " bullet, **English term** first, then its meaning.
 
 Length: aim for about ${words} words in ===BASICS=== and about ${mustWords} words in ===MUST=== — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===BASICS===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===BASICS===.`,
     user: single ? "Write the lesson topics for the study material." : "Write your slice of the lesson for the study material.",
   };
 }
@@ -653,7 +659,7 @@ ${H.memo}
 - The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
-${styleTail(chips, extra, profile)}${linkBlock(history, "material")}${ARABIC_RULE}Start directly with ===EXAM===.`,
+${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXAM===.`,
     user: "Write the exam part, the memory sentences and the traps for the study material.",
   };
 }

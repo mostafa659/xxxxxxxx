@@ -201,3 +201,94 @@ test("unsafe ECMO option A is flagged for RPM escalation during chatter, CSF asp
   assert.ok(codes.has("bloody-csf-drain-manipulation-on-bivalirudin"));
   assert.ok(codes.has("va-ecmo-differential-hypoxemia-not-addressed"));
 });
+
+
+const ameloblasticFibrosarcomaCase = `A 39-year-old male with a 4-month rapidly enlarging painful left mandibular mass, progressive trismus and profound left lower lip/chin anaesthesia. Triple-positive Antiphospholipid Syndrome (APS), positive lupus anticoagulant, anticardiolipin IgG, and anti-$\\beta_2$-glycoprotein I IgG; prior unprovoked pulmonary embolism and ischemic stroke; on Warfarin target INR 2.5–3.5. Started Fluconazole 200 mg/day 10 days ago; admission INR 4.8. CBCT: aggressive multilocular radiolucency with bicortical perforation. MRI: perineural tumor spread along left mandibular nerve V3 to foramen ovale with denervation edema of masseter, temporalis and pterygoids. CTA: bilateral Peronea Arteria Magna, congenital aplasia of posterior tibial arteries and severe hypoplasia of anterior tibial arteries; peroneal artery is the sole dominant blood supply to the pedal arch. H&E: biphasic odontogenic neoplasm of cords and follicles of cytologically bland odontogenic epithelium with peripheral palisading and reverse nuclear polarization, embedded in hypercellular, markedly pleomorphic, hyperchromatic spindle-cell ectomesenchymal stroma; 14 mitoses per 10 HPF and atypical mitoses. Ki-67 38% in stromal spindle cells versus <2% in epithelial islands. NGS BRAF p.V600E, negative EWSR1, MAML2 and CTNNB1. The radiographic defect is described as a Jewel L-C defect.`;
+const mandibleOptionA = `A) Ameloblastic Carcinoma; reverse INR with PCC, permanently transition Warfarin to Apixaban 5 mg BID, perform segmental mandibulectomy with a vascularized free fibula osteocutaneous flap, and administer adjuvant IMRT.`;
+const mandibleOptionB = `B) Ameloblastic Fibrosarcoma (AFS); bridge Warfarin with therapeutic LMWH, perform segmental mandibulectomy reconstructed with a DCIA osteocutaneous free flap plus genioglossus/geniohyoid resuspension, and administer concurrent Dabrafenib/Trametinib during adjuvant 66 Gy IMRT targeting the skull base.`;
+const mandibleOptionC = `C) Ameloblastic Fibrosarcoma (AFS); hold Fluconazole and Warfarin, bridge perioperatively with therapeutic LMWH (resuming Warfarin post-op), perform radical segmental mandibulectomy reconstructed with a DCIA osteocutaneous free flap and suprahyoid/genioglossus resuspension, and deliver adjuvant IMRT (60–66 Gy) to the V3 pathway/foramen ovale while holding BRAF/MEK inhibitors throughout radiotherapy.`;
+const mandibleOptionD = `D) Odontogenic Carcinosarcoma; discontinue Warfarin 5 days preoperatively without heparin bridging, reconstruct the defect using a double-barrel free fibula osteocutaneous flap, and initiate immediate post-op implant loading.`;
+const mandibleOptionE = `E) Ameloblastic Fibroma with reactive stromal atypia; manage via marginal mandibulectomy and Carnoy's solution.`;
+
+test("AFS mandibular case activates clinical safety checks even when the prompt is oncology-specific", () => {
+  assert.equal(isPotentialClinicalContext("Ameloblastic fibrosarcoma, mandibular resection, warfarin and APS"), true);
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionC, answerText: "Option C is the closest exam answer." });
+  assert.equal(audit.triggered, true);
+  assert.equal(audit.conflicts.length, 0, audit.conflicts.map((x) => x.code).join(", "));
+  const codes = new Set(audit.advisories.map((x) => x.code));
+  assert.ok(codes.has("afs-adjuvant-rt-needs-final-pathology"));
+  assert.ok(codes.has("afs-radiation-dose-not-universal"));
+  assert.ok(codes.has("afs-systemic-staging-not-mentioned"));
+  assert.ok(codes.has("mandibular-donor-flap-selection-needs-anatomy-review"));
+  assert.ok(codes.has("warfarin-fluconazole-high-inr-not-managed"));
+  assert.ok(codes.has("aps-bridge-needs-bleed-risk-timing"));
+  assert.ok(codes.has("braf-mek-hold-assumes-unprescribed-drug"));
+  assert.ok(codes.has("jewer-lc-defect-anatomy-confirmation"));
+  assert.ok(audit.advisories.some((x) => x.code === "warfarin-fluconazole-high-inr-not-managed" && x.message.includes("INR 4.8")), "the measured INR must be parsed, not the 2.5–3.5 target interval");
+});
+
+test("AFS malignant stromal morphology blocks incorrect carcinoma/carcinosarcoma/fibroma labels", () => {
+  for (const [option, code] of [
+    [mandibleOptionA, "afs-compartment-diagnosis-mismatch"],
+    [mandibleOptionD, "afs-compartment-diagnosis-mismatch"],
+    [mandibleOptionE, "afs-compartment-diagnosis-mismatch"],
+  ]) {
+    const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: option, answerText: "Choose the selected option." });
+    assert.ok(audit.conflicts.some((x) => x.code === code), `${option.slice(0, 20)} should be blocked`);
+  }
+});
+
+test("triple-positive APS with prior arterial thrombosis blocks routine Apixaban transition", () => {
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionA, answerText: "Choose A." });
+  const codes = new Set(audit.conflicts.map((x) => x.code));
+  assert.ok(codes.has("triple-positive-aps-doac-switch-unsafe"));
+});
+
+test("bilateral peronea arteria magna blocks fibula harvest absent documented collateral clearance", () => {
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionA, answerText: "Choose A." });
+  assert.ok(audit.conflicts.some((x) => x.code === "peronea-magna-fibula-harvest-contraindicated"));
+  const exception = auditClinicalSafety({
+    caseText: ameloblasticFibrosarcomaCase,
+    selectedOptionText: mandibleOptionA,
+    answerText: "Only if formal peroneal artery balloon-occlusion testing and duplex demonstrate adequate independent collateral perfusion and the vascular team explicitly clears fibula harvest; otherwise use another donor site."
+  });
+  assert.equal(exception.conflicts.some((x) => x.code === "peronea-magna-fibula-harvest-contraindicated"), false);
+});
+
+test("unmodified concurrent dabrafenib/trametinib with high-dose head-and-neck RT is blocked", () => {
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionB, answerText: "Choose B." });
+  const codes = new Set(audit.conflicts.map((x) => x.code));
+  assert.ok(codes.has("braf-mek-concurrent-high-dose-head-neck-rt-unadapted"));
+  assert.ok(codes.has("afs-braf-targeted-therapy-not-established-standard"));
+});
+
+test("unbridged warfarin interruption is blocked in triple-positive APS with prior stroke", () => {
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionD, answerText: "Choose D." });
+  assert.ok(audit.conflicts.some((x) => x.code === "triple-positive-aps-unbridged-warfarin-interruption"));
+});
+
+test("BRAF V600E alone cannot be called pathognomonic or the sole proof of AFS", () => {
+  const audit = auditClinicalSafety({
+    caseText: ameloblasticFibrosarcomaCase,
+    selectedOptionText: mandibleOptionC,
+    answerText: "BRAF p.V600E confirms and is pathognomonic for ameloblastic fibrosarcoma and proves the stromal clone is BRAF-driven."
+  });
+  assert.ok(audit.conflicts.some((x) => x.code === "afs-braf-not-diagnostic-alone"));
+  assert.ok(audit.advisories.some((x) => x.code === "afs-braf-compartment-not-localised"));
+});
+
+test("AFS treatment text must not claim 60–66 Gy or adjuvant RT as universal protocol", () => {
+  const audit = auditClinicalSafety({ caseText: ameloblasticFibrosarcomaCase, selectedOptionText: mandibleOptionC, answerText: "C is the only safe and universally evidence-based plan." });
+  assert.ok(audit.advisories.some((x) => x.code === "afs-adjuvant-rt-needs-final-pathology"));
+  assert.ok(audit.advisories.some((x) => x.code === "afs-radiation-dose-not-universal"));
+});
+
+
+test("AFS Ki-67 supports proliferation but no universal 30-percent diagnostic threshold is asserted", () => {
+  const audit = auditClinicalSafety({
+    caseText: ameloblasticFibrosarcomaCase,
+    selectedOptionText: mandibleOptionC,
+    answerText: "Stromal Ki-67 proliferation index: markedly elevated (> 30%) is a diagnostic cut-off for AFS."
+  });
+  assert.ok(audit.advisories.some((x) => x.code === "afs-ki67-not-universal-diagnostic-threshold"));
+});

@@ -23,6 +23,8 @@ import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
 import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
+import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
+import { readSources } from "./sources.js";
 import { selectClaims, applyCached, applyVerdicts } from "./claims.js";
 import { addGaps } from "./reports.js";
 import { getModelLists, runTask } from "./gemini.js";
@@ -60,6 +62,9 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
   /* Visual-question safety adds one source-transcription request before the solver; all final checks remain local. */
   let ocrText = "", assess = null, briefRaw = "";
   const verdictLog = [];                                        // {claimList, verdicts, links} of every proof request that carried claims
+  const medicalGroundings = [];
+  let medicalSearchAttempted = false;
+  let medicalSearchPerformed = false;
   /* ONE source model for every source type: text / Word / audio / PDF text layer / a separate model transcription of an image or scanned PDF. */
   let extraction = null;                                        // { sourceType, text, complete } — what the extraction STAGE read (the only text a screenshot or scanned PDF ever has)
   const srcItems = () => (doc ? itemsFromSaved(null, doc) : dataUrl ? [{ t: "image", name: "image" }] : []);
@@ -148,6 +153,15 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         selectedOptionText: chosenOptionText,
         narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
       });
+      const groundingSources = readSources(medicalGroundings);
+      const qualityAudit = auditClinicalQuality({
+        caseText: `${ocrText}\n${sample()}\n${briefRaw}`,
+        answerText: extractCorrectAnswerSection(cleanExplanation),
+        selectedOptionText: chosenOptionText,
+        narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
+        sources: groundingSources.links,
+        searchPerformed: medicalSearchPerformed,
+      });
       if (questionNeedsTranscript && !ocrText.trim() && safetyAudit.triggered) {
         safetyAudit.conflicts.push({ code: "visual-source-transcription-unavailable", severity: "critical", message: "The source is an image/PDF, but the dedicated transcription pass did not complete. Critical patient values and answer options have not been independently cross-checked; do not accept a selected clinical answer." });
         safetyAudit.status = "blocked";
@@ -211,6 +225,17 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       } else if (safetySection && !/CLINICAL SAFETY REVIEW|مراجعة السلامة السريرية/.test(ex)) {
         ex = `${ex}\n\n## ⚠️ ${has(chips, "en") ? "Clinical safety review" : "مراجعة السلامة السريرية"}\n${safetySection}`;
       }
+      const qualitySection = qualityAudit.advisories.length
+        ? `## 🧭 ${has(chips, "en") ? "General healthcare quality checks" : "فحوص جودة الإجابة الصحية العامة"}\n${formatClinicalQualityAudit(qualityAudit, has(chips, "en") ? "en" : "ar")}`
+        : "";
+      if (qualitySection && !safetyAudit.conflicts.length) ex = `${ex}\n\n${qualitySection}`;
+      const sourceSection = medicalSearchAttempted
+        ? (formatGroundingSources(groundingSources.links, groundingSources.queries)
+          || (has(chips, "en")
+            ? "## External evidence check\nLive medical search was attempted, but no usable source links were returned. Time-sensitive claims remain unverified."
+            : "## التحقق من المصادر الخارجية\nتمت محاولة البحث الطبي المباشر، لكن لم تُرجع المحاولة روابط مصادر قابلة للاستخدام. لذلك تظل الادعاءات المتغيرة بمرور الوقت غير متحققة خارجيًا."))
+        : "";
+      if (sourceSection && !safetyAudit.conflicts.length) ex = `${ex}\n\n${sourceSection}`;
       const rt = cleanTricks && !safetyAudit.conflicts.length ? run(cleanTricks) : null;
       const gaps = [...rx.gaps, ...(rt ? rt.gaps : [])];
       addGaps(p, gaps);
@@ -219,6 +244,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
         calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
         clinicalSafetyAudit: safetyAudit.triggered ? safetyAudit : null,
+        clinicalQualityAudit: qualityAudit.triggered ? qualityAudit : null,
+        medicalSearch: medicalSearchAttempted ? { performed: medicalSearchPerformed, sources: groundingSources.links.length, queries: groundingSources.queries } : null,
         stats: rt ? { ...rx.stats, unverified: rx.stats.unverified + rt.stats.unverified, corrected: rx.stats.corrected + rt.stats.corrected, verified: rx.stats.verified + rt.stats.verified, highRisk: rx.stats.highRisk + rt.stats.highRisk, unlabeledHighRisk: rx.stats.unlabeledHighRisk + rt.stats.unlabeledHighRisk, memorizable: rx.stats.memorizable + rt.stats.memorizable } : rx.stats,
         cards: rx.cards, conflicts: rx.conflicts, analogies: all.flatMap((r) => r.analogies.map((i) => i.sentence)), memoAids: all.flatMap((r) => r.memoAids.map((i) => i.sentence)), stripped: all.flatMap((r) => r.stripped.map((i) => ({ sentence: i.sentence, reason: i.reason }))),
         patches: all.flatMap((r) => r.patches), items: all.flatMap((r) => r.items.filter((i) => i.label !== "plain").map((i) => ({ id: i.id, kind: i.kind, label: i.label, note: i.note, sentence: i.before || i.sentence, text: i.text, memorize: !!i.memorize, source: i.sourceUrl || "", prov: i.prov || null, snippet: i.sourceSnippet || "" }))),
@@ -266,6 +293,19 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
 
   /* one model call (one request at a time; busy → retried with backoff inside runTask) */
   const stageOnce = async (task, cfg, prompt, signal, onText) => {
+    const healthContext = isHealthDomainContext(`${ocrText}\n${briefRaw}\n${sample()}\n${note}\n${prompt.user}`);
+    // One grounded evidence pass per analysis: solve-stage in deep mode, otherwise the main answer-writing stage.
+    // Avoid attaching Google Search to OCR/word-list/formatting-only calls.
+    const isAnswerStage = /^(?:solve:|lessonB|lessonM)/i.test(task);
+    const useMedicalSearch = !!(healthContext && isAnswerStage && !medicalSearchAttempted);
+    if (useMedicalSearch) medicalSearchAttempted = true;
+    const originalSystem = prompt.system || "";
+    const system = healthContext && isAnswerStage && !originalSystem.includes("UNIVERSAL HEALTHCARE ANSWER QUALITY PROTOCOL")
+      ? `${originalSystem}\n\n${CLINICAL_QUALITY_INSTRUCTION}`
+      : originalSystem;
+    const noSearchSystem = useMedicalSearch
+      ? `${system}\n\nSEARCH LIMITATION: live medical search was unavailable or not completed for this response. Do not imply current guideline or source verification; clearly identify time-sensitive claims that still need checking.`
+      : undefined;
     const call = async (useFiles) => {
       const all = [...src, { text: note + prompt.user }];
       return runTask({
@@ -273,7 +313,9 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         /* v3.35: reading the question text off the screenshot and listing its words are easy jobs: the WEAKEST model first (Flash-Lite), the middle one next and the
            strong one only if nothing else can answer. (A lesson's "ocr" stage is a study summary, not a transcript: it keeps the old order.) */
         models: orderForTask(apiKey, task, cfg.tier === "pro" || (task === "ocr" && !L) ? proFirst : task === "words" ? weakFirst(fastFirst) : fastFirst),      // v3.33: when the strong models are nearly spent today, the word list goes to Flash-Lite (quota.js)
-        system: prompt.system + (L || task !== "ocr" ? ARABIC_RULE : ""),   // the OCR transcript must stay exactly as written
+        system: system + (L || task !== "ocr" ? ARABIC_RULE : ""),   // the OCR transcript must stay exactly as written
+        noSearchSystem,
+        search: useMedicalSearch,
         parts: useFiles ? await files.swap(all, signal) : all,
         spec: { levels: cfg.levels, budget: cfg.budget },
         maxOut: cfg.maxOut, firstMs: cfg.firstMs, idleMs: cfg.idleMs,
@@ -282,11 +324,23 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         onNotice: onNotice ? (x) => onNotice(/^(solve|lesson)/.test(task) ? "reason" : task, x) : undefined,   // "Google is busy, trying again (n of 3)" → a calm note, not an error
       });
     };
-    const keep = (r) => { if (r && r.verdicts && r.verdicts.length) verdictLog.push({ claimList: r.claimList, verdicts: r.verdicts, links: r.links }); return r; };
+    const keep = (r) => {
+      if (r && r.verdicts && r.verdicts.length) verdictLog.push({ claimList: r.claimList, verdicts: r.verdicts, links: r.links });
+      if (useMedicalSearch && r) {
+        medicalSearchPerformed = !!r.searched;
+        if (r.grounding) medicalGroundings.push(r.grounding);
+      }
+      return r;
+    };
     try { return keep(await call(true)); }
     catch (e) {
       /* Google could not use the uploaded file → send everything inline from now on (exactly the old behaviour) and repeat this request */
-      if (files.used && !isAbort(e) && !(signal && signal.aborted) && looksLikeFileError(e)) { files.disable(); return keep(await call(false)); }
+      if (files.used && !isAbort(e) && !(signal && signal.aborted) && looksLikeFileError(e)) {
+        files.disable();
+        try { return keep(await call(false)); }
+        catch (retryError) { if (useMedicalSearch) medicalSearchAttempted = false; throw retryError; }
+      }
+      if (useMedicalSearch) medicalSearchAttempted = false;
       throw e;
     }
   };
@@ -346,11 +400,14 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
 
     const t0 = performance.now();
     const since = () => performance.now() - t0;
-    let text = "", model = "", tSolve = 0, over = false;
+    let text = "", model = "", tSolve = 0, over = false, failure = null;
 
     const compose = (final) => {
       const r = splitReason(text, final);
-      return { explanation: r.explanation || (final ? "" : null), tricks: r.tricks };
+      const partialWarning = final && failure
+        ? "\n\n## ⚠️ الإجابة غير مكتملة\nتعذر إكمال جزء من التحليل بسبب خطأ أثناء التوليد. لا تعتمد هذا النص كإجابة نهائية؛ أعد المحاولة أو استخدم مصدرًا موثوقًا/مراجعًا مختصًا."
+        : "";
+      return { explanation: (r.explanation || (final ? "" : null)) ? `${r.explanation || ""}${partialWarning}` : (final ? partialWarning : null), tricks: r.tricks };
     };
     const emit = (final) => {
       if (over || sig.aborted) return;
@@ -358,6 +415,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     };
     const fail = (err) => {
       if (over || sig.aborted) return;
+      failure = err;
       over = true;
       ctrl.abort();
       onError("reason", err, text ? compose(true) : null);
@@ -415,7 +473,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const t0 = performance.now();
     const since = () => performance.now() - t0;
     const S = { a: "", m: "", t: "", aDone: false, aFail: null, mDone: false, mFail: null, tDone: false, tFail: null, combined: false, aModel: "", mModel: "", t0s: {} };
-    let over = false;
+    let over = false, failure = null;
     const ready = (k) => S[k + "Done"] || !!S[k + "Fail"];
     const seg = (k, final) => splitReason(S[k], final || S[k + "Done"]);
 
@@ -424,9 +482,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       const out = [seg("a", final).explanation];
       if (final || ready("a")) out.push(seg("m", final).explanation);
       if (final || (ready("a") && ready("m"))) out.push(seg("t", final).explanation);
-      const text = out.filter(Boolean).join("\n");
+      let text = out.filter(Boolean).join("\n");
+      if (final && failure) text += "\n\n## ⚠️ الإجابة غير مكتملة\nتعذر إكمال جزء من التحليل بسبب خطأ أثناء التوليد. لا تعتمد هذا النص كإجابة نهائية؛ أعد المحاولة أو استخدم مصدرًا موثوقًا/مراجعًا مختصًا.";
       const tricks = (S.combined ? seg("m", final) : seg("t", final)).tricks;
-      return { explanation: text || (final ? "" : null), tricks };
+      return { explanation: text || (final ? (failure ? "## ⚠️ الإجابة غير مكتملة\nتعذر إكمال التوليد؛ أعد المحاولة." : "") : null), tricks };
     };
     const chars = () => S.a.length + S.m.length + S.t.length;
     const emit = (final) => {
@@ -435,6 +494,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     };
     const fail = (err) => {
       if (over || sig.aborted) return;
+      failure = err;
       over = true;
       ctrl.abort();
       onError("reason", err, chars() ? compose(true) : null);

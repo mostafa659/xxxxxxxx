@@ -1,5 +1,7 @@
+import { isHealthDomainContext } from "./clinical-quality.js";
+
 /*
- * Clinical safety rules (v3.54).
+ * Clinical safety rules (v3.55).
  *
  * This is a conservative contradiction detector, not a diagnostic engine.
  * It only blocks narrowly defined, high-impact overclaims / missing safety
@@ -10,8 +12,8 @@ const has = (s, re) => re.test(String(s || ""));
 const isAffirmed = (text, re) => has(text, re);
 
 export function isPotentialClinicalContext(text = "") {
-  return has(text, /\b(?:patient|clinical|diagnos(?:is|e)|treatment|therapy|dose|drug|medication|mg\/|mmol\/|mmhg|laboratory|ferritin|platelets|tacrolimus|transplant|sepsis|infection|HLH|HScore|creatinine|oxygen|antibiotic|voriconazole|PJP|aspergillus|β[- ]?D[- ]?glucan)\b/i)
-    || has(text, /مريض|مريضة|تشخيص|علاج|جرعة|دواء|تحليل|صفائح|فريتين|عدوى|زرع|كلية|كبد|مضاد|التهاب|سمية/);
+  // Routing hint only. It does not imply that an answer is medically correct.
+  return isHealthDomainContext(text);
 }
 
 function measurement(text, re, convert = (value) => value) {
@@ -131,6 +133,129 @@ export function auditClinicalSafety({ caseText = "", answerText = "", selectedOp
   }
 
   const proposedPlan = `${selectedOptionText}\n${answer}`;
+  const selectedPlan = String(selectedOptionText || "").trim() || answer;
+
+  // Odontogenic sarcoma pattern: benign ameloblastic epithelium with malignant stroma supports AFS.
+  // BRAF on an unmicrodissected NGS specimen does not, by itself, prove which compartment carries it.
+  const blandOdontogenicEpithelium = /(?:cytologically\s+)?bland.{0,80}(?:odontogenic\s+)?epithelium|(?:odontogenic\s+)?epitheli(?:al|um).{0,80}bland/i.test(context);
+  const malignantSpindleStroma = /(?:hypercellular|pleomorphic|hyperchromatic|malignant).{0,120}(?:spindle[- ]cell|ectomesenchymal|mesenchymal|stromal)|(?:spindle[- ]cell|ectomesenchymal|mesenchymal|stromal).{0,120}(?:hypercellular|pleomorphic|hyperchromatic|malignant)/i.test(context);
+  const afsMorphology = blandOdontogenicEpithelium && malignantSpindleStroma;
+  const afsMentioned = /\bAFS\b|ameloblastic\s+fibrosarcoma/i.test(context) || afsMorphology;
+  if (afsMorphology) {
+    const diagnosisText = String(selectedOptionText || answer);
+    const wrongDiagnosis = /(?:definitive\s+diagnosis|diagnosis|diagnosed\s+as|most\s+consistent\s+with|the\s+tumou?r\s+is|this\s+is|choose\s+(?:option\s+)?[A-E])\s*[:=-]?\s*.{0,75}\b(?:ameloblastic\s+carcinoma|odontogenic\s+carcinosarcoma|ameloblastic\s+fibroma)\b/i.test(diagnosisText)
+      || /^\s*[A-E][).:-]\s*(?:ameloblastic\s+carcinoma|odontogenic\s+carcinosarcoma|ameloblastic\s+fibroma)\b/i.test(diagnosisText);
+    if (wrongDiagnosis) {
+      rule("afs-compartment-diagnosis-mismatch", "The supplied morphology shows bland ameloblastic/odontogenic epithelium with a malignant pleomorphic spindle-cell ectomesenchymal stroma. This supports ameloblastic fibrosarcoma; ameloblastic carcinoma requires epithelial malignancy, while odontogenic carcinosarcoma requires malignant epithelial and mesenchymal components. Do not relabel the lesion from the stromal findings alone.");
+    }
+  }
+
+  const ki67Match = /Ki[- ]?67(?:\s+proliferation\s+index|\s+index)?\s*[:=]?\s*(?:[<>≤≥]=?\s*)?([\d,.]+)\s*%/i.exec(n(context));
+  if (afsMorphology && ki67Match && /(?:Ki[- ]?67|proliferation\s+index).{0,80}(?:threshold|cut[- ]?off|diagnostic|criterion|>\s*30|30\s*%)/i.test(answer)) {
+    advisories.push({ code: "afs-ki67-not-universal-diagnostic-threshold", message: `The case reports a stromal Ki-67 index of ${ki67Match[1]}%, which supports high proliferative activity in the malignant stromal compartment. Do not present >30% (or any single Ki-67 percentage) as a validated universal diagnostic cut-off for AFS; the diagnosis rests on the histomorphologic malignant stromal component and benign ameloblastic epithelium, interpreted by an oral/head-and-neck pathologist.` });
+  }
+
+  const brafV600e = /BRAF.{0,25}(?:p\.)?V600E|(?:p\.)?V600E.{0,25}BRAF/i.test(context);
+  const compartmentLocalisation = /(?:laser[- ]microdissect|microdissect|stromal\s+component.{0,80}(?:BRAF|V600E|VE1)|(?:BRAF|V600E|VE1).{0,80}stromal\s+component|mesenchymal\s+component.{0,80}(?:BRAF|V600E|VE1))/i.test(context);
+  if (afsMorphology && brafV600e && /(?:BRAF.{0,50}(?:confirms?|proves?|establishes?|diagnostic)|(?:confirms?|proves?|establishes?).{0,50}BRAF.{0,30}(?:AFS|ameloblastic\s+fibrosarcoma)|BRAF.{0,50}pathognomonic)/i.test(answer)) {
+    rule("afs-braf-not-diagnostic-alone", "BRAF p.V600E is a potentially relevant molecular finding in ameloblastic fibrosarcoma, but it is not pathognomonic and does not replace the compartment-specific morphology. The diagnosis is based on the benign ameloblastic epithelial component and malignant mesenchymal stroma; the NGS specimen's cellular compartment should be clarified before asserting a stromal driver.");
+  }
+  if (afsMentioned && brafV600e && !compartmentLocalisation && /BRAF.{0,80}(?:driver|drives|driven|stromal|mesenchymal)|(?:driver|drives|driven).{0,80}BRAF|mutation.{0,80}(?:stromal|mesenchymal)/i.test(answer)) {
+    advisories.push({ code: "afs-braf-compartment-not-localised", message: "The case reports BRAF p.V600E by NGS but does not state that the specimen was laser-microdissected or that VE1/IHC/local sequencing localised the variant to the malignant stromal compartment. Small AFS series support recurrent BRAF V600E, including stromal expression in a demonstrated case, but whole-specimen NGS alone does not establish cellular localisation in this patient. Do not infer a stromal driver solely from the bulk result." });
+  }
+  if (afsMentioned && brafV600e && /\b(?:dabrafenib|trametinib|vemurafenib|BRAF\s*\/\s*MEK inhibitors?|BRAF inhibitors?)\b/i.test(proposedPlan)) {
+    const trialOrAdvancedSetting = /clinical\s+trial|trial|unresectable|metastatic|recurrent|advanced\s+disease|salvage|compassionate|off[- ]label/i.test(proposedPlan);
+    const explicitlyPrescribesTargetedTherapy = /(?:start|initiat|administer|recommend|use|treat(?:ment)?\s+with).{0,90}(?:dabrafenib|trametinib|vemurafenib|BRAF\s*\/\s*MEK)|(?:dabrafenib|trametinib|vemurafenib|BRAF\s*\/\s*MEK).{0,90}(?:start|initiat|administer|recommend|use|as\s+adjuvant|adjuvant\s+therapy)|ابدأ.{0,60}(?:دابرافينيب|تراميتينيب|BRAF)/i.test(selectedPlan);
+    if (explicitlyPrescribesTargetedTherapy && !trialOrAdvancedSetting) {
+      rule("afs-braf-targeted-therapy-not-established-standard", "BRAF p.V600E in AFS is a biologically relevant finding and a rationale for investigation/selected advanced-disease use, but it does not establish dabrafenib/trametinib as standard adjuvant treatment after resection. Do not prescribe targeted therapy from mutation status alone; require compartment-aware pathology review, disease setting, molecular tumour-board rationale and clinical-trial/rare-tumour expertise.");
+    } else {
+      advisories.push({ code: "afs-braf-targeted-therapy-evidence-limited", message: "BRAF-targeted therapy in AFS remains an emerging/rare-tumour strategy rather than an established adjuvant standard. Confirm that treatment is actually indicated and that the variant is relevant to the malignant component before treating the molecular result as a prescription." });
+    }
+  }
+
+  // In AFS, surgery is the mainstay; radiotherapy is individualised because the evidence base is small.
+  if (afsMentioned && /(?:adjuvant\s+)?(?:IMRT|radiotherap|radiation|irradiat)/i.test(proposedPlan)) {
+    const hasFinalPathologyBasis = /(?:negative|positive|close|involved|clear|R0|R1|R2)\s+(?:surgical\s+)?margins?|margins?.{0,45}(?:negative|positive|close|involved|clear|R0|R1|R2)|final\s+patholog|perineural\s+(?:invasion|spread).{0,80}(?:extent|length|proximal|skull)|tumou?r\s+board|multidisciplinary\s+(?:tumou?r|oncology)/i.test(proposedPlan);
+    if (!hasFinalPathologyBasis) {
+      advisories.push({ code: "afs-adjuvant-rt-needs-final-pathology", message: "AFS evidence supports complete/segmental resection with free margins as the main treatment; there is no universally accepted adjuvant-radiotherapy protocol for every resected AFS. Decide whether RT is warranted, its dose and the V3/foramen-ovale target only after final margin/pathology review, mapped perineural extent, skull-base imaging and a rare-tumour/head-and-neck multidisciplinary discussion." });
+    }
+    if (/60\s*[-–]\s*66\s*Gy|66\s*Gy|60\s*Gy/i.test(proposedPlan)) {
+      advisories.push({ code: "afs-radiation-dose-not-universal", message: "A 60–66 Gy prescription is not a validated universal AFS rule. The literature is dominated by case reports/series; dose and target volumes must follow postoperative anatomy, margin status, perineural spread, organ-at-risk constraints and institutional sarcoma/head-and-neck planning." });
+    }
+  }
+  if (afsMentioned && !/chest\s+(?:CT|imaging)|CT\s+(?:of\s+the\s+)?chest|pulmonary\s+staging|lung\s+staging/i.test(context + "\n" + proposedPlan)) {
+    advisories.push({ code: "afs-systemic-staging-not-mentioned", message: "The case text does not document chest/pulmonary staging. Include appropriate baseline chest imaging in the rare odontogenic sarcoma work-up; lung is the commonest reported distant metastatic site, although metastasis is uncommon." });
+  }
+
+  // Peronea arteria magna: preserve the peroneal artery when it is the foot's only dominant inflow.
+  const peroneaMagna = /peronea\s+(?:arteria\s+)?magna|great\s+peroneal\s+artery/i.test(context);
+  const peronealSoleFootSupply = /(?:sole|only|dominant)\s+(?:dominant\s+)?(?:blood\s+)?supply\s+to\s+(?:the\s+)?(?:foot|pedal\s+arch)|peroneal\s+artery.{0,90}(?:sole|only|dominant).{0,45}(?:foot|pedal)|(?:posterior\s+tibial\s+artery).{0,90}(?:aplasia|absent).{0,100}(?:anterior\s+tibial|hypoplasia)/i.test(context);
+  const plansFibulaHarvest = /(?:free\s+)?fibul(?:a|ar).{0,55}(?:free\s+)?flap|(?:harvest|harvesting).{0,45}fibula/i.test(selectedPlan);
+  const documentedCollateralSafety = /(?:balloon\s+occlusion|peroneal\s+artery\s+occlusion\s+test|collateral\s+(?:flow|perfusion|circulation).{0,60}(?:adequate|sufficient|confirmed)|adequate\s+collateral\s+perfusion|duplex.{0,60}(?:collateral|occlusion\s+test))/i.test(proposedPlan);
+  if (peroneaMagna && peronealSoleFootSupply && plansFibulaHarvest && !documentedCollateralSafety) {
+    rule("peronea-magna-fibula-harvest-contraindicated", "The supplied CTA states that the peroneal artery is the sole/dominant pedal-arch supply with absent/hypoplastic tibial arteries. Harvesting that fibula would endanger the donor foot and is contraindicated on the information supplied. Choose another donor site (e.g., vascularised iliac crest/DCIA or scapula) unless formal collateral/occlusion testing demonstrates adequate independent foot perfusion and a vascular team explicitly clears harvest.");
+  }
+  if (peroneaMagna && /DCIA|deep circumflex iliac|iliac crest/i.test(selectedPlan)) {
+    advisories.push({ code: "mandibular-donor-flap-selection-needs-anatomy-review", message: "Avoiding routine fibula harvest is appropriate for the stated peronea-magna anatomy. DCIA/iliac crest is one vascularised alternative, not the only possible alternative; scapular and other donor flaps may suit some defects. Select after defining exact mandibular endpoints, bone/soft-tissue needs, donor-site anatomy and recipient-vessel availability." });
+  }
+  if (/(?:Jewel|Jewer)\s+L[-–]?C\s+defect/i.test(context)) {
+    advisories.push({ code: "jewer-lc-defect-anatomy-confirmation", message: "‘Jewel L-C’ appears to refer to the established Jewer LC mandibular-defect classification (lateral plus central segments), rather than an undefined classification. The described angle-to-central-symphysis extent is compatible with an LC-type defect, but the operative plan must still document whether the condyle is preserved, exact resection endpoints, mucosal/skin loss and remaining suprahyoid/genioglossus attachments; these details determine flap geometry and resuspension." });
+  }
+
+  // Triple-positive thrombotic APS with previous arterial and venous events is not an indication to switch to a DOAC.
+  const triplePositiveAps = /triple[- ]positive.{0,80}(?:antiphospholipid|APS)|(?:antiphospholipid|APS).{0,80}triple[- ]positive/i.test(context)
+    && /lupus\s+anticoagulant/i.test(context)
+    && /anticardiolipin/i.test(context)
+    && /anti.{0,15}(?:β|beta|b).{0,10}2.{0,20}glycoprotein|beta2[- ]glycoprotein/i.test(context);
+  const previousArterialThrombosis = /(?:ischemic|ischaemic)\s+stroke|arterial\s+thrombosis|cerebral\s+infarct/i.test(context);
+  const proposesDoacSwitch = /(?:switch|transition|convert|replace|start|initiat|permanently\s+change).{0,80}\b(?:apixaban|rivaroxaban|dabigatran|edoxaban|DOACs?|direct\s+oral\s+anticoagulants?)\b|\b(?:apixaban|rivaroxaban|dabigatran|edoxaban|DOACs?)\b.{0,80}(?:instead\s+of\s+warfarin|replace\s+warfarin|warfarin\s+alternative)/i.test(selectedPlan);
+  if (triplePositiveAps && previousArterialThrombosis && proposesDoacSwitch) {
+    rule("triple-positive-aps-doac-switch-unsafe", "This patient has triple-positive thrombotic APS and a prior arterial event (ischaemic stroke), in addition to PE. Do not switch warfarin to apixaban or another DOAC as a routine perioperative solution; vitamin-K-antagonist therapy remains preferred in this high-risk phenotype because DOAC trials/guidance show excess recurrent events and guidelines advise against DOACs in APS with arterial events.");
+  }
+  if (triplePositiveAps && previousArterialThrombosis && /(?:stop|discontinue|hold|withhold).{0,50}warfarin/i.test(selectedPlan)
+      && /without\s+(?:heparin\s+)?bridg|no\s+(?:heparin\s+)?bridg|omit\s+(?:the\s+)?bridg|do\s+not\s+bridge/i.test(selectedPlan)) {
+    rule("triple-positive-aps-unbridged-warfarin-interruption", "This is very-high-risk thrombotic APS (triple-positive with prior arterial stroke and PE). A plan to interrupt warfarin without a specialist-directed bridging strategy is unsafe to present as routine. Individualise bridging and timing with hematology, anesthesia and microsurgery, balancing the major operative bleeding risk.");
+  }
+
+  // Fluconazole inhibits warfarin metabolism and the measured INR is already supratherapeutic.
+  const inrMatches = [...n(context).matchAll(/\bINR\s*[:=]?\s*([\d,.]+)\b/ig)];
+  // A target interval (e.g. target INR 2.5–3.5) is not the measured admission INR.
+  // Prefer an explicitly current/admission measurement; otherwise use the last scalar INR occurrence.
+  const explicitMeasuredInr = /\b(?:admission|current|measured|presenting|at\s+presentation)\s+INR\s*[:=]?\s*([\d,.]+)\b/i.exec(n(context));
+  const warfarinInrMatch = explicitMeasuredInr || inrMatches.at(-1) || null;
+  const warfarinInr = warfarinInrMatch ? Number(warfarinInrMatch[1].replace(/,/g, "")) : null;
+  const warfarinFluconazoleInteraction = /\bwarfarin\b/i.test(context) && /\bfluconazole\b/i.test(context) && warfarinInr != null && warfarinInr >= 4;
+  if (warfarinFluconazoleInteraction) {
+    const stopInteraction = /(?:hold|stop|withhold|discontinue).{0,45}(?:fluconazole|warfarin)|(?:fluconazole|warfarin).{0,45}(?:hold|stop|withhold|discontinue)/i.test(proposedPlan);
+    const followInr = /(?:repeat|recheck|monitor|trend|serial).{0,45}INR|INR.{0,45}(?:repeat|recheck|monitor|trend|serial)/i.test(proposedPlan);
+    if (!stopInteraction || !followInr) {
+      advisories.push({ code: "warfarin-fluconazole-high-inr-not-managed", message: `INR ${warfarinInr} is supratherapeutic in a patient receiving warfarin plus fluconazole, a documented CYP2C9-mediated interaction. Stop/review the interacting regimen with the prescriber and repeat/monitor INR before surgery; whether vitamin K or urgent reversal is needed depends on bleeding and surgical urgency.` });
+    }
+    const immediateTherapeuticHeparin = /(?:start|give|administer|initiate).{0,45}therapeutic\s+(?:LMWH|low[- ]molecular[- ]weight\s+heparin|UFH|heparin).{0,35}(?:now|immediately|while\s+INR\s*(?:is|remains)?\s*(?:4|4\.8|supratherapeutic))/i.test(proposedPlan);
+    if (immediateTherapeuticHeparin) {
+      rule("aps-bridge-before-inr-falls", "Do not start therapeutic LMWH/UFH while the INR is still documented as markedly supratherapeutic (4.8). In very-high-thrombotic-risk APS, consider bridging only once INR falls below the desired therapeutic range, with the last preoperative dose and surgical timing coordinated to the procedure and renal function.");
+    }
+  }
+  if (triplePositiveAps && previousArterialThrombosis && /(?:therapeutic\s+LMWH|therapeutic\s+low[- ]molecular[- ]weight\s+heparin|therapeutic\s+UFH|therapeutic\s+heparin|bridge.{0,50}therapeutic)/i.test(selectedPlan)) {
+    const preopTiming = /INR.{0,45}(?:below|subtherapeutic)|(?:once|when).{0,35}INR.{0,35}(?:below|subtherapeutic)|(?:last|final).{0,35}dose.{0,35}(?:24\s*(?:hours?|h)|day\s+before)|hold.{0,35}(?:LMWH|heparin).{0,25}24\s*(?:hours?|h)/i.test(proposedPlan);
+    const postopStepwise = /(?:48\s*[-–]\s*72|48\s+to\s+72)\s*(?:hours?|h)|(?:post[- ]?operative|after\s+surgery).{0,70}(?:hemostas|haemostas|bleeding\s+risk|prophylactic\s+dose)|(?:prophylactic).{0,50}(?:then|escalat|therapeutic)/i.test(proposedPlan);
+    if (!preopTiming || !postopStepwise) {
+      advisories.push({ code: "aps-bridge-needs-bleed-risk-timing", message: "Therapeutic bridging is commonly selected for triple-positive APS and prior arterial thrombosis, but ‘therapeutic LMWH perioperatively’ is not a complete safe schedule for major mandibulectomy/free-flap surgery. Specify that preoperative heparin begins only after INR falls below the therapeutic range, the final LMWH dose is withheld sufficiently before surgery (typically ≥24 h, adjusted to agent/renal function), and postoperative anticoagulation is staged according to surgical haemostasis—often prophylactic first, with therapeutic-dose escalation delayed about 48–72 h after high-bleeding-risk surgery if safe. Coordinate hematology, anesthesia and microsurgery." });
+    }
+  }
+
+  // BRAF/MEK–radiotherapy interactions require scenario-specific adaptation; do not recommend unmodified concurrency.
+  const targetedBrafMek = /\b(?:dabrafenib|trametinib|vemurafenib|cobimetinib|BRAF\s*\/\s*MEK inhibitors?)\b/i.test(selectedPlan);
+  const highDoseHeadNeckRt = /(?:IMRT|radiotherap|radiation|irradiat)/i.test(selectedPlan) && /(?:60\s*[-–]\s*66\s*Gy|66\s*Gy|60\s*Gy|high[- ]dose|fractionated)/i.test(selectedPlan);
+  const concurrentBrafRt = /(?:concurrent|concomitant|simultaneous|together|during\s+(?:the\s+)?(?:radiotherapy|radiation|IMRT)|مع\s+الإشعاع|أثناء\s+الإشعاع)/i.test(selectedPlan);
+  const rtAdaptation = /(?:hold|withhold|pause|interrupt|temporarily\s+stop|dose\s+reduc|major\s+adapt|adaptation|modify\s+(?:the\s+)?RT|treatment\s+break)/i.test(proposedPlan);
+  if (targetedBrafMek && highDoseHeadNeckRt && concurrentBrafRt && !rtAdaptation) {
+    rule("braf-mek-concurrent-high-dose-head-neck-rt-unadapted", "Do not present unmodified concurrent dabrafenib/trametinib with high-dose head-and-neck RT as safe. The 2026 ESMO–ESTRO consensus recommends a major adaptation for BRAF/MEK inhibitor combinations with head-and-neck RT (evidence level V); interruption, dose/RT adaptation and timing must be agreed by medical and radiation oncology.");
+  }
+  if (afsMentioned && brafV600e && /hold.{0,65}(?:BRAF|MEK|dabrafenib|trametinib).{0,65}(?:throughout|during|radiotherap|radiation)|(?:BRAF|MEK|dabrafenib|trametinib).{0,65}(?:hold|withhold).{0,65}(?:throughout|during|radiotherap|radiation)/i.test(selectedPlan)
+      && !/currently\s+(?:taking|receiving|on).{0,50}(?:dabrafenib|trametinib|BRAF|MEK)|started.{0,40}(?:dabrafenib|trametinib)/i.test(context)) {
+    advisories.push({ code: "braf-mek-hold-assumes-unprescribed-drug", message: "The medication history does not say the patient is taking dabrafenib/trametinib. A BRAF mutation alone is not a current drug exposure to ‘hold’. State that targeted therapy is not established routine adjuvant AFS treatment; if a tumour board later considers it, use scenario-specific ESMO–ESTRO RT adaptations rather than a blanket hold order." });
+  }
 
   // Patient-specific tacrolimus–voriconazole interaction: block unqualified co-use.
   if (/\btacrolimus\b/i.test(context) && /\bvoriconazole\b/i.test(proposedPlan)) {
