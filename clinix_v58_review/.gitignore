@@ -1,0 +1,8 @@
+node_modules
+dist
+android
+.env
+
+# AI gateway (local wrangler dev): secrets and state
+.dev.vars
+.wrangler/

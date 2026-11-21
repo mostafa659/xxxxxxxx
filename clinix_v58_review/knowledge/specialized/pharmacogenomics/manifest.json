@@ -1,0 +1,42 @@
+{
+  "sources": [
+    {
+      "id": "fda-pgx-table-2026-09",
+      "url": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",
+      "license": "US-government public domain (17 U.S.C. §105; FDA-authored page content)",
+      "licenseVerified": true,
+      "attribution": "U.S. Food and Drug Administration. Table of Pharmacogenetic Associations. Current page accessed 2026-11-20; update history lists 2026-09-10.",
+      "type": "regulator-notice",
+      "passages": [
+        {
+          "id": "evidence-tiers",
+          "text": "Section 1: Pharmacogenetic Associations for which the Data Support Therapeutic Management Recommendations. Section 2: Pharmacogenetic Associations for which the Data Indicate a Potential Impact on Safety or Response. Section 3: Pharmacogenetic Associations for which the Data Demonstrate a Potential Impact on Pharmacokinetic Properties Only. The impact of these genetic variants or genetic variant inferred phenotypes on the safety or response of the corresponding drug has not been established. Specific information regarding therapeutic management is provided for some pharmacogenetic associations, but most of the associations listed have not been evaluated in terms of the impact of genetic testing on clinical outcomes."
+        },
+        {
+          "id": "table-inclusion",
+          "text": "The fact that the FDA has included a particular gene-drug interaction in the table does not necessarily mean the FDA advocates using a pharmacogenetic test before prescribing the corresponding medication, unless the test is a companion diagnostic."
+        },
+        {
+          "id": "abacavir-hlab5701",
+          "text": "Abacavir | HLA-B | *57:01 allele positive | Results in higher adverse reaction risk (hypersensitivity reactions). Do not use abacavir in patients positive for HLA-B*57:01."
+        },
+        {
+          "id": "aficamten-cyp2c9",
+          "text": "Aficamten | CYP2C9 | poor metabolizers | May result in higher systemic concentrations and higher adverse reaction risk (heart failure). The dose titration and monitoring schedule accounts for differences due to CYP2C9 genetic variation, so adjustments based on CYP2C9 genotype are not necessary. Refer to FDA labeling for specific dosing and monitoring recommendations."
+        },
+        {
+          "id": "aminoglycosides-mtrnr1",
+          "text": "Amikacin | MT-RNR1 | m.1555A>G variant carriers | Results in higher adverse reaction risk (ototoxicity). Consider alternative treatments other than aminoglycosides. Gentamicin, neomycin, plazomicin, streptomycin, and tobramycin have corresponding entries in the same section."
+        },
+        {
+          "id": "azathioprine-tpmt-nudt15",
+          "text": "Azathioprine | TPMT and/or NUDT15 | intermediate or poor metabolizers | Alters systemic active metabolite concentration and dosage requirements. Results in higher adverse reaction risk (myelosuppression). Consider alternative therapy in poor metabolizers. Dosage reduction is recommended in intermediate metabolizers for NUDT15 or TPMT. Intermediate metabolizers for both genes may require more substantial dosage reductions. Refer to FDA labeling for specific dosing recommendations."
+        },
+        {
+          "id": "carbamazepine-hlab1502",
+          "text": "Carbamazepine | HLA-B | *15:02 allele positive | Results in higher adverse reaction risk (severe skin reactions). Avoid use unless potential benefits outweigh risks and consider risks of alternative therapies. Patients positive for HLA-B*15:02 may be at increased risk of severe skin reactions with other drugs associated with SJS/TEN. Genotyping is not a substitute for clinical vigilance."
+        }
+      ]
+    }
+  ]
+}

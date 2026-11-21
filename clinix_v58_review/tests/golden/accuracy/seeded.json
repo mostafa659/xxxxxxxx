@@ -1,0 +1,22 @@
+[
+ {"id":"gallbladder-secretes","source":"The liver makes bile and the gallbladder stores it.","text":"- The gallbladder secretes bile into the duodenum.","expect":"corrected","mustContain":"liver makes bile"},
+ {"id":"gallbladder-secretes-ar","source":"الكبد بتصنع الصفراء","text":"- المرارة بتفرز الصفراء","expect":"corrected","mustContain":"liver makes bile"},
+ {"id":"large-intestine-7","source":"The large intestine absorbs water.","text":"- The large intestine has 7 parts.","expect":"corrected","mustContain":"4 parts"},
+ {"id":"liver-2-lobes","source":"The liver is a large organ.","text":"- The liver has 2 lobes.","expect":"corrected","mustContain":"4 anatomical lobes"},
+ {"id":"pharynx-airway","source":"The pharynx is a muscular tube.","text":"- Any problem in the pharynx threatens the airway immediately.","expect":"corrected","mustContain":"Not every pharynx problem"},
+ {"id":"nasopharynx-food","source":"The pharynx is a muscular tube.","text":"- The nasopharynx carries food to the esophagus.","expect":"corrected","mustContain":"air only"},
+ {"id":"pyloric-esophagus","source":"The stomach is a J-shaped organ.","text":"- The pyloric orifice connects the esophagus to the stomach.","expect":"corrected","mustContain":"cardiac orifice joins"},
+ {"id":"curvature-ligament","source":"The stomach has curvatures.","text":"- The lesser curvature is a ligament.","expect":"corrected","mustContain":"borders"},
+ {"id":"b12-jejunum","source":"The small intestine absorbs nutrients.","text":"- Vitamin B12 is absorbed in the jejunum.","expect":"corrected","mustContain":"terminal ileum"},
+ {"id":"ilium-intestine","source":"The small intestine has three parts.","text":"- The ilium is the last part of the small intestine.","expect":"corrected","mustContain":"hip bone"},
+ {"id":"salivary-pairs","source":"Saliva starts digestion.","text":"- There are 5 pairs of major salivary glands.","expect":"corrected","mustContain":"3 pairs"},
+ {"id":"liver-in-gi-tract","source":"The digestive system has organs.","text":"- The liver is part of the GI tract.","expect":"corrected","mustContain":"accessory organs"},
+ {"id":"invented-framework","source":"The stomach has four regions.","text":"- Use the 5-step framework A → B → C → D → E to solve every digestion question.","expect":"stripped"},
+ {"id":"invented-mnemonic","source":"The stomach has four regions.","text":"- Remember it with the mnemonic CFBP for every region.","expect":"stripped"},
+ {"id":"leftover-1x","source":"The stomach digests food.","text":"- المعدة بتهضم الأكل 1× وبعدين تفرغ","expect":"cleaned","mustNotContain":"1×"},
+ {"id":"truncated-xref","source":"The stomach digests food.","text":"- The stomach digests food. ==🔗 مرتبط بسؤال «Digoxin tox…==","expect":"cleaned","mustNotContain":"Digoxin"},
+ {"id":"linked-caption","source":"The stomach digests food.","text":"- linked to question 14\n- The stomach digests food.","expect":"cleaned","mustNotContain":"linked to question"},
+ {"id":"hb-wrong-sex","source":"A man had a blood test.","text":"- Hemoglobin 12.5 g/dL is normal for an adult man.","expect":"corrected","mustContain":"reference range"},
+ {"id":"dose-unresolved","source":"The patient has pain.","text":"- Give 500 mg every 8 hours.","expect":"unverified","note":"confirm with an official reference"},
+ {"id":"nursing-rule-pharmacy","profile":{"discipline":"pharmacy","exam":"","region":""},"source":"Roles in the ward.","text":"- Delegate the assessment to the UAP.","expect":"scope"}
+]

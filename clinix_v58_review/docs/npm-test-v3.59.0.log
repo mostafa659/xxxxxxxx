@@ -1,0 +1,3116 @@
+
+> clinixstudy@3.59.0 test
+> node --import ./tests/register.mjs --test --test-force-exit --test-concurrency=1 tests/engine.test.mjs tests/chat.test.mjs tests/words.test.mjs tests/photos.test.mjs tests/mistakes.test.mjs tests/latency.test.mjs tests/gateway.test.mjs tests/paid.test.mjs tests/quota.test.mjs tests/free.test.mjs tests/keyring.test.mjs tests/reuse.test.mjs tests/speed.test.mjs tests/guard.test.mjs tests/proof.test.mjs tests/health.test.mjs tests/google-only.test.mjs tests/audio.test.mjs tests/audiopack.test.mjs tests/accuracy.test.mjs tests/budget.test.mjs tests/logprobs.test.mjs tests/claims-e2e.test.mjs tests/provenance.test.mjs tests/examtrust.test.mjs tests/solveorder.test.mjs tests/kb-audit.test.mjs tests/citation.test.mjs tests/studentux.test.mjs tests/specialized.test.mjs tests/specialized-prompt.test.mjs tests/specialized-pilot.test.mjs tests/specialized-expansion.test.mjs tests/specialized-error-driven.test.mjs tests/specialized-major-expansion.test.mjs tests/specialized-fifth-expansion.test.mjs tests/clinical-calculations.test.mjs tests/clinical-safety.test.mjs tests/clinical-quality.test.mjs tests/analysis-health-grounding.test.mjs tests/healthcare-benchmark.test.mjs
+
+TAP version 13
+# \# seeded: 20 cases · 65% resolved by KB · 35% removed/cleaned/labeled · 0 left unlabeled
+# Subtest: every seeded error is patched, removed, cleaned or labeled — and the numbers are printed
+ok 1 - every seeded error is patched, removed, cleaned or labeled — and the numbers are printed
+  ---
+  duration_ms: 33.707644
+  type: 'test'
+  ...
+# Subtest: analogies leave the body; Part B boxes invented mnemonics instead of stripping them
+ok 2 - analogies leave the body; Part B boxes invented mnemonics instead of stripping them
+  ---
+  duration_ms: 0.594945
+  type: 'test'
+  ...
+# Subtest: a framework the KB knows (ABC) is not stripped
+ok 3 - a framework the KB knows (ABC) is not stripped
+  ---
+  duration_ms: 0.325149
+  type: 'test'
+  ...
+# Subtest: titles claiming completeness become what the material covered
+ok 4 - titles claiming completeness become what the material covered
+  ---
+  duration_ms: 0.715997
+  type: 'test'
+  ...
+# Subtest: lab range for the wrong sex / age is patched; a range with no stratum is flagged, never applied
+ok 5 - lab range for the wrong sex / age is patched; a range with no stratum is flagged, never applied
+  ---
+  duration_ms: 1.681469
+  type: 'test'
+  ...
+# Subtest: an expired guideline is never shown as ✓ ("may be outdated"); a verified, current one is ✓
+ok 6 - an expired guideline is never shown as ✓ ("may be outdated"); a verified, current one is ✓
+  ---
+  duration_ms: 1.483272
+  type: 'test'
+  ...
+# Subtest: a nursing-only rule is not applied to another profession, and a US rule carries a jurisdiction warning for a non-US nurse
+ok 7 - a nursing-only rule is not applied to another profession, and a US rule carries a jurisdiction warning for a non-US nurse
+  ---
+  duration_ms: 87.178887
+  type: 'test'
+  ...
+# Subtest: a seed fact (source not verified) can patch but is never ✓; safety-critical needs an official verified fact
+ok 8 - a seed fact (source not verified) can patch but is never ✓; safety-critical needs an official verified fact
+  ---
+  duration_ms: 2.016373
+  type: 'test'
+  ...
+# Subtest: reference cards: not-covered items and 'source says X, reference says Y'
+ok 9 - reference cards: not-covered items and 'source says X, reference says Y'
+  ---
+  duration_ms: 0.807525
+  type: 'test'
+  ...
+# Subtest: B3: a mismatched ✅ set, wrong select-N, missing parts and bad polarity all drop the tier to LOW with a visible flag
+ok 10 - B3: a mismatched ✅ set, wrong select-N, missing parts and bad polarity all drop the tier to LOW with a visible flag
+  ---
+  duration_ms: 8.792286
+  type: 'test'
+  ...
+# Subtest: open-ended clinical cases are not forced into MCQ polarity or answer-shape checks
+ok 11 - open-ended clinical cases are not forced into MCQ polarity or answer-shape checks
+  ---
+  duration_ms: 3.308447
+  type: 'test'
+  ...
+# Subtest: B4: a wrong dose calculation and a wrong unit conversion are caught by recomputing in code; a right one passes
+ok 12 - B4: a wrong dose calculation and a wrong unit conversion are caught by recomputing in code; a right one passes
+  ---
+  duration_ms: 2.417065
+  type: 'test'
+  ...
+# Subtest: B5: a misread lab (low-probability digit in DATA) raises 'check this'; DATA is checked against the KB ranges
+ok 13 - B5: a misread lab (low-probability digit in DATA) raises 'check this'; DATA is checked against the KB ranges
+  ---
+  duration_ms: 2.356134
+  type: 'test'
+  ...
+# Subtest: B2: tiers from answer-token probability; uncalibrated profiles are capped at MEDIUM; no logprobs → capped at MEDIUM
+ok 14 - B2: tiers from answer-token probability; uncalibrated profiles are capped at MEDIUM; no logprobs → capped at MEDIUM
+  ---
+  duration_ms: 0.939133
+  type: 'test'
+  ...
+# Subtest: B2: HIGH is reachable only through a calibrated profile (thresholds from calibration)
+ok 15 - B2: HIGH is reachable only through a calibrated profile (thresholds from calibration)
+  ---
+  duration_ms: 0.999683
+  type: 'test'
+  ...
+# Subtest: B6: banner only for a concrete problem (LOW / a specific concern); per-option advice only for exams that penalise wrong picks
+ok 16 - B6: banner only for a concrete problem (LOW / a specific concern); per-option advice only for exams that penalise wrong picks
+  ---
+  duration_ms: 0.606673
+  type: 'test'
+  ...
+# Subtest: B8: the correct-answer section equals the brief; a mismatch is replaced and flagged; the warning bullet is added by code only for LOW
+ok 17 - B8: the correct-answer section equals the brief; a mismatch is replaced and flagged; the warning bullet is added by code only for LOW
+  ---
+  duration_ms: 0.704479
+  type: 'test'
+  ...
+# Subtest: audit fix \#1: an uncalibrated MEDIUM (cap only) shows no banner and adds no lesson bullet, and the tier is NOT upgraded
+ok 18 - audit fix \#1: an uncalibrated MEDIUM (cap only) shows no banner and adds no lesson bullet, and the tier is NOT upgraded
+  ---
+  duration_ms: 0.520723
+  type: 'test'
+  ...
+# Subtest: v3.45: only CONCRETE concerns warn (a failed check, an uncertain number, LOW); moderate probability / verbalised medium / missing CALC line stay internal; HIGH never warns
+ok 19 - v3.45: only CONCRETE concerns warn (a failed check, an uncertain number, LOW); moderate probability / verbalised medium / missing CALC line stay internal; HIGH never warns
+  ---
+  duration_ms: 3.72286
+  type: 'test'
+  ...
+# Subtest: B7: second opinion shuffles options, maps the answer back, scores by token probability, and disagreement stays unresolved
+ok 20 - B7: second opinion shuffles options, maps the answer back, scores by token probability, and disagreement stays unresolved
+  ---
+  duration_ms: 0.502405
+  type: 'test'
+  ...
+# Subtest: B9: evidence is off by default, ≤ 120 tokens when on, facts only
+ok 21 - B9: evidence is off by default, ≤ 120 tokens when on, facts only
+  ---
+  duration_ms: 0.473793
+  type: 'test'
+  ...
+# Subtest: F3: claims ride inside the proof request without making it bigger; verdicts without an allowlisted source never make a ✓
+ok 22 - F3: claims ride inside the proof request without making it bigger; verdicts without an allowlisted source never make a ✓
+  ---
+  duration_ms: 1.492104
+  type: 'test'
+  ...
+# Subtest: F3: a claim is verified at most once (cache), shorter lifetime for time-sensitive kinds
+ok 23 - F3: a claim is verified at most once (cache), shorter lifetime for time-sensitive kinds
+  ---
+  duration_ms: 0.242114
+  type: 'test'
+  ...
+# Subtest: F4: report error + KB gap list stored locally and exported as JSON, grouped by profile
+ok 24 - F4: report error + KB gap list stored locally and exported as JSON, grouped by profile
+  ---
+  duration_ms: 0.62523
+  type: 'test'
+  ...
+# Subtest: saved mistakes: an item whose key was not verified is never auto-saved
+ok 25 - saved mistakes: an item whose key was not verified is never auto-saved
+  ---
+  duration_ms: 3.092452
+  type: 'test'
+  ...
+# \# batch p95s: 17.1 / 5.7 / 8.2 ms · median 4.8 ms
+# \# deterministic layer p95 5.7 ms (2344 words) · KB lookup p95 0.03 ms
+# \# golden _synthetic: 2 items · NOT calibratable (<300)
+# Subtest: P1: a profile is set, or inferred from keywords in code; the fallback is general health sciences; shared prompts name no discipline
+ok 26 - P1: a profile is set, or inferred from keywords in code; the fallback is general health sciences; shared prompts name no discipline
+  ---
+  duration_ms: 9.886311
+  type: 'test'
+  ...
+# Subtest: build-kb rejects a fact whose quote is not verbatim, or whose license is unverified / NC / SA; accepts a good one
+ok 27 - build-kb rejects a fact whose quote is not verbatim, or whose license is unverified / NC / SA; accepts a good one
+  ---
+  duration_ms: 0.868136
+  type: 'test'
+  ...
+# Subtest: calibration: <300 rows or no precise HIGH tier stays uncalibrated; a clean set yields thresholds and an honest error rate
+ok 28 - calibration: <300 rows or no precise HIGH tier stays uncalibrated; a clean set yields thresholds and an honest error rate
+  ---
+  duration_ms: 0.953685
+  type: 'test'
+  ...
+# Subtest: speed: the deterministic layer p95 < 20 ms on a ~2000-word lesson; KB lookup p95 < 10 ms
+ok 29 - speed: the deterministic layer p95 < 20 ms on a ~2000-word lesson; KB lookup p95 < 10 ms
+  ---
+  duration_ms: 695.285879
+  type: 'test'
+  ...
+# Subtest: the KB is lazy: no module is imported by the startup path
+ok 30 - the KB is lazy: no module is imported by the startup path
+  ---
+  duration_ms: 0.607384
+  type: 'test'
+  ...
+# Subtest: golden question files follow the schema; calibrated profiles are listed honestly
+ok 31 - golden question files follow the schema; calibrated profiles are listed honestly
+  ---
+  duration_ms: 0.603929
+  type: 'test'
+  ...
+# Subtest: health answers receive one grounded search request and expose returned source metadata
+ok 32 - health answers receive one grounded search request and expose returned source metadata
+  ---
+  duration_ms: 110.957005
+  type: 'test'
+  ...
+# Subtest: recordings are recognised by type or extension; the MIME type sent is one Google lists
+ok 33 - recordings are recognised by type or extension; the MIME type sent is one Google lists
+  ---
+  duration_ms: 2.809947
+  type: 'test'
+  ...
+# Subtest: ONE request: the recording untouched + a one-line instruction, no thinking, no racing second model, strong model first
+ok 34 - ONE request: the recording untouched + a one-line instruction, no thinking, no racing second model, strong model first
+  ---
+  duration_ms: 25.466348
+  type: 'test'
+  ...
+# Subtest: a big recording goes up ONCE straight from the File (no base64 copy) and the request carries only a link
+ok 35 - a big recording goes up ONCE straight from the File (no base64 copy) and the request carries only a link
+  ---
+  duration_ms: 7.83089
+  type: 'test'
+  ...
+# Subtest: the upload fails: a small file still goes inline, a big one stops with a message (and sends nothing)
+ok 36 - the upload fails: a small file still goes inline, a big one stops with a message (and sends nothing)
+  ---
+  duration_ms: 114.952826
+  type: 'test'
+  ...
+# Subtest: silence-length timeouts grow with the recording (Google hears it first, then writes), and stay bounded
+ok 37 - silence-length timeouts grow with the recording (Google hears it first, then writes), and stay bounded
+  ---
+  duration_ms: 214.145906
+  type: 'test'
+  ...
+# Subtest: the same recording added again costs NOTHING: the transcript comes from the cache
+ok 38 - the same recording added again costs NOTHING: the transcript comes from the cache
+  ---
+  duration_ms: 1.840859
+  type: 'test'
+  ...
+# Subtest: Google refuses the format → converted in the browser and sent once more (and only then)
+ok 39 - Google refuses the format → converted in the browser and sent once more (and only then)
+  ---
+  duration_ms: 1.415059
+  type: 'test'
+  ...
+# Subtest: a format Google does not list (webm / amr) is converted at once: one request, no wasted refusal
+ok 40 - a format Google does not list (webm / amr) is converted at once: one request, no wasted refusal
+  ---
+  duration_ms: 0.793083
+  type: 'test'
+  ...
+# Subtest: a bad key or a busy Google is NOT mistaken for a format problem (no conversion, no second request)
+ok 41 - a bad key or a busy Google is NOT mistaken for a format problem (no conversion, no second request)
+  ---
+  duration_ms: 1.798175
+  type: 'test'
+  ...
+# Subtest: Google cannot use the uploaded link (another key, expired): repeated once, inline when the file is small
+ok 42 - Google cannot use the uploaded link (another key, expired): repeated once, inline when the file is small
+  ---
+  duration_ms: 6.106425
+  type: 'test'
+  ...
+# Subtest: no speech (silence, music, a heartbeat) is an honest error: nothing is cached and no empty lesson is made
+ok 43 - no speech (silence, music, a heartbeat) is an honest error: nothing is cached and no empty lesson is made
+  ---
+  duration_ms: 2.356715
+  type: 'test'
+  ...
+# Subtest: no key / too big / empty file: a clear message and NOT ONE request
+ok 44 - no key / too big / empty file: a clear message and NOT ONE request
+  ---
+  duration_ms: 0.419972
+  type: 'test'
+  ...
+# Subtest: the student stopping the work (abort) is passed through, never turned into a conversion or a retry
+ok 45 - the student stopping the work (abort) is passed through, never turned into a conversion or a retry
+  ---
+  duration_ms: 0.94388
+  type: 'test'
+  ...
+# Subtest: cleanTranscript: strips fences / labels, keeps Arabic, and breaks a model loop (the same sentence again and again)
+ok 46 - cleanTranscript: strips fences / labels, keeps Arabic, and breaks a model loop (the same sentence again and again)
+  ---
+  duration_ms: 0.520493
+  type: 'test'
+  ...
+# Subtest: fingerprint: same bytes → same id whatever the name; different bytes or size → different
+ok 47 - fingerprint: same bytes → same id whatever the name; different bytes or size → different
+  ---
+  duration_ms: 2.654944
+  type: 'test'
+  ...
+# Subtest: browser conversion helpers: a valid 16 kHz mono 16-bit WAV, resampling keeps the length ratio
+ok 48 - browser conversion helpers: a valid 16 kHz mono 16-bit WAV, resampling keeps the length ratio
+  ---
+  duration_ms: 2.054811
+  type: 'test'
+  ...
+# Subtest: through the real engine: a slow first word makes a normal request race a second model, an audio request does NOT (control experiment)
+ok 49 - through the real engine: a slow first word makes a normal request race a second model, an audio request does NOT (control experiment)
+  ---
+  duration_ms: 1832.814296
+  type: 'test'
+  ...
+# Subtest: adding a recording: ONE request carries the audio, the item is plain text, and a whole lesson analysis afterwards never sends the audio
+ok 50 - adding a recording: ONE request carries the audio, the item is plain text, and a whole lesson analysis afterwards never sends the audio
+  ---
+  duration_ms: 64.030385
+  type: 'test'
+  ...
+# Subtest: a recording that cannot be read does not block the other files: the error names the file
+ok 51 - a recording that cannot be read does not block the other files: the error names the file
+  ---
+  duration_ms: 4.361451
+  type: 'test'
+  ...
+# Subtest: screens: the editor and the chat pass the key and show progress; analysing / sending waits for the transcript
+ok 52 - screens: the editor and the chat pass the key and show progress; analysing / sending waits for the transcript
+  ---
+  duration_ms: 0.791941
+  type: 'test'
+  ...
+# Subtest: Ogg Opus writer: valid pages (CRC), header + tags first, last page flagged and trimmed
+ok 53 - Ogg Opus writer: valid pages (CRC), header + tags first, last page flagged and trimmed
+  ---
+  duration_ms: 2.111566
+  type: 'test'
+  ...
+# Subtest: opus packet length comes from the TOC byte (frame size and frame count)
+ok 54 - opus packet length comes from the TOC byte (frame size and frame count)
+  ---
+  duration_ms: 0.115483
+  type: 'test'
+  ...
+# Subtest: mp3 is cut on frame boundaries only, skipping the ID3 tag; nothing is lost or repeated
+ok 55 - mp3 is cut on frame boundaries only, skipping the ID3 tag; nothing is lost or repeated
+  ---
+  duration_ms: 2.373891
+  type: 'test'
+  ...
+# Subtest: wav is cut into pieces that each carry a valid header
+ok 56 - wav is cut into pieces that each carry a valid header
+  ---
+  duration_ms: 0.33904
+  type: 'test'
+  ...
+# Subtest: m4a: ADTS header carries the right profile / rate / channels / length
+ok 57 - m4a: ADTS header carries the right profile / rate / channels / length
+  ---
+  duration_ms: 0.137457
+  type: 'test'
+  ...
+# Subtest: packAudio: pieces are decoded one by one, fed as 16 kHz mono, and the result is a smaller Ogg
+ok 58 - packAudio: pieces are decoded one by one, fed as 16 kHz mono, and the result is a smaller Ogg
+  ---
+  duration_ms: 69.744331
+  type: 'test'
+  ...
+# Subtest: packAudio returns null (= send the original) for: small file, no WebCodecs, unsupported config, decode failure, already-compact result, odd format
+ok 59 - packAudio returns null (= send the original) for: small file, no WebCodecs, unsupported config, decode failure, already-compact result, odd format
+  ---
+  duration_ms: 673.299586
+  type: 'test'
+  ...
+# Subtest: packAudio: the student's cancel is the only thing that throws
+ok 60 - packAudio: the student's cancel is the only thing that throws
+  ---
+  duration_ms: 31.317208
+  type: 'test'
+  ...
+# Subtest: the PACKED file is what gets uploaded, with progress and a patient wait for Google to process it
+ok 61 - the PACKED file is what gets uploaded, with progress and a patient wait for Google to process it
+  ---
+  duration_ms: 65.826188
+  type: 'test'
+  ...
+# Subtest: no packing available → the original goes exactly as before
+ok 62 - no packing available → the original goes exactly as before
+  ---
+  duration_ms: 40.4196
+  type: 'test'
+  ...
+# Subtest: Google refuses the packed format → the original is sent; a quota error is NOT mistaken for a format error
+ok 63 - Google refuses the packed format → the original is sent; a quota error is NOT mistaken for a format error
+  ---
+  duration_ms: 97.8838
+  type: 'test'
+  ...
+# \# prompt tokens: solve 1022→1019 · lessonA 1897→1756 · lessonB 2258→2203 · lessonB_main 2080→2026 · lessonB_traps 2002→1978 · lessonX 2545→2466 · studyA 2466→2457 · studyB 2599→2563 · studyLesson 2867→2831 · studyHead 2497→2487 · studySlice 2629→2620 · studyTail 2576→2540 · ocr 506→413 · words 1790→1776
+# Subtest: prompt tokens per task ≤ v3.42 (with the heaviest profile line included)
+ok 64 - prompt tokens per task ≤ v3.42 (with the heaviest profile line included)
+  ---
+  duration_ms: 2.483916
+  type: 'test'
+  ...
+# Subtest: a generic profile is no bigger than the NCLEX one (the profile line is the only variable part)
+ok 65 - a generic profile is no bigger than the NCLEX one (the profile line is the only variable part)
+  ---
+  duration_ms: 0.107462
+  type: 'test'
+  ...
+# Subtest: output caps, thinking budgets and the number of modes are unchanged
+ok 66 - output caps, thinking budgets and the number of modes are unchanged
+  ---
+  duration_ms: 0.621064
+  type: 'test'
+  ...
+# Subtest: the solve brief is cheaper: RATIONALE is gone and CALC/DATA/ANSWER-first are in
+ok 67 - the solve brief is cheaper: RATIONALE is gone and CALC/DATA/ANSWER-first are in
+  ---
+  duration_ms: 0.218609
+  type: 'test'
+  ...
+# Subtest: proof request: claims never make it bigger; with no room they are simply not asked
+ok 68 - proof request: claims never make it bigger; with no room they are simply not asked
+  ---
+  duration_ms: 0.316406
+  type: 'test'
+  ...
+# Subtest: requests: logprobs only on the solve task (no new request), an unknown model is probed once on any key, a refusing model is remembered
+ok 69 - requests: logprobs only on the solve task (no new request), an unknown model is probed once on any key, a refusing model is remembered
+  ---
+  duration_ms: 0.200561
+  type: 'test'
+  ...
+# Subtest: B9 evidence ≤ ~120 tokens and off unless switched on
+ok 70 - B9 evidence ≤ ~120 tokens and off unless switched on
+  ---
+  duration_ms: 77.38841
+  type: 'test'
+  ...
+# Subtest: latency: the accuracy layer adds no awaited call to the first-render path (static check of analysis.js)
+ok 71 - latency: the accuracy layer adds no awaited call to the first-render path (static check of analysis.js)
+  ---
+  duration_ms: 0.891471
+  type: 'test'
+  ...
+# Subtest: isBigAsk: only genuinely big requests
+ok 72 - isBigAsk: only genuinely big requests
+  ---
+  duration_ms: 2.29331
+  type: 'test'
+  ...
+# Subtest: cleanOutline: 2–4 sections, rejects junk and single sections
+ok 73 - cleanOutline: 2–4 sections, rejects junk and single sections
+  ---
+  duration_ms: 0.914235
+  type: 'test'
+  ...
+# Subtest: compose: a section is shown the moment it has words; unfinished ones keep their place (heading + placeholder)
+ok 74 - compose: a section is shown the moment it has words; unfinished ones keep their place (heading + placeholder)
+  ---
+  duration_ms: 0.171318
+  type: 'test'
+  ...
+# Subtest: runSliced: sections are written AT THE SAME TIME (wall clock ≈ the longest one, not the sum)
+ok 75 - runSliced: sections are written AT THE SAME TIME (wall clock ≈ the longest one, not the sum)
+  ---
+  duration_ms: 312.589292
+  type: 'test'
+  ...
+# Subtest: runSliced: a finished section is shown at once even while an earlier one is still being written
+ok 76 - runSliced: a finished section is shown at once even while an earlier one is still being written
+  ---
+  duration_ms: 402.368865
+  type: 'test'
+  ...
+# Subtest: runSliced: a bad plan falls back to the normal single answer; one failed section keeps the others and says which
+ok 77 - runSliced: a bad plan falls back to the normal single answer; one failed section keeps the others and says which
+  ---
+  duration_ms: 1.462209
+  type: 'test'
+  ...
+# Subtest: file cache: an upload is remembered and not repeated (chat turns, restarts)
+ok 78 - file cache: an upload is remembered and not repeated (chat turns, restarts)
+  ---
+  duration_ms: 2.170265
+  type: 'test'
+  ...
+# Subtest: askChat end-to-end: a short question = ONE request with low thinking; a big one = plan + parallel sections
+ok 79 - askChat end-to-end: a short question = ONE request with low thinking; a big one = plan + parallel sections
+  ---
+  duration_ms: 89.846779
+  type: 'test'
+  ...
+# Subtest: reply level: the level decides the model family, the thinking depth and the hedging
+ok 80 - reply level: the level decides the model family, the thinking depth and the hedging
+  ---
+  duration_ms: 15.357381
+  type: 'test'
+  ...
+# Subtest: 'summarise what I studied' is a BIG ask, split by the student's own topics, with NO planning request
+ok 81 - 'summarise what I studied' is a BIG ask, split by the student's own topics, with NO planning request
+  ---
+  duration_ms: 15.136479
+  type: 'test'
+  ...
+# Subtest: stripPending: a stopped answer keeps what was written and loses the held places
+ok 82 - stripPending: a stopped answer keeps what was written and loses the held places
+  ---
+  duration_ms: 1.876303
+  type: 'test'
+  ...
+# Subtest: search first: every tutor answer asks Google Search, and the pages it used come back as tidy sources
+ok 83 - search first: every tutor answer asks Google Search, and the pages it used come back as tidy sources
+  ---
+  duration_ms: 19.432903
+  type: 'test'
+  ...
+# Subtest: search first: a big answer plans WITHOUT search, writes WITH search, and merges the sources of all writers
+ok 84 - search first: a big answer plans WITHOUT search, writes WITH search, and merges the sources of all writers
+  ---
+  duration_ms: 14.005177
+  type: 'test'
+  ...
+# Subtest: speed: a library summary never searches the web; an ordinary question does and gets an earlier hedge than a plain solve
+ok 85 - speed: a library summary never searches the web; an ordinary question does and gets an earlier hedge than a plain solve
+  ---
+  duration_ms: 19.842798
+  type: 'test'
+  ...
+# Subtest: search 429 (v3.34): a chat question whose search request is turned away is answered by the SAME model without the search tool, not failed on every model
+ok 86 - search 429 (v3.34): a chat question whose search request is turned away is answered by the SAME model without the search tool, not failed on every model
+  ---
+  duration_ms: 26.873614
+  type: 'test'
+  ...
+# Subtest: easy questions (v3.35): isEasyAsk is strict; an easy chat question goes to the weakest model with no thinking, everything else is untouched
+ok 87 - easy questions (v3.35): isEasyAsk is strict; an easy chat question goes to the weakest model with no thinking, everything else is untouched
+  ---
+  duration_ms: 4.178846
+  type: 'test'
+  ...
+# Subtest: GROUNDING · sentences are anchored to a source sentence with page / block / source type, across typed text, a PDF text layer and an OCR transcript
+ok 88 - GROUNDING · sentences are anchored to a source sentence with page / block / source type, across typed text, a PDF text layer and an OCR transcript
+  ---
+  duration_ms: 41.951054
+  type: 'test'
+  ...
+# Subtest: GROUNDING GUARDS · a number, a negation or an acronym that differs is never «grounded»
+ok 89 - GROUNDING GUARDS · a number, a negation or an acronym that differs is never «grounded»
+  ---
+  duration_ms: 0.446271
+  type: 'test'
+  ...
+# Subtest: MODEL-WRITTEN TEXT IS NEVER A SOURCE · a partial extraction (map, solve brief) cannot ground a claim; a complete OCR transcript can
+ok 90 - MODEL-WRITTEN TEXT IS NEVER A SOURCE · a partial extraction (map, solve brief) cannot ground a claim; a complete OCR transcript can
+  ---
+  duration_ms: 0.467092
+  type: 'test'
+  ...
+# Subtest: LESSON LABELS · from typed text, a PDF layer and an OCR transcript: 📄 grounded (with location), ⚠ conflict with the source, ⚠ source-vs-reference, ؟ for the hallucination
+ok 91 - LESSON LABELS · from typed text, a PDF layer and an OCR transcript: 📄 grounded (with location), ⚠ conflict with the source, ⚠ source-vs-reference, ؟ for the hallucination
+  ---
+  duration_ms: 4.527882
+  type: 'test'
+  ...
+# Subtest: STRICT MODE · scanned PDF / unread image / hallucinated lesson: nothing is promoted to 📄, ever
+ok 92 - STRICT MODE · scanned PDF / unread image / hallucinated lesson: nothing is promoted to 📄, ever
+  ---
+  duration_ms: 1.137531
+  type: 'test'
+  ...
+# Subtest: EXAM TAGS · the same item gets 📄 grounded from typed text, an OCR transcript and a PDF layer — with page for the PDF — and ؟ ungrounded without a source
+ok 93 - EXAM TAGS · the same item gets 📄 grounded from typed text, an OCR transcript and a PDF layer — with page for the PDF — and ؟ ungrounded without a source
+  ---
+  duration_ms: 10.785904
+  type: 'test'
+  ...
+# Subtest: EXAM TAGS · hallucinated keys, notes contradicted by the item, and a wrong source
+ok 94 - EXAM TAGS · hallucinated keys, notes contradicted by the item, and a wrong source
+  ---
+  duration_ms: 3.348767
+  type: 'test'
+  ...
+# Subtest: EXAM TAGS · a KB reference alone → 🔎 reference; both agree → 📄 (the student's source outranks a pending reference); saved lessons only → 🔎
+ok 95 - EXAM TAGS · a KB reference alone → 🔎 reference; both agree → 📄 (the student's source outranks a pending reference); saved lessons only → 🔎
+  ---
+  duration_ms: 3.553286
+  type: 'test'
+  ...
+# Subtest: EXAM TAGS · KB contradictions (conflict), defects and unresolved safety-critical statements (ungrounded); grounded safety statements are allowed but not memorizable
+ok 96 - EXAM TAGS · KB contradictions (conflict), defects and unresolved safety-critical statements (ungrounded); grounded safety statements are allowed but not memorizable
+  ---
+  duration_ms: 3.058861
+  type: 'test'
+  ...
+# Subtest: NEGATIVE STEMS · «which is NOT …»: the key is the false statement, so KB support for the key is a conflict
+ok 97 - NEGATIVE STEMS · «which is NOT …»: the key is the false statement, so KB support for the key is a conflict
+  ---
+  duration_ms: 1.975551
+  type: 'test'
+  ...
+# Subtest: ACT, THEN REVIEW · verified / grounded / reference save smoothly with their badge; only a concrete conflict / defect is held back with «save anyway»; memorize rule
+ok 98 - ACT, THEN REVIEW · verified / grounded / reference save smoothly with their badge; only a concrete conflict / defect is held back with «save anyway»; memorize rule
+  ---
+  duration_ms: 4.292287
+  type: 'test'
+  ...
+# \# makeExam from a PDF: {"verified":0,"grounded":2,"reference":0,"conflict":1,"ungrounded":1}
+# Subtest: END TO END · makeExam with an attached REAL PDF: items from its text layer come back 📄 grounded with the page; the hallucinated one is ؟; no extra request; nothing waits for the source model
+ok 99 - END TO END · makeExam with an attached REAL PDF: items from its text layer come back 📄 grounded with the page; the hallucinated one is ؟; no extra request; nothing waits for the source model
+  ---
+  duration_ms: 46.051422
+  type: 'test'
+  ...
+# \# tag one exam item against a 40-page source: median 0.28 ms, worst 2.77 ms
+# Subtest: END TO END · a SCANNED PDF attached: nothing can be grounded, every item is ungrounded or reference-only
+ok 100 - END TO END · a SCANNED PDF attached: nothing can be grounded, every item is ungrounded or reference-only
+  ---
+  duration_ms: 20.391835
+  type: 'test'
+  ...
+# Subtest: SPEED · grounding + tagging ten exam items against a 40-page PDF-sized source
+ok 101 - SPEED · grounding + tagging ten exam items against a 40-page PDF-sized source
+  ---
+  duration_ms: 60.348272
+  type: 'test'
+  ...
+# Subtest: claims go into the existing proof request; verdicts come back; the request count is unchanged
+ok 102 - claims go into the existing proof request; verdicts come back; the request count is unchanged
+  ---
+  duration_ms: 45.945352
+  type: 'test'
+  ...
+# Subtest: the proof request with claims is not bigger than without them
+ok 103 - the proof request with claims is not bigger than without them
+  ---
+  duration_ms: 12.92411
+  type: 'test'
+  ...
+# Subtest: a small key: no proofreading at all, so no claims and no request
+ok 104 - a small key: no proofreading at all, so no claims and no request
+  ---
+  duration_ms: 3.794097
+  type: 'test'
+  ...
+# Subtest: structured numeric data is parsed with exact units
+ok 105 - structured numeric data is parsed with exact units
+  ---
+  duration_ms: 1.896233
+  type: 'test'
+  ...
+# Subtest: OCR extractor independently reads labelled lab/vital values when units are explicit
+ok 106 - OCR extractor independently reads labelled lab/vital values when units are explicit
+  ---
+  duration_ms: 4.225236
+  type: 'test'
+  ...
+# Subtest: Fick CO and SVR are independently recomputed with explicit unit conversion
+ok 107 - Fick CO and SVR are independently recomputed with explicit unit conversion
+  ---
+  duration_ms: 3.068906
+  type: 'test'
+  ...
+# Subtest: reported SVR that differs from deterministic calculation becomes a hard conflict
+ok 108 - reported SVR that differs from deterministic calculation becomes a hard conflict
+  ---
+  duration_ms: 1.015628
+  type: 'test'
+  ...
+# Subtest: MAP approximation that omits the doubled diastolic pressure is rejected
+ok 109 - MAP approximation that omits the doubled diastolic pressure is rejected
+  ---
+  duration_ms: 0.741775
+  type: 'test'
+  ...
+# Subtest: osmolality uses 2 times sodium, not sodium once
+ok 110 - osmolality uses 2 times sodium, not sodium once
+  ---
+  duration_ms: 0.714835
+  type: 'test'
+  ...
+# Subtest: a displayed osmolality formula missing the sodium coefficient is rejected
+ok 111 - a displayed osmolality formula missing the sodium coefficient is rejected
+  ---
+  duration_ms: 0.772072
+  type: 'test'
+  ...
+# Subtest: urea and BUN mg/dL use different conversion divisors
+ok 112 - urea and BUN mg/dL use different conversion divisors
+  ---
+  duration_ms: 0.579882
+  type: 'test'
+  ...
+# Subtest: ethanol prevents an unadjusted residual osmolal gap unless its validated divisor is explicit
+ok 113 - ethanol prevents an unadjusted residual osmolal gap unless its validated divisor is explicit
+  ---
+  duration_ms: 1.026274
+  type: 'test'
+  ...
+# Subtest: anion gap correction and Winter assessment are conditional on actual values
+ok 114 - anion gap correction and Winter assessment are conditional on actual values
+  ---
+  duration_ms: 0.874195
+  type: 'test'
+  ...
+# Subtest: triple acid-base diagnosis is rejected when required patient measurements are absent
+ok 115 - triple acid-base diagnosis is rejected when required patient measurements are absent
+  ---
+  duration_ms: 0.276096
+  type: 'test'
+  ...
+# Subtest: CVVH model keeps fu and sieving coefficient separate; it never silently substitutes SC=fu
+ok 116 - CVVH model keeps fu and sieving coefficient separate; it never silently substitutes SC=fu
+  ---
+  duration_ms: 2.088662
+  type: 'test'
+  ...
+# Subtest: SC=fu counterfactual cannot change R0 solely because albumin normalises
+ok 117 - SC=fu counterfactual cannot change R0 solely because albumin normalises
+  ---
+  duration_ms: 0.938131
+  type: 'test'
+  ...
+# Subtest: fu cancellation is rejected as overgeneralized when SC is independent
+ok 118 - fu cancellation is rejected as overgeneralized when SC is independent
+  ---
+  duration_ms: 0.45906
+  type: 'test'
+  ...
+# Subtest: no infusion rate is accepted without complete drug-specific PK/CRRT values
+ok 119 - no infusion rate is accepted without complete drug-specific PK/CRRT values
+  ---
+  duration_ms: 0.197968
+  type: 'test'
+  ...
+# Subtest: assay-specific D-lactate language is required
+ok 120 - assay-specific D-lactate language is required
+  ---
+  duration_ms: 0.205349
+  type: 'test'
+  ...
+# Subtest: persistent bleeding after Pringle is a suspicion, not proof
+ok 121 - persistent bleeding after Pringle is a suspicion, not proof
+  ---
+  duration_ms: 0.313692
+  type: 'test'
+  ...
+# Subtest: independent OCR, solver, and lesson data extractions must not disagree
+ok 122 - independent OCR, solver, and lesson data extractions must not disagree
+  ---
+  duration_ms: 0.328725
+  type: 'test'
+  ...
+# Subtest: private clinical data blocks are extracted and never exposed, including partial streams
+ok 123 - private clinical data blocks are extracted and never exposed, including partial streams
+  ---
+  duration_ms: 0.479101
+  type: 'test'
+  ...
+# Subtest: option correctness marks are masked when an independent calculation conflicts
+ok 124 - option correctness marks are masked when an independent calculation conflicts
+  ---
+  duration_ms: 0.29892
+  type: 'test'
+  ...
+# Subtest: solver assessment catches a numerical option that conflicts with independently computed SVR
+ok 125 - solver assessment catches a numerical option that conflicts with independently computed SVR
+  ---
+  duration_ms: 5.504349
+  type: 'test'
+  ...
+# Subtest: lesson reconciliation blocks a selected answer even when no solve answer is available
+ok 126 - lesson reconciliation blocks a selected answer even when no solve answer is available
+  ---
+  duration_ms: 0.430838
+  type: 'test'
+  ...
+# Subtest: consistent values are merged across independent extractors when one source omits a labelled input
+ok 127 - consistent values are merged across independent extractors when one source omits a labelled input
+  ---
+  duration_ms: 0.287683
+  type: 'test'
+  ...
+# Subtest: disagreements between two secondary extractors are detected even when the primary omitted that field
+ok 128 - disagreements between two secondary extractors are detected even when the primary omitted that field
+  ---
+  duration_ms: 0.270818
+  type: 'test'
+  ...
+# Subtest: full Fick oxygen contents are calculated only from supplied Hb, saturations and PO2 values
+ok 129 - full Fick oxygen contents are calculated only from supplied Hb, saturations and PO2 values
+  ---
+  duration_ms: 0.990359
+  type: 'test'
+  ...
+# Subtest: point-of-care lactate statements that imply an L-only assay universally are flagged even without all/every wording
+ok 130 - point-of-care lactate statements that imply an L-only assay universally are flagged even without all/every wording
+  ---
+  duration_ms: 0.144607
+  type: 'test'
+  ...
+# Subtest: measured osmolarity is not silently treated as measured osmolality
+ok 131 - measured osmolarity is not silently treated as measured osmolality
+  ---
+  duration_ms: 0.243517
+  type: 'test'
+  ...
+# Subtest: SC=fu cannot be smuggled into the solver DATA line without independent OCR confirmation
+ok 132 - SC=fu cannot be smuggled into the solver DATA line without independent OCR confirmation
+  ---
+  duration_ms: 0.313943
+  type: 'test'
+  ...
+# Subtest: the OCR source parser captures explicit PK constants and SC=fu relation for independent confirmation
+ok 133 - the OCR source parser captures explicit PK constants and SC=fu relation for independent confirmation
+  ---
+  duration_ms: 1.986778
+  type: 'test'
+  ...
+# Subtest: a model-invented ethanol divisor is rejected even when a numeric divisor is present in DATA
+ok 134 - a model-invented ethanol divisor is rejected even when a numeric divisor is present in DATA
+  ---
+  duration_ms: 0.273592
+  type: 'test'
+  ...
+# Subtest: numeric answer audit ignores intentionally incorrect distractors and checks the selected answer
+ok 135 - numeric answer audit ignores intentionally incorrect distractors and checks the selected answer
+  ---
+  duration_ms: 0.17913
+  type: 'test'
+  ...
+# Subtest: option review text is excluded from claim audit while the correct answer section is retained
+ok 136 - option review text is excluded from claim audit while the correct answer section is retained
+  ---
+  duration_ms: 0.234263
+  type: 'test'
+  ...
+# Subtest: a hard calculation conflict triggers the audit even when no domain result can be computed
+ok 137 - a hard calculation conflict triggers the audit even when no domain result can be computed
+  ---
+  duration_ms: 0.238398
+  type: 'test'
+  ...
+# Subtest: CVVH fu cancellation guard catches a hypothetical R0 change phrased as 'would become'
+ok 138 - CVVH fu cancellation guard catches a hypothetical R0 change phrased as 'would become'
+  ---
+  duration_ms: 0.795477
+  type: 'test'
+  ...
+# Subtest: production mode requires OCR corroboration for every critical calculation input
+ok 139 - production mode requires OCR corroboration for every critical calculation input
+  ---
+  duration_ms: 0.493222
+  type: 'test'
+  ...
+# Subtest: OCR corroboration must include every input, not only some values in a calculation
+ok 140 - OCR corroboration must include every input, not only some values in a calculation
+  ---
+  duration_ms: 0.227763
+  type: 'test'
+  ...
+# Subtest: OCR value labels accept natural-language 'is' phrasing without losing units
+ok 141 - OCR value labels accept natural-language 'is' phrasing without losing units
+  ---
+  duration_ms: 0.23219
+  type: 'test'
+  ...
+# Subtest: the supplied critical-care failure pattern is caught across formulas, unsupported numbers and overclaims
+ok 142 - the supplied critical-care failure pattern is caught across formulas, unsupported numbers and overclaims
+  ---
+  duration_ms: 0.626482
+  type: 'test'
+  ...
+# Subtest: Arabic triple acid-base wording activates the complete mixed-disorder guard
+ok 143 - Arabic triple acid-base wording activates the complete mixed-disorder guard
+  ---
+  duration_ms: 0.876979
+  type: 'test'
+  ...
+# Subtest: a triple acid-base claim is supported only when delta gap and Winter independently support both added disorders
+ok 144 - a triple acid-base claim is supported only when delta gap and Winter independently support both added disorders
+  ---
+  duration_ms: 0.867444
+  type: 'test'
+  ...
+# Subtest: ECMO arterial-site and blood-sample qualifiers prevent false numeric-conflict alarms
+ok 145 - ECMO arterial-site and blood-sample qualifiers prevent false numeric-conflict alarms
+  ---
+  duration_ms: 1.292243
+  type: 'test'
+  ...
+# Subtest: same-site repeated readings remain a real conflict after site scoping
+ok 146 - same-site repeated readings remain a real conflict after site scoping
+  ---
+  duration_ms: 0.201583
+  type: 'test'
+  ...
+# Subtest: health-domain routing covers broad clinical and public-health domains
+ok 147 - health-domain routing covers broad clinical and public-health domains
+  ---
+  duration_ms: 4.605697
+  type: 'test'
+  ...
+# Subtest: health intent classification separates urgent care, medication and calculation tasks
+ok 148 - health intent classification separates urgent care, medication and calculation tasks
+  ---
+  duration_ms: 1.785366
+  type: 'test'
+  ...
+# Subtest: the universal protocol explicitly requires disconfirmation and calibrated uncertainty
+ok 149 - the universal protocol explicitly requires disconfirmation and calibrated uncertainty
+  ---
+  duration_ms: 0.393792
+  type: 'test'
+  ...
+# Subtest: absolute clinical certainty triggers a general advisory, not an automatic block
+ok 150 - absolute clinical certainty triggers a general advisory, not an automatic block
+  ---
+  duration_ms: 2.209072
+  type: 'test'
+  ...
+# Subtest: current guideline claims without source links trigger a source-review advisory
+ok 151 - current guideline claims without source links trigger a source-review advisory
+  ---
+  duration_ms: 1.5487
+  type: 'test'
+  ...
+# Subtest: dose and procedure recommendations trigger patient-context and safety checks
+ok 152 - dose and procedure recommendations trigger patient-context and safety checks
+  ---
+  duration_ms: 1.336931
+  type: 'test'
+  ...
+# Subtest: a cited link is not treated as proof that all claims are supported
+ok 153 - a cited link is not treated as proof that all claims are supported
+  ---
+  duration_ms: 0.14622
+  type: 'test'
+  ...
+# Subtest: source formatter includes grounding URLs and states the limitation of search hits
+ok 154 - source formatter includes grounding URLs and states the limitation of search hits
+  ---
+  duration_ms: 0.288273
+  type: 'test'
+  ...
+# Subtest: plain educational content outside healthcare does not trigger the clinical checker
+ok 155 - plain educational content outside healthcare does not trigger the clinical checker
+  ---
+  duration_ms: 0.216786
+  type: 'test'
+  ...
+# Subtest: duplicate numeric labels within one source are preserved and block calculations
+ok 156 - duplicate numeric labels within one source are preserved and block calculations
+  ---
+  duration_ms: 4.089832
+  type: 'test'
+  ...
+# Subtest: labelled extractor keeps current and baseline lab readings rather than taking the first silently
+ok 157 - labelled extractor keeps current and baseline lab readings rather than taking the first silently
+  ---
+  duration_ms: 5.05268
+  type: 'test'
+  ...
+# Subtest: combined blood-pressure table cells and electrolytes feed independent MAP and anion-gap calculations
+ok 158 - combined blood-pressure table cells and electrolytes feed independent MAP and anion-gap calculations
+  ---
+  duration_ms: 3.193554
+  type: 'test'
+  ...
+# Subtest: Markdown lab tables and baseline section headings preserve current-vs-historical identity
+ok 159 - Markdown lab tables and baseline section headings preserve current-vs-historical identity
+  ---
+  duration_ms: 0.421403
+  type: 'test'
+  ...
+# Subtest: Arabic numerals are parsed deterministically
+ok 160 - Arabic numerals are parsed deterministically
+  ---
+  duration_ms: 0.250888
+  type: 'test'
+  ...
+# Subtest: the patient example yields a partial HScore subtotal, never a fabricated complete score
+ok 161 - the patient example yields a partial HScore subtotal, never a fabricated complete score
+  ---
+  duration_ms: 13.600508
+  type: 'test'
+  ...
+# Subtest: a partial HScore cannot be advertised as a full score or a confirmed HLH diagnosis
+ok 162 - a partial HScore cannot be advertised as a full score or a confirmed HLH diagnosis
+  ---
+  duration_ms: 4.52659
+  type: 'test'
+  ...
+# Subtest: β-D-glucan is not accepted as a disease-specific confirmation
+ok 163 - β-D-glucan is not accepted as a disease-specific confirmation
+  ---
+  duration_ms: 0.314263
+  type: 'test'
+  ...
+# Subtest: negative serum galactomannan does not rule out invasive aspergillosis in SOT
+ok 164 - negative serum galactomannan does not rule out invasive aspergillosis in SOT
+  ---
+  duration_ms: 0.371249
+  type: 'test'
+  ...
+# Subtest: voriconazole with tacrolimus needs both a dose action and level monitoring
+ok 165 - voriconazole with tacrolimus needs both a dose action and level monitoring
+  ---
+  duration_ms: 0.873675
+  type: 'test'
+  ...
+# Subtest: stress-dose hydrocortisone is not treated as routine without a documented indication
+ok 166 - stress-dose hydrocortisone is not treated as routine without a documented indication
+  ---
+  duration_ms: 0.368925
+  type: 'test'
+  ...
+# Subtest: stress-dose hydrocortisone is not falsely blocked when septic shock is explicitly documented
+ok 167 - stress-dose hydrocortisone is not falsely blocked when septic shock is explicitly documented
+  ---
+  duration_ms: 0.371669
+  type: 'test'
+  ...
+# Subtest: clinical-context detection is a routing hint, not a correctness verdict
+ok 168 - clinical-context detection is a routing hint, not a correctness verdict
+  ---
+  duration_ms: 2.691298
+  type: 'test'
+  ...
+# Subtest: HScore does not score absent organomegaly or negative marrow as positive
+ok 169 - HScore does not score absent organomegaly or negative marrow as positive
+  ---
+  duration_ms: 0.496918
+  type: 'test'
+  ...
+# Subtest: HScore refuses unsupported or ambiguous lab units and conflicting current values
+ok 170 - HScore refuses unsupported or ambiguous lab units and conflicting current values
+  ---
+  duration_ms: 1.500707
+  type: 'test'
+  ...
+# Subtest: HScore requires bone-marrow evidence rather than a differential mention
+ok 171 - HScore requires bone-marrow evidence rather than a differential mention
+  ---
+  duration_ms: 0.291939
+  type: 'test'
+  ...
+# Subtest: an explicitly qualified partial HScore is not mistaken for a full-score overclaim
+ok 172 - an explicitly qualified partial HScore is not mistaken for a full-score overclaim
+  ---
+  duration_ms: 0.240392
+  type: 'test'
+  ...
+# Subtest: transbronchial biopsy is blocked when severe hypoxemia and coagulopathy are present
+ok 173 - transbronchial biopsy is blocked when severe hypoxemia and coagulopathy are present
+  ---
+  duration_ms: 0.222785
+  type: 'test'
+  ...
+# Subtest: severe hyperkalaemia with ECG toxicity surfaces an emergency-response omission advisory
+ok 174 - severe hyperkalaemia with ECG toxicity surfaces an emergency-response omission advisory
+  ---
+  duration_ms: 0.477208
+  type: 'test'
+  ...
+# Subtest: TMP-SMX guard is action-specific: it blocks unsafe continuation, not history mentions or appropriate holding
+ok 175 - TMP-SMX guard is action-specific: it blocks unsafe continuation, not history mentions or appropriate holding
+  ---
+  duration_ms: 1.138803
+  type: 'test'
+  ...
+# Subtest: supratherapeutic tacrolimus with acute kidney injury cannot be ignored
+ok 176 - supratherapeutic tacrolimus with acute kidney injury cannot be ignored
+  ---
+  duration_ms: 0.752162
+  type: 'test'
+  ...
+# Subtest: VA-ECMO TAAA case recognises real site-specific gradients and blocks unsafe bloody-drain flushing on bivalirudin
+ok 177 - VA-ECMO TAAA case recognises real site-specific gradients and blocks unsafe bloody-drain flushing on bivalirudin
+  ---
+  duration_ms: 3.766356
+  type: 'test'
+  ...
+# Subtest: an explicit no-flush, spinal-rescue and imaging plan resolves the neuraxial manipulation conflict
+ok 178 - an explicit no-flush, spinal-rescue and imaging plan resolves the neuraxial manipulation conflict
+  ---
+  duration_ms: 1.275659
+  type: 'test'
+  ...
+# Subtest: unsafe ECMO option A is flagged for RPM escalation during chatter, CSF aspiration, and protamine-for-bivalirudin
+ok 179 - unsafe ECMO option A is flagged for RPM escalation during chatter, CSF aspiration, and protamine-for-bivalirudin
+  ---
+  duration_ms: 1.364213
+  type: 'test'
+  ...
+# Subtest: AFS mandibular case activates clinical safety checks even when the prompt is oncology-specific
+ok 180 - AFS mandibular case activates clinical safety checks even when the prompt is oncology-specific
+  ---
+  duration_ms: 2.930679
+  type: 'test'
+  ...
+# Subtest: AFS malignant stromal morphology blocks incorrect carcinoma/carcinosarcoma/fibroma labels
+ok 181 - AFS malignant stromal morphology blocks incorrect carcinoma/carcinosarcoma/fibroma labels
+  ---
+  duration_ms: 1.730042
+  type: 'test'
+  ...
+# Subtest: triple-positive APS with prior arterial thrombosis blocks routine Apixaban transition
+ok 182 - triple-positive APS with prior arterial thrombosis blocks routine Apixaban transition
+  ---
+  duration_ms: 0.357027
+  type: 'test'
+  ...
+# Subtest: bilateral peronea arteria magna blocks fibula harvest absent documented collateral clearance
+ok 183 - bilateral peronea arteria magna blocks fibula harvest absent documented collateral clearance
+  ---
+  duration_ms: 0.622406
+  type: 'test'
+  ...
+# Subtest: unmodified concurrent dabrafenib/trametinib with high-dose head-and-neck RT is blocked
+ok 184 - unmodified concurrent dabrafenib/trametinib with high-dose head-and-neck RT is blocked
+  ---
+  duration_ms: 0.688876
+  type: 'test'
+  ...
+# Subtest: unbridged warfarin interruption is blocked in triple-positive APS with prior stroke
+ok 185 - unbridged warfarin interruption is blocked in triple-positive APS with prior stroke
+  ---
+  duration_ms: 0.287312
+  type: 'test'
+  ...
+# Subtest: BRAF V600E alone cannot be called pathognomonic or the sole proof of AFS
+ok 186 - BRAF V600E alone cannot be called pathognomonic or the sole proof of AFS
+  ---
+  duration_ms: 1.561028
+  type: 'test'
+  ...
+# Subtest: AFS treatment text must not claim 60–66 Gy or adjuvant RT as universal protocol
+ok 187 - AFS treatment text must not claim 60–66 Gy or adjuvant RT as universal protocol
+  ---
+  duration_ms: 0.357498
+  type: 'test'
+  ...
+# Subtest: AFS Ki-67 supports proliferation but no universal 30-percent diagnostic threshold is asserted
+ok 188 - AFS Ki-67 supports proliferation but no universal 30-percent diagnostic threshold is asserted
+  ---
+  duration_ms: 0.36602
+  type: 'test'
+  ...
+# Subtest: taskClass maps every task name the app uses
+ok 189 - taskClass maps every task name the app uses
+  ---
+  duration_ms: 1.062709
+  type: 'test'
+  ...
+# Subtest: planLanes balances equal-quality lanes by live load (three parallel stages → three models)
+ok 190 - planLanes balances equal-quality lanes by live load (three parallel stages → three models)
+  ---
+  duration_ms: 0.865142
+  type: 'test'
+  ...
+# Subtest: lite lanes are not 'equivalent' to flash lanes, and a cooling lane sinks
+ok 191 - lite lanes are not 'equivalent' to flash lanes, and a cooling lane sinks
+  ---
+  duration_ms: 0.194853
+  type: 'test'
+  ...
+# Subtest: external lanes never receive PDFs, and never prompts bigger than their token window
+ok 192 - external lanes never receive PDFs, and never prompts bigger than their token window
+  ---
+  duration_ms: 0.591249
+  type: 'test'
+  ...
+# Subtest: pickLanes chooses by preference, skips junk, and OpenRouter keeps only the two biggest :free models
+ok 193 - pickLanes chooses by preference, skips junk, and OpenRouter keeps only the two biggest :free models
+  ---
+  duration_ms: 1.332965
+  type: 'test'
+  ...
+# Subtest: stripThink hides finished, unfinished and half-written think blocks
+ok 194 - stripThink hides finished, unfinished and half-written think blocks
+  ---
+  duration_ms: 0.552682
+  type: 'test'
+  ...
+# Subtest: happy path: one Gemini lane answers and streams
+ok 195 - happy path: one Gemini lane answers and streams
+  ---
+  duration_ms: 40.576356
+  type: 'test'
+  ...
+# Subtest: FAILOVER: a 429 on the first model moves to the next model at once — no waiting
+ok 196 - FAILOVER: a 429 on the first model moves to the next model at once — no waiting
+  ---
+  duration_ms: 5.766835
+  type: 'test'
+  ...
+# Subtest: a lane that is asleep is skipped by the NEXT request (no wasted round trip)
+ok 197 - a lane that is asleep is skipped by the NEXT request (no wasted round trip)
+  ---
+  duration_ms: 5.712694
+  type: 'test'
+  ...
+# Subtest: a DAILY quota 429 makes the lane dead and the next lane answers
+ok 198 - a DAILY quota 429 makes the lane dead and the next lane answers
+  ---
+  duration_ms: 7.810869
+  type: 'test'
+  ...
+# Subtest: HEDGING: a silent first lane is raced by the second; the first sign of life wins and the loser is cancelled
+ok 199 - HEDGING: a silent first lane is raced by the second; the first sign of life wins and the loser is cancelled
+  ---
+  duration_ms: 167.215362
+  type: 'test'
+  ...
+# Subtest: auto mode, chat: when Google is slow, the extra free engine (Groq) answers
+ok 200 - auto mode, chat: when Google is slow, the extra free engine (Groq) answers
+  ---
+  duration_ms: 161.114775
+  type: 'test'
+  ...
+# Subtest: speed mode, chat: the fast lane goes FIRST and Google is not touched
+ok 201 - speed mode, chat: the fast lane goes FIRST and Google is not touched
+  ---
+  duration_ms: 4.953631
+  type: 'test'
+  ...
+# Subtest: quality mode never hands a lesson to an extra engine while Gemini is available
+ok 202 - quality mode never hands a lesson to an extra engine while Gemini is available
+  ---
+  duration_ms: 603.004024
+  type: 'test'
+  ...
+# Subtest: write tasks (lessons) in auto mode use Groq only as a LAST resort, after every Gemini lane failed
+ok 203 - write tasks (lessons) in auto mode use Groq only as a LAST resort, after every Gemini lane failed
+  ---
+  duration_ms: 5.307172
+  type: 'test'
+  ...
+# Subtest: a PDF/scan stays on Gemini: no extra engine is ever asked to read it
+ok 204 - a PDF/scan stays on Gemini: no extra engine is ever asked to read it
+  ---
+  duration_ms: 2.050614
+  type: 'test'
+  ...
+# Subtest: a prompt too big for Groq's 8K-token minute window is not sent there
+ok 205 - a prompt too big for Groq's 8K-token minute window is not sent there
+  ---
+  duration_ms: 1.982462
+  type: 'test'
+  ...
+# Subtest: a Groq reply that hit the token limit is never shown as complete: Gemini rewrites it
+ok 206 - a Groq reply that hit the token limit is never shown as complete: Gemini rewrites it
+  ---
+  duration_ms: 2.715454
+  type: 'test'
+  ...
+# Subtest: a bad extra key never kills the task and the lane is put aside
+ok 207 - a bad extra key never kills the task and the lane is put aside
+  ---
+  duration_ms: 3.169698
+  type: 'test'
+  ...
+# Subtest: when EVERY lane sleeps the engine waits for the first to wake (and says so), then answers
+ok 208 - when EVERY lane sleeps the engine waits for the first to wake (and says so), then answers
+  ---
+  duration_ms: 1288.937588
+  type: 'test'
+  ...
+# Subtest: Google asking for a long pause (>25 s) → an honest 'busy' at once, not a silent minute
+ok 209 - Google asking for a long pause (>25 s) → an honest 'busy' at once, not a silent minute
+  ---
+  duration_ms: 2.316133
+  type: 'test'
+  ...
+# Subtest: a bad Google key stops at once (and does not burn other lanes)
+ok 210 - a bad Google key stops at once (and does not burn other lanes)
+  ---
+  duration_ms: 1.876022
+  type: 'test'
+  ...
+# Subtest: abort: cancelling stops every running lane
+ok 211 - abort: cancelling stops every running lane
+  ---
+  duration_ms: 81.48118
+  type: 'test'
+  ...
+# Subtest: the Google usage meter does not count extra-engine requests
+ok 212 - the Google usage meter does not count extra-engine requests
+  ---
+  duration_ms: 3.934408
+  type: 'test'
+  ...
+# Subtest: LATENCY TRACE: runTask reports every lane it tried (a 503, then the answer), so a slow run can be explained instead of guessed
+ok 213 - LATENCY TRACE: runTask reports every lane it tried (a 503, then the answer), so a slow run can be explained instead of guessed
+  ---
+  duration_ms: 4.066236
+  type: 'test'
+  ...
+# Subtest: LATENCY TRACE: a call that fails completely still reports, and never throws because of the report
+ok 214 - LATENCY TRACE: a call that fails completely still reports, and never throws because of the report
+  ---
+  duration_ms: 2.616635
+  type: 'test'
+  ...
+# Subtest: LATENCY TRACE: a lane that lost a hedge race is recorded as 'lost' (not as a failure) and the hedge is counted
+ok 215 - LATENCY TRACE: a lane that lost a hedge race is recorded as 'lost' (not as a failure) and the hedge is counted
+  ---
+  duration_ms: 159.293606
+  type: 'test'
+  ...
+# Subtest: ANALYSIS: every finished stage carries its latency summary (lat); a retried stage starts from a clean ledger
+ok 216 - ANALYSIS: every finished stage carries its latency summary (lat); a retried stage starts from a clean ledger
+  ---
+  duration_ms: 78.53669
+  type: 'test'
+  ...
+# Subtest: a key a KB fact agrees with: «reference» while the fact's source quote is unverified, «verified» only for a verified, current fact
+ok 217 - a key a KB fact agrees with: «reference» while the fact's source quote is unverified, «verified» only for a verified, current fact
+  ---
+  duration_ms: 13.298222
+  type: 'test'
+  ...
+# Subtest: an item nothing resolved is UNVERIFIED and says why; its unresolved high-risk claims go to the KB gap list
+ok 218 - an item nothing resolved is UNVERIFIED and says why; its unresolved high-risk claims go to the KB gap list
+  ---
+  duration_ms: 72.293459
+  type: 'test'
+  ...
+# Subtest: a KB contradiction in the rationale or stem is PATCHED in place (before → after kept) and the item is unverified
+ok 219 - a KB contradiction in the rationale or stem is PATCHED in place (before → after kept) and the item is unverified
+  ---
+  duration_ms: 3.662469
+  type: 'test'
+  ...
+# Subtest: the KEY against the KB: a correct option that contradicts a reference makes the item unverified; a «wrong» option the reference supports is flagged
+ok 220 - the KEY against the KB: a correct option that contradicts a reference makes the item unverified; a «wrong» option the reference supports is flagged
+  ---
+  duration_ms: 1.102048
+  type: 'test'
+  ...
+# Subtest: structure and logic: duplicate options, a key pointing nowhere, a select-all with one key, a wrong «select N» — all unverified with the code that caught it
+ok 221 - structure and logic: duplicate options, a key pointing nowhere, a select-all with one key, a wrong «select N» — all unverified with the code that caught it
+  ---
+  duration_ms: 3.671532
+  type: 'test'
+  ...
+# Subtest: safety-critical statements (doses, contraindications) that no official reference confirmed → unverified; a lab range for the wrong sex is patched
+ok 222 - safety-critical statements (doses, contraindications) that no official reference confirmed → unverified; a lab range for the wrong sex is patched
+  ---
+  duration_ms: 3.928649
+  type: 'test'
+  ...
+# Subtest: other-profession / other-country rules are flagged; residue is cleaned; analogies in a rationale are kept (only patched sentences change)
+ok 223 - other-profession / other-country rules are flagged; residue is cleaned; analogies in a rationale are kept (only patched sentences change)
+  ---
+  duration_ms: 1.022919
+  type: 'test'
+  ...
+# Subtest: the reference not being loaded never produces a ✓ (conservative), and tagging is idempotent
+ok 224 - the reference not being loaded never produces a ✓ (conservative), and tagging is idempotent
+  ---
+  duration_ms: 0.489346
+  type: 'test'
+  ...
+# Subtest: saved mistakes: an «ungrounded» (no coverage) item is saved like the others, and the student can still save one by choice
+ok 225 - saved mistakes: an «ungrounded» (no coverage) item is saved like the others, and the student can still save one by choice
+  ---
+  duration_ms: 56.354885
+  type: 'test'
+  ...
+# Subtest: makeExam: every item is tagged before the student sees it, the item never changes afterwards, and the request count is exactly the planned batches
+ok 226 - makeExam: every item is tagged before the student sees it, the item never changes afterwards, and the request count is exactly the planned batches
+  ---
+  duration_ms: 49.979125
+  type: 'test'
+  ...
+# Subtest: makeExam with 10 items: 4 parallel batches as in v3.42 (tagging adds no request, no top-up when all items are valid)
+ok 227 - makeExam with 10 items: 4 parallel batches as in v3.42 (tagging adds no request, no top-up when all items are valid)
+  ---
+  duration_ms: 48.470606
+  type: 'test'
+  ...
+# Subtest: DAILY quota finished: the model is set aside until the reset, the request is answered by the next model at once, and the finished model is never called again (not even after a restart that forgets the dead list)
+ok 228 - DAILY quota finished: the model is set aside until the reset, the request is answered by the next model at once, and the finished model is never called again (not even after a restart that forgets the dead list)
+  ---
+  duration_ms: 69.612146
+  type: 'test'
+  ...
+# Subtest: the daily message that says 'retry in 20s' is NOT taken as 'busy for 20 s': three requests in a row cost one failed attempt in total, not three
+ok 229 - the daily message that says 'retry in 20s' is NOT taken as 'busy for 20 s': three requests in a row cost one failed attempt in total, not three
+  ---
+  duration_ms: 18.232994
+  type: 'test'
+  ...
+# Subtest: a name that is the same quota is finished too: Google names gemini-3.8-flash while the app called gemini-flash-latest
+ok 230 - a name that is the same quota is finished too: Google names gemini-3.8-flash while the app called gemini-flash-latest
+  ---
+  duration_ms: 7.277066
+  type: 'test'
+  ...
+# Subtest: a model with no quota at all on this key (limit 0, e.g. Pro) is set aside and silently skipped afterwards
+ok 231 - a model with no quota at all on this key (limit 0, e.g. Pro) is set aside and silently skipped afterwards
+  ---
+  duration_ms: 16.091334
+  type: 'test'
+  ...
+# Subtest: PER-MINUTE wall: Google's own wait is honoured, the limit is learned, and from then on the model is not called while its minute is full
+ok 232 - PER-MINUTE wall: Google's own wait is honoured, the limit is learned, and from then on the model is not called while its minute is full
+  ---
+  duration_ms: 11.9811
+  type: 'test'
+  ...
+# Subtest: a request Google turned away (429) does not eat the minute: after a rejected try the model still has its free slots
+ok 233 - a request Google turned away (429) does not eat the minute: after a rejected try the model still has its free slots
+  ---
+  duration_ms: 5.582367
+  type: 'test'
+  ...
+# Subtest: between equal models the one with more daily quota left goes first (the day's quota is used evenly)
+ok 234 - between equal models the one with more daily quota left goes first (the day's quota is used evenly)
+  ---
+  duration_ms: 20.919206
+  type: 'test'
+  ...
+# Subtest: QUESTION ANALYSIS: visual-question transcription is completed before solve; the verified brief reaches each configured writer
+ok 235 - QUESTION ANALYSIS: visual-question transcription is completed before solve; the verified brief reaches each configured writer
+  ---
+  duration_ms: 118.399538
+  type: 'test'
+  ...
+# Subtest: QUESTION ANALYSIS: when the strong models are nearly spent today, the word list goes to Flash-Lite and the strong model is kept for the rest
+ok 236 - QUESTION ANALYSIS: when the strong models are nearly spent today, the word list goes to Flash-Lite and the strong model is kept for the rest
+  ---
+  duration_ms: 37.069247
+  type: 'test'
+  ...
+# Subtest: EVERY model has finished its daily quota: the student gets the true answer at once (no 40 s of waiting), and the next request does not even try
+ok 237 - EVERY model has finished its daily quota: the student gets the true answer at once (no 40 s of waiting), and the next request does not even try
+  ---
+  duration_ms: 27.922178
+  type: 'test'
+  ...
+# Subtest: ADAPTIVE HEDGE: once this key's typical answer time is known, a request that has plainly stalled is given up on after 3x that, not after a fixed 10-30 s
+ok 238 - ADAPTIVE HEDGE: once this key's typical answer time is known, a request that has plainly stalled is given up on after 3x that, not after a fixed 10-30 s
+  ---
+  duration_ms: 108.431791
+  type: 'test'
+  ...
+# Subtest: ADAPTIVE TIMEOUT: a model that has stalled is given up on after 8x this key's typical time (never under the floor), not after the 60-240 s written for a slow day
+ok 239 - ADAPTIVE TIMEOUT: a model that has stalled is given up on after 8x this key's typical time (never under the floor), not after the 60-240 s written for a slow day
+  ---
+  duration_ms: 306.67381
+  type: 'test'
+  ...
+# Subtest: ADAPTIVE TIMEOUT: nothing measured yet → the caller's own timeout is used, exactly as before
+ok 240 - ADAPTIVE TIMEOUT: nothing measured yet → the caller's own timeout is used, exactly as before
+  ---
+  duration_ms: 605.517357
+  type: 'test'
+  ...
+# Subtest: ADAPTIVE HEDGE: without any measurement the old fixed delays are untouched
+ok 241 - ADAPTIVE HEDGE: without any measurement the old fixed delays are untouched
+  ---
+  duration_ms: 0.295815
+  type: 'test'
+  ...
+# Subtest: health check answers without any code and says whether a key is configured
+ok 242 - health check answers without any code and says whether a key is configured
+  ---
+  duration_ms: 20.349969
+  type: 'test'
+  ...
+# Subtest: CORS preflight: allowed from any origin (file:// of the desktop app, the WebView), the upload URL header is exposed
+ok 243 - CORS preflight: allowed from any origin (file:// of the desktop app, the WebView), the upload URL header is exposed
+  ---
+  duration_ms: 0.58521
+  type: 'test'
+  ...
+# Subtest: no Google key configured → a clear 500, nothing is sent anywhere
+ok 244 - no Google key configured → a clear 500, nothing is sent anywhere
+  ---
+  duration_ms: 0.526301
+  type: 'test'
+  ...
+# Subtest: a missing or wrong access code is refused (401) and Google is never called
+ok 245 - a missing or wrong access code is refused (401) and Google is never called
+  ---
+  duration_ms: 1.959878
+  type: 'test'
+  ...
+# Subtest: a valid code is forwarded with the SERVER's key; the code itself and any key= parameter never reach Google
+ok 246 - a valid code is forwarded with the SERVER's key; the code itself and any key= parameter never reach Google
+  ---
+  duration_ms: 1.69504
+  type: 'test'
+  ...
+# Subtest: only the Gemini calls the app uses are allowed: everything else is a 404 and costs nothing
+ok 247 - only the Gemini calls the app uses are allowed: everything else is a 404 and costs nothing
+  ---
+  duration_ms: 2.602244
+  type: 'test'
+  ...
+# Subtest: path tricks cannot escape the allow-list: the URL is normalised first, so '..' / '%2e%2e' can only land on an allowed path
+ok 248 - path tricks cannot escape the allow-list: the URL is normalised first, so '..' / '%2e%2e' can only land on an allowed path
+  ---
+  duration_ms: 1.459696
+  type: 'test'
+  ...
+# Subtest: the model list, the file status and countTokens work with a code
+ok 249 - the model list, the file status and countTokens work with a code
+  ---
+  duration_ms: 0.928928
+  type: 'test'
+  ...
+# Subtest: a model outside ALLOWED_MODELS is refused (403)
+ok 250 - a model outside ALLOWED_MODELS is refused (403)
+  ---
+  duration_ms: 0.694735
+  type: 'test'
+  ...
+# Subtest: STREAMING: the first words reach the app while Google is still writing (nothing is buffered)
+ok 251 - STREAMING: the first words reach the app while Google is still writing (nothing is buffered)
+  ---
+  duration_ms: 1.219154
+  type: 'test'
+  ...
+# Subtest: Google's 429 / 503 pass through unchanged (status, retry hint, body): the app's own retry logic reads them
+ok 252 - Google's 429 / 503 pass through unchanged (status, retry hint, body): the app's own retry logic reads them
+  ---
+  duration_ms: 0.841606
+  type: 'test'
+  ...
+# Subtest: x-gw-upstream-ms tells how long Google took to START answering (the app uses it to separate Google from the phone's network)
+ok 253 - x-gw-upstream-ms tells how long Google took to START answering (the app uses it to separate Google from the phone's network)
+  ---
+  duration_ms: 0.360873
+  type: 'test'
+  ...
+# Subtest: UPLOAD: Google's resumable link (which can contain the Google key) is rewritten through the gateway and the key is stripped
+ok 254 - UPLOAD: Google's resumable link (which can contain the Google key) is rewritten through the gateway and the key is stripped
+  ---
+  duration_ms: 0.543838
+  type: 'test'
+  ...
+# Subtest: UPLOAD: the data step needs no code (its upload_id was issued to an authenticated start) and is sent with the server's key
+ok 255 - UPLOAD: the data step needs no code (its upload_id was issued to an authenticated start) and is sent with the server's key
+  ---
+  duration_ms: 0.672442
+  type: 'test'
+  ...
+# Subtest: rewriteUploadUrl: keeps the upload id, drops key=, survives garbage
+ok 256 - rewriteUploadUrl: keeps the upload id, drops key=, survives garbage
+  ---
+  duration_ms: 0.802717
+  type: 'test'
+  ...
+# Subtest: daily limit PER DEVICE (KV): generation calls count, the 3rd of 2 is a 429 that says 'daily limit'; other devices are not affected
+ok 257 - daily limit PER DEVICE (KV): generation calls count, the 3rd of 2 is a 429 that says 'daily limit'; other devices are not affected
+  ---
+  duration_ms: 11.511135
+  type: 'test'
+  ...
+# Subtest: a broken KV must never lock students out
+ok 258 - a broken KV must never lock students out
+  ---
+  duration_ms: 2.88544
+  type: 'test'
+  ...
+# Subtest: Google unreachable → a 502 in Gemini's error shape (the app treats it as a transient server error and fails over)
+ok 259 - Google unreachable → a 502 in Gemini's error shape (the app treats it as a transient server error and fails over)
+  ---
+  duration_ms: 0.463247
+  type: 'test'
+  ...
+# Subtest: an absurdly large body is refused before it is forwarded
+ok 260 - an absurdly large body is refused before it is forwarded
+  ---
+  duration_ms: 0.218328
+  type: 'test'
+  ...
+# Subtest: which stages run: a question has reason + words only, a lesson keeps its background summary (ocr)
+ok 261 - which stages run: a question has reason + words only, a lesson keeps its background summary (ocr)
+  ---
+  duration_ms: 6.270592
+  type: 'test'
+  ...
+# Subtest: the progress tracker only tracks the stages that run, so the bar can reach 100 % without an ocr stage
+ok 262 - the progress tracker only tracks the stages that run, so the bar can reach 100 % without an ocr stage
+  ---
+  duration_ms: 2.65314
+  type: 'test'
+  ...
+# Subtest: a new question has no stored transcript, so its title and its one-line preview come from the explanation (free, already saved)
+ok 263 - a new question has no stored transcript, so its title and its one-line preview come from the explanation (free, already saved)
+  ---
+  duration_ms: 3.434546
+  type: 'test'
+  ...
+# Subtest: the batch (many questions in one upload) no longer waits for an ocr part that will never come
+ok 264 - the batch (many questions in one upload) no longer waits for an ocr part that will never come
+  ---
+  duration_ms: 0.299901
+  type: 'test'
+  ...
+# Subtest: a word is translated by Google (one request, zero Gemini)
+ok 265 - a word is translated by Google (one request, zero Gemini)
+  ---
+  duration_ms: 3.87577
+  type: 'test'
+  ...
+# Subtest: when EVERY free provider fails, the student gets the honest error: no Gemini request is made as a last resort
+ok 266 - when EVERY free provider fails, the student gets the honest error: no Gemini request is made as a last resort
+  ---
+  duration_ms: 2.417226
+  type: 'test'
+  ...
+# Subtest: pronunciation has no Gemini voice any more (no engine switch, no key, no request to the Gemini host)
+ok 267 - pronunciation has no Gemini voice any more (no engine switch, no key, no request to the Gemini host)
+  ---
+  duration_ms: 14.415383
+  type: 'test'
+  ...
+# Subtest: a leaked instruction line is removed, the real content stays
+ok 268 - a leaked instruction line is removed, the real content stays
+  ---
+  duration_ms: 3.767096
+  type: 'test'
+  ...
+# Subtest: a paraphrased rule and an inline '(at most 10)' are caught even when the system text does not contain them
+ok 269 - a paraphrased rule and an inline '(at most 10)' are caught even when the system text does not contain them
+  ---
+  duration_ms: 0.179169
+  type: 'test'
+  ...
+# Subtest: section markers the parsers read are never removed
+ok 270 - section markers the parsers read are never removed
+  ---
+  duration_ms: 0.486191
+  type: 'test'
+  ...
+# Subtest: medical content that shares words with the system prompt is not treated as a leak
+ok 271 - medical content that shares words with the system prompt is not treated as a leak
+  ---
+  duration_ms: 0.194172
+  type: 'test'
+  ...
+# Subtest: text the student wrote is never a leak
+ok 272 - text the student wrote is never a leak
+  ---
+  duration_ms: 0.858882
+  type: 'test'
+  ...
+# Subtest: a half-written leak line is held back while streaming, and a normal half line is shown
+ok 273 - a half-written leak line is held back while streaming, and a normal half line is shown
+  ---
+  duration_ms: 0.246331
+  type: 'test'
+  ...
+# Subtest: spelling: tripled / doubled letters, ة and ى inside a word, and the known bad word are repaired; good words are untouched
+ok 274 - spelling: tripled / doubled letters, ة and ى inside a word, and the known bad word are repaired; good words are untouched
+  ---
+  duration_ms: 0.794866
+  type: 'test'
+  ...
+# Subtest: only Arabic-prose tasks are guarded (OCR, JSON, SVG and the hidden solve stay raw)
+ok 275 - only Arabic-prose tasks are guarded (OCR, JSON, SVG and the hidden solve stay raw)
+  ---
+  duration_ms: 0.175193
+  type: 'test'
+  ...
+# Subtest: ARABIC_RULE now carries the anti-echo and the spelling sentences
+ok 276 - ARABIC_RULE now carries the anti-echo and the spelling sentences
+  ---
+  duration_ms: 0.264598
+  type: 'test'
+  ...
+# Subtest: the rewrite budget: 4 per 10 minutes
+ok 277 - the rewrite budget: 4 per 10 minutes
+  ---
+  duration_ms: 0.315856
+  type: 'test'
+  ...
+# Subtest: engine: a Flash-Lite answer with a leaked rule reaches the caller clean, both in the stream and in the result
+ok 278 - engine: a Flash-Lite answer with a leaked rule reaches the caller clean, both in the stream and in the result
+  ---
+  duration_ms: 36.5788
+  type: 'test'
+  ...
+# Subtest: engine: a weak lane's badly spelled answer is written again once by a stronger model
+ok 279 - engine: a weak lane's badly spelled answer is written again once by a stronger model
+  ---
+  duration_ms: 4.651186
+  type: 'test'
+  ...
+# Subtest: engine: a strong model's answer is repaired but never written again
+ok 280 - engine: a strong model's answer is repaired but never written again
+  ---
+  duration_ms: 2.28041
+  type: 'test'
+  ...
+# Subtest: engine: JSON and OCR tasks come back exactly as written
+ok 281 - engine: JSON and OCR tasks come back exactly as written
+  ---
+  duration_ms: 2.644487
+  type: 'test'
+  ...
+# Subtest: layout: the punctuation that closes an English phrase stays with the Arabic sentence
+ok 282 - layout: the punctuation that closes an English phrase stays with the Arabic sentence
+  ---
+  duration_ms: 0.726102
+  type: 'test'
+  ...
+# Subtest: dirFor: an Arabic sentence with English terms is RTL, an English sentence with one Arabic word is LTR
+ok 283 - dirFor: an Arabic sentence with English terms is RTL, an English sentence with one Arabic word is LTR
+  ---
+  duration_ms: 0.211618
+  type: 'test'
+  ...
+# Subtest: v3.40 layout: a full English sentence keeps its closing ! inside the island, a short term still hands it to the Arabic side
+ok 284 - v3.40 layout: a full English sentence keeps its closing ! inside the island, a short term still hands it to the Arabic side
+  ---
+  duration_ms: 0.340222
+  type: 'test'
+  ...
+# Subtest: v3.40 the study-material summary card is gone, the other three stay
+ok 285 - v3.40 the study-material summary card is gone, the other three stay
+  ---
+  duration_ms: 9.922424
+  type: 'test'
+  ...
+# Subtest: v3.40 accuracy rule: every Arabic prompt carries it, and a numbers rule is part of it
+ok 286 - v3.40 accuracy rule: every Arabic prompt carries it, and a numbers rule is part of it
+  ---
+  duration_ms: 0.712091
+  type: 'test'
+  ...
+# Subtest: v3.40 self-correction markers: a text that changes its mind half-way counts as two repairs, a clean one as none
+ok 287 - v3.40 self-correction markers: a text that changes its mind half-way counts as two repairs, a clean one as none
+  ---
+  duration_ms: 1.559686
+  type: 'test'
+  ...
+# Subtest: engine: a weak lane's answer that corrects itself is written again once by a stronger model
+ok 288 - engine: a weak lane's answer that corrects itself is written again once by a stronger model
+  ---
+  duration_ms: 4.687861
+  type: 'test'
+  ...
+# Subtest: health: below four answers or a small failure rate counts for nothing
+ok 289 - health: below four answers or a small failure rate counts for nothing
+  ---
+  duration_ms: 14.115211
+  type: 'test'
+  ...
+# Subtest: health: a model that fails most of the time gets a big penalty, and the newest answers weigh most
+ok 290 - health: a model that fails most of the time gets a big penalty, and the newest answers weigh most
+  ---
+  duration_ms: 1.300015
+  type: 'test'
+  ...
+# Subtest: health: it is forgotten after twelve hours and remembered across a restart
+ok 291 - health: it is forgotten after twelve hours and remembered across a restart
+  ---
+  duration_ms: 0.781916
+  type: 'test'
+  ...
+# Subtest: engine: a flaky model is no longer asked first (an equivalent one goes first)
+ok 292 - engine: a flaky model is no longer asked first (an equivalent one goes first)
+  ---
+  duration_ms: 26.636004
+  type: 'test'
+  ...
+# Subtest: engine: a model that fails most of the time is not asked first even when it is the stronger kind
+ok 293 - engine: a model that fails most of the time is not asked first even when it is the stronger kind
+  ---
+  duration_ms: 6.139345
+  type: 'test'
+  ...
+# Subtest: engine: a 503 is written into the health record, a good answer too
+ok 294 - engine: a 503 is written into the health record, a good answer too
+  ---
+  duration_ms: 4.600821
+  type: 'test'
+  ...
+# Subtest: benchmark is a curated challenge set, not routine fact-recall expansion
+ok 295 - benchmark is a curated challenge set, not routine fact-recall expansion
+  ---
+  duration_ms: 0.931502
+  type: 'test'
+  ...
+# Subtest: benchmark covers distinct evidence-backed high-risk and reasoning weaknesses
+ok 296 - benchmark covers distinct evidence-backed high-risk and reasoning weaknesses
+  ---
+  duration_ms: 0.172489
+  type: 'test'
+  ...
+# Subtest: universal protocol now addresses empirical failure modes without listing case-specific diagnoses
+ok 297 - universal protocol now addresses empirical failure modes without listing case-specific diagnoses
+  ---
+  duration_ms: 0.530678
+  type: 'test'
+  ...
+# Subtest: weighted scoring uses fixed dimensions and rejects malformed ratings
+ok 298 - weighted scoring uses fixed dimensions and rejects malformed ratings
+  ---
+  duration_ms: 0.413892
+  type: 'test'
+  ...
+# Subtest: agreement functions return 1 for exact agreement and penalize disagreement
+ok 299 - agreement functions return 1 for exact agreement and penalize disagreement
+  ---
+  duration_ms: 0.369155
+  type: 'test'
+  ...
+# Subtest: blind pack masks condition names and contains every paired case
+ok 300 - blind pack masks condition names and contains every paired case
+  ---
+  duration_ms: 2.481433
+  type: 'test'
+  ...
+# Subtest: review scoring requires two independent raters and cannot average away critical errors
+ok 301 - review scoring requires two independent raters and cannot average away critical errors
+  ---
+  duration_ms: 3.101625
+  type: 'test'
+  ...
+# Subtest: scoring rejects a blind key that maps both labels to the same model condition
+ok 302 - scoring rejects a blind key that maps both labels to the same model condition
+  ---
+  duration_ms: 0.341503
+  type: 'test'
+  ...
+# Subtest: scoring rejects duplicate or incomplete blind-key mappings
+ok 303 - scoring rejects duplicate or incomplete blind-key mappings
+  ---
+  duration_ms: 0.393732
+  type: 'test'
+  ...
+# Subtest: scoring rejects reviewer files for a different benchmark
+ok 304 - scoring rejects reviewer files for a different benchmark
+  ---
+  duration_ms: 0.820203
+  type: 'test'
+  ...
+# Subtest: benchmark includes surgery-specific postoperative deterioration and age-specific young-infant fever triage
+ok 305 - benchmark includes surgery-specific postoperative deterioration and age-specific young-infant fever triage
+  ---
+  duration_ms: 0.176416
+  type: 'test'
+  ...
+# Subtest: response alignment audit catches answer-to-wrong-case swaps before blinding
+ok 306 - response alignment audit catches answer-to-wrong-case swaps before blinding
+  ---
+  duration_ms: 0.314213
+  type: 'test'
+  ...
+# Subtest: blind pack refuses response files without exact benchmark version
+ok 307 - blind pack refuses response files without exact benchmark version
+  ---
+  duration_ms: 0.310317
+  type: 'test'
+  ...
+# Subtest: cross-question memory links are opt-in and absent from self-contained prompts by default
+ok 308 - cross-question memory links are opt-in and absent from self-contained prompts by default
+  ---
+  duration_ms: 0.367974
+  type: 'test'
+  ...
+# \# KB: 489 concept rules + 38 reference ranges + 15 anatomy/scope facts = 542 concepts
+# \# rules by domain: antidotes 29 · drugs 81 · classes 66 · acid-base 7 · electrolytes 9 · autonomic 7 · endocrine 18 · cardiac and renal physiology 10 · emergencies 37 · neuro and gi 28 · renal and haematology 18 · cpr-guideline 2 · isolation and safety 27 · maternal and newborn 15 · paediatrics 12 · mental health 13 · counts 17 · heart 18 · nervous system 29 · glands 6 · bacteria 19 · viruses and parasites 11 · immunology and vaccines 10
+# \# rules by slot: antidote 29 · eff 81 · class 66 · sign 214 · phys 23 · tx 57 · cord 2 · count 17
+# \# generated vectors: 470 truth sentences conflict-free, 469 wrong sentences caught; unreachable rules: 0
+# \# negation / comparison property held for 469 rules
+# \# benign corpus: 84 statements · 0 conflicts · 13 supported by a reference rule
+# \# seeded errors caught: 75/75
+# \# candidate rules per sentence: avg 5.3, max 20 of 489 · match p50 0.0116 ms, p95 0.0390 ms
+# \# rules with at least one Arabic subject alias: 25 of 489
+# Subtest: the KB reaches the Pareto sweet spot and is audited clean: counts, domains, schema, duplicates, collisions
+ok 309 - the KB reaches the Pareto sweet spot and is audited clean: counts, domains, schema, duplicates, collisions
+  ---
+  duration_ms: 6.916844
+  type: 'test'
+  ...
+# Subtest: GENERATED VECTORS · every assoc rule: its own truth never conflicts with ANY rule; at least one of its wrong terms is caught by THAT rule
+ok 310 - GENERATED VECTORS · every assoc rule: its own truth never conflicts with ANY rule; at least one of its wrong terms is caught by THAT rule
+  ---
+  duration_ms: 18.824315
+  type: 'test'
+  ...
+# Subtest: GENERATED VECTORS · every numeric rule: the right number supports, a wrong number conflicts
+ok 311 - GENERATED VECTORS · every numeric rule: the right number supports, a wrong number conflicts
+  ---
+  duration_ms: 1.851365
+  type: 'test'
+  ...
+# Subtest: PROPERTY · negating a wrong claim (not / never / rather than / unlike) never fires, and a comparison that states the truth never fires
+ok 312 - PROPERTY · negating a wrong claim (not / never / rather than / unlike) never fires, and a comparison that states the truth never fires
+  ---
+  duration_ms: 33.624035
+  type: 'test'
+  ...
+# Subtest: BENIGN PROSE · 84 correct statements (comparisons, negations, edge cases, withdrawal, second-line…) produce ZERO conflicts and are never rewritten
+ok 313 - BENIGN PROSE · 84 correct statements (comparisons, negations, edge cases, withdrawal, second-line…) produce ZERO conflicts and are never rewritten
+  ---
+  duration_ms: 23.168157
+  type: 'test'
+  ...
+# Subtest: SEEDED ERRORS · every one of 75 hand-written classic mistakes is caught by the KB (and patched in place by the pipeline)
+ok 314 - SEEDED ERRORS · every one of 75 hand-written classic mistakes is caught by the KB (and patched in place by the pipeline)
+  ---
+  duration_ms: 5.816149
+  type: 'test'
+  ...
+# Subtest: PERFORMANCE · candidate lookup is O(1)-ish: a sentence touches few rules, and matching is sub-millisecond
+ok 315 - PERFORMANCE · candidate lookup is O(1)-ish: a sentence touches few rules, and matching is sub-millisecond
+  ---
+  duration_ms: 78.065842
+  type: 'test'
+  ...
+# Subtest: ARABIC · Arabic subjects and cues work (with or without the definite article); English drug / term names in an Arabic sentence are matched too
+ok 316 - ARABIC · Arabic subjects and cues work (with or without the definite article); English drug / term names in an Arabic sentence are matched too
+  ---
+  duration_ms: 1.333645
+  type: 'test'
+  ...
+# Subtest: detectProvider: one box, any key: the app knows whose it is
+ok 317 - detectProvider: one box, any key: the app knows whose it is
+  ---
+  duration_ms: 1.012744
+  type: 'test'
+  ...
+# Subtest: the ring: any number of keys, in order; duplicates and junk are refused; keys can be moved and removed
+ok 318 - the ring: any number of keys, in order; duplicates and junk are refused; keys can be moved and removed
+  ---
+  duration_ms: 3.168396
+  type: 'test'
+  ...
+# Subtest: a key put aside is skipped, and comes back by itself when its time is up
+ok 319 - a key put aside is skipped, and comes back by itself when its time is up
+  ---
+  duration_ms: 0.747495
+  type: 'test'
+  ...
+# Subtest: migration: the three boxes of v3.33 and the single Gemini key become ring entries (once); an old key never comes back over a newer ring
+ok 320 - migration: the three boxes of v3.33 and the single Gemini key become ring entries (once); an old key never comes back over a newer ring
+  ---
+  duration_ms: 0.597108
+  type: 'test'
+  ...
+# Subtest: Claude and ChatGPT: their own request formats
+ok 321 - Claude and ChatGPT: their own request formats
+  ---
+  duration_ms: 0.454884
+  type: 'test'
+  ...
+# Subtest: ring · Gemini: a refused key is skipped IN THE SAME request; the next call does not even touch it
+ok 322 - ring · Gemini: a refused key is skipped IN THE SAME request; the next call does not even touch it
+  ---
+  duration_ms: 68.260373
+  type: 'test'
+  ...
+# Subtest: ring · Gemini: the daily quota of key 1 finishes → key 2 answers at once, and key 1 is left alone until the reset
+ok 323 - ring · Gemini: the daily quota of key 1 finishes → key 2 answers at once, and key 1 is left alone until the reset
+  ---
+  duration_ms: 18.089379
+  type: 'test'
+  ...
+# Subtest: ring · Gemini: a per-minute 429 / busy key hands over to the next key without a long wait
+ok 324 - ring · Gemini: a per-minute 429 / busy key hands over to the next key without a long wait
+  ---
+  duration_ms: 6.122729
+  type: 'test'
+  ...
+# Subtest: ring · with ONE key nothing changes: its daily quota finishing is still said plainly
+ok 325 - ring · with ONE key nothing changes: its daily quota finishing is still said plainly
+  ---
+  duration_ms: 23.52133
+  type: 'test'
+  ...
+# Subtest: ring · a key that is penalised comes back by itself (the first key is the first again after its time)
+ok 326 - ring · a key that is penalised comes back by itself (the first key is the first again after its time)
+  ---
+  duration_ms: 6.447267
+  type: 'test'
+  ...
+# Subtest: ring · Claude alone is enough for chat (no Google key at all)
+ok 327 - ring · Claude alone is enough for chat (no Google key at all)
+  ---
+  duration_ms: 6.171252
+  type: 'test'
+  ...
+# Subtest: ring · ChatGPT and Claude are a safety net: never used while Google answers, used the moment it cannot
+ok 328 - ring · ChatGPT and Claude are a safety net: never used while Google answers, used the moment it cannot
+  ---
+  duration_ms: 11.844286
+  type: 'test'
+  ...
+# Subtest: ring · two Claude keys: the one out of credit is skipped inside the same request
+ok 329 - ring · two Claude keys: the one out of credit is skipped inside the same request
+  ---
+  duration_ms: 4.745158
+  type: 'test'
+  ...
+# Subtest: addApiKey: pasted, recognised, checked with its company, added; a wrong key is refused
+ok 330 - addApiKey: pasted, recognised, checked with its company, added; a wrong key is refused
+  ---
+  duration_ms: 6.829362
+  type: 'test'
+  ...
+# Subtest: tiers: tierOf / weakFirst / tierStages
+ok 331 - tiers: tierOf / weakFirst / tierStages
+  ---
+  duration_ms: 0.17942
+  type: 'test'
+  ...
+# Subtest: tiers · the weak model of key 1 is finished → the weak job goes to the weak model of key 2, and key 1's strong model is NOT touched
+ok 332 - tiers · the weak model of key 1 is finished → the weak job goes to the weak model of key 2, and key 1's strong model is NOT touched
+  ---
+  duration_ms: 12.793133
+  type: 'test'
+  ...
+# Subtest: tiers · every key's weak model finished → only THEN the job climbs to the middle model (key 1 first)
+ok 333 - tiers · every key's weak model finished → only THEN the job climbs to the middle model (key 1 first)
+  ---
+  duration_ms: 19.026307
+  type: 'test'
+  ...
+# Subtest: tiers · a strong job walks the strong model across the keys before it uses a smaller one
+ok 334 - tiers · a strong job walks the strong model across the keys before it uses a smaller one
+  ---
+  duration_ms: 10.456298
+  type: 'test'
+  ...
+# Subtest: tiers · any other trouble with key 1 (busy for the weak model) also moves the job to key 2
+ok 335 - tiers · any other trouble with key 1 (busy for the weak model) also moves the job to key 2
+  ---
+  duration_ms: 2.912521
+  type: 'test'
+  ...
+# Subtest: v3.38: someone who had picked 'speed' or 'quality' is moved to auto once (the buttons are gone)
+ok 336 - v3.38: someone who had picked 'speed' or 'quality' is moved to auto once (the buttons are gone)
+  ---
+  duration_ms: 6.141588
+  type: 'test'
+  ...
+# Subtest: the four pieces add up to the total: lost + wait + think + write
+ok 337 - the four pieces add up to the total: lost + wait + think + write
+  ---
+  duration_ms: 1.430872
+  type: 'test'
+  ...
+# Subtest: hidden thinking (no thought summaries): Google's thoughtsTokenCount moves an ESTIMATE from 'wait' to 'think', clearly marked
+ok 338 - hidden thinking (no thought summaries): Google's thoughtsTokenCount moves an ESTIMATE from 'wait' to 'think', clearly marked
+  ---
+  duration_ms: 0.289205
+  type: 'test'
+  ...
+# Subtest: no estimate when the speed is unknown or the thinking was already measured from summaries
+ok 339 - no estimate when the speed is unknown or the thinking was already measured from summaries
+  ---
+  duration_ms: 0.137517
+  type: 'test'
+  ...
+# Subtest: a call that never succeeded: all of its time is 'lost', and it says so
+ok 340 - a call that never succeeded: all of its time is 'lost', and it says so
+  ---
+  duration_ms: 0.260712
+  type: 'test'
+  ...
+# Subtest: lanes that lost a hedge race or were cancelled are not counted as failures
+ok 341 - lanes that lost a hedge race or were cancelled are not counted as failures
+  ---
+  duration_ms: 0.15973
+  type: 'test'
+  ...
+# Subtest: summarize: the slowest call decides, but failures anywhere are reported
+ok 342 - summarize: the slowest call decides, but failures anywhere are reported
+  ---
+  duration_ms: 0.341183
+  type: 'test'
+  ...
+# Subtest: describe stays short and honest for a healthy run, and is empty for nothing
+ok 343 - describe stays short and honest for a healthy run, and is empty for nothing
+  ---
+  duration_ms: 0.634024
+  type: 'test'
+  ...
+# Subtest: dominant: names the biggest cause only when it is at least 40 % of the time
+ok 344 - dominant: names the biggest cause only when it is at least 40 % of the time
+  ---
+  duration_ms: 0.124827
+  type: 'test'
+  ...
+# Subtest: tally groups repeats and stageOf maps every task id of the analysis to its stage
+ok 345 - tally groups repeats and stageOf maps every task id of the analysis to its stage
+  ---
+  duration_ms: 0.302104
+  type: 'test'
+  ...
+# Subtest: FREE profile (the default build) keeps its patient timings and talks to Google directly: nothing changes unless a gateway / VITE_PAID is configured
+ok 346 - FREE profile (the default build) keeps its patient timings and talks to Google directly: nothing changes unless a gateway / VITE_PAID is configured
+  ---
+  duration_ms: 8.21692
+  type: 'test'
+  ...
+# Subtest: solve asks for logprobs, they come back through the stream, and feed the assessment
+ok 347 - solve asks for logprobs, they come back through the stream, and feed the assessment
+  ---
+  duration_ms: 69.37186
+  type: 'test'
+  ...
+# Subtest: other tasks never ask for logprobs
+ok 348 - other tasks never ask for logprobs
+  ---
+  duration_ms: 4.590525
+  type: 'test'
+  ...
+# Subtest: a model that refuses logprobs: the same request repeats without them once, and it is never asked again
+ok 349 - a model that refuses logprobs: the same request repeats without them once, and it is never asked again
+  ---
+  duration_ms: 7.603377
+  type: 'test'
+  ...
+# Subtest: SUPPORTED: a small free key probes once on the solve request itself (no extra request), caches it, and keeps getting logprobs
+ok 350 - SUPPORTED: a small free key probes once on the solve request itself (no extra request), caches it, and keeps getting logprobs
+  ---
+  duration_ms: 3.083348
+  type: 'test'
+  ...
+# Subtest: UNSUPPORTED (HTTP 400): a small free key probes once, the same request repeats without logprobs, and the model is never probed again
+ok 351 - UNSUPPORTED (HTTP 400): a small free key probes once, the same request repeats without logprobs, and the model is never probed again
+  ---
+  duration_ms: 8.059612
+  type: 'test'
+  ...
+# Subtest: SILENTLY OMITTED: a 200 reply without logprobsResult is cached as unsupported after ONE probe, on a small and on a big key
+ok 352 - SILENTLY OMITTED: a 200 reply without logprobsResult is cached as unsupported after ONE probe, on a small and on a big key
+  ---
+  duration_ms: 8.584092
+  type: 'test'
+  ...
+# Subtest: nothing is fabricated when logprobs are unavailable: no probabilities, capped at MEDIUM, the reason says so
+ok 353 - nothing is fabricated when logprobs are unavailable: no probabilities, capped at MEDIUM, the reason says so
+  ---
+  duration_ms: 3.473665
+  type: 'test'
+  ...
+# Subtest: concurrent solves of one unknown model: only ONE carries the probe; the others go without logprobs
+ok 354 - concurrent solves of one unknown model: only ONE carries the probe; the others go without logprobs
+  ---
+  duration_ms: 43.866812
+  type: 'test'
+  ...
+# Subtest: a failed probe that learned nothing is not cached; a later request probes again
+ok 355 - a failed probe that learned nothing is not cached; a later request probes again
+  ---
+  duration_ms: 2.896717
+  type: 'test'
+  ...
+# Subtest: a model already known to support logprobs is not flipped to unsupported by one reply that happens to lack them
+ok 356 - a model already known to support logprobs is not flipped to unsupported by one reply that happens to lack them
+  ---
+  duration_ms: 1.331683
+  type: 'test'
+  ...
+# Subtest: when localStorage throws, the verdict is still cached for the session (no probe on every request)
+ok 357 - when localStorage throws, the verdict is still cached for the session (no probe on every request)
+  ---
+  duration_ms: 4.027718
+  type: 'test'
+  ...
+# Subtest: mistakeId is stable for the same question and ignores case / punctuation
+ok 358 - mistakeId is stable for the same question and ignores case / punctuation
+  ---
+  duration_ms: 0.929468
+  type: 'test'
+  ...
+# Subtest: a wrong answer is saved once; the same question missed again only counts up
+ok 359 - a wrong answer is saved once; the same question missed again only counts up
+  ---
+  duration_ms: 2.002132
+  type: 'test'
+  ...
+# Subtest: a right answer to a question that was never wrong saves nothing
+ok 360 - a right answer to a question that was never wrong saves nothing
+  ---
+  duration_ms: 0.153451
+  type: 'test'
+  ...
+# Subtest: two right answers in a row master it; a wrong one breaks the streak
+ok 361 - two right answers in a row master it; a wrong one breaks the streak
+  ---
+  duration_ms: 0.376306
+  type: 'test'
+  ...
+# Subtest: multi-select: the whole set must match
+ok 362 - multi-select: the whole set must match
+  ---
+  duration_ms: 0.647534
+  type: 'test'
+  ...
+# Subtest: categories: topic first, then exam title, then question text
+ok 363 - categories: topic first, then exam title, then question text
+  ---
+  duration_ms: 1.574158
+  type: 'test'
+  ...
+# Subtest: organizeMistakes: category → topic, most open mistakes first; 'Heart Failure' and 'heart failure' are one topic
+ok 364 - organizeMistakes: category → topic, most open mistakes first; 'Heart Failure' and 'heart failure' are one topic
+  ---
+  duration_ms: 0.679662
+  type: 'test'
+  ...
+# Subtest: filterList: status / category / search
+ok 365 - filterList: status / category / search
+  ---
+  duration_ms: 0.307403
+  type: 'test'
+  ...
+# Subtest: mergeMistakes: union by id, the newer one wins, counters keep the larger value
+ok 366 - mergeMistakes: union by id, the newer one wins, counters keep the larger value
+  ---
+  duration_ms: 0.391619
+  type: 'test'
+  ...
+# Subtest: mergeTopics: restored questions join existing topics, nothing is placed twice, unknown ids are dropped
+ok 367 - mergeTopics: restored questions join existing topics, nothing is placed twice, unknown ids are dropped
+  ---
+  duration_ms: 0.597428
+  type: 'test'
+  ...
+# Subtest: backup: chunking never splits an emoji and loses nothing; file name is dated
+ok 368 - backup: chunking never splits an emoji and loses nothing; file name is dated
+  ---
+  duration_ms: 0.773854
+  type: 'test'
+  ...
+# Subtest: gateway mode: the app's 'key' is the access code, every Google call (and the Files API) goes to the gateway, the trailing slash is dropped
+ok 369 - gateway mode: the app's 'key' is the access code, every Google call (and the Files API) goes to the gateway, the trailing slash is dropped
+  ---
+  duration_ms: 0.65831
+  type: 'test'
+  ...
+# Subtest: PAID profile: silent requests are cut early, hedges start earlier, waits are shorter, image models are not tried one after another for minutes
+ok 370 - PAID profile: silent requests are cut early, hedges start earlier, waits are shorter, image models are not tried one after another for minutes
+  ---
+  duration_ms: 0.225409
+  type: 'test'
+  ...
+# Subtest: a call goes to the gateway with the access code + a device id, asks for Priority, and leaves a trace with the tier, the token counts and the gateway's timing
+ok 371 - a call goes to the gateway with the access code + a device id, asks for Priority, and leaves a trace with the tier, the token counts and the gateway's timing
+  ---
+  duration_ms: 43.348032
+  type: 'test'
+  ...
+# Subtest: a gateway that cannot reach Google (502) is a transient error: the next model answers at once, and the trace says what was lost
+ok 372 - a gateway that cannot reach Google (502) is a transient error: the next model answers at once, and the trace says what was lost
+  ---
+  duration_ms: 4.838767
+  type: 'test'
+  ...
+# Subtest: a wrong access code (401) stops at once with a message for the student, no retry storm
+ok 373 - a wrong access code (401) stops at once with a message for the student, no retry storm
+  ---
+  duration_ms: 2.267421
+  type: 'test'
+  ...
+# Subtest: the gateway's per-device 'daily limit' 429 is recognised as a DAILY limit: it stops with a clear message instead of trying every model
+ok 374 - the gateway's per-device 'daily limit' 429 is recognised as a DAILY limit: it stops with a clear message instead of trying every model
+  ---
+  duration_ms: 6.429852
+  type: 'test'
+  ...
+# Subtest: Priority tier refused by Google (the project is not Tier 2): the field is dropped, the request repeats once WITHOUT it, and it is never sent again
+ok 375 - Priority tier refused by Google (the project is not Tier 2): the field is dropped, the request repeats once WITHOUT it, and it is never sent again
+  ---
+  duration_ms: 5.020993
+  type: 'test'
+  ...
+# Subtest: the Files API start call goes through the gateway too (its upload link is rewritten there)
+ok 376 - the Files API start call goes through the gateway too (its upload link is rewritten there)
+  ---
+  duration_ms: 0.932402
+  type: 'test'
+  ...
+# Subtest: parseShots: no pictures unless the model says so, max 5, distinct queries
+ok 377 - parseShots: no pictures unless the model says so, max 5, distinct queries
+  ---
+  duration_ms: 2.491548
+  type: 'test'
+  ...
+# Subtest: sourcesFor: diagrams go to Google when it exists, photos to every source
+ok 378 - sourcesFor: diagrams go to Google when it exists, photos to every source
+  ---
+  duration_ms: 0.198729
+  type: 'test'
+  ...
+# Subtest: picker: the preferred source wins, and a photo is never used twice
+ok 379 - picker: the preferred source wins, and a photo is never used twice
+  ---
+  duration_ms: 0.487844
+  type: 'test'
+  ...
+# Subtest: picker: near-identical scenes are rejected, grace lets a slow source be skipped
+ok 380 - picker: near-identical scenes are rejected, grace lets a slow source be skipped
+  ---
+  duration_ms: 0.367773
+  type: 'test'
+  ...
+# Subtest: source mappers: https only, credit + original page on every photo
+ok 381 - source mappers: https only, credit + original page on every photo
+  ---
+  duration_ms: 0.637088
+  type: 'test'
+  ...
+# Subtest: helpers: urlKey ignores size + query, similar, worthAsking, cacheKey, rights filter
+ok 382 - helpers: urlKey ignores size + query, similar, worthAsking, cacheKey, rights filter
+  ---
+  duration_ms: 0.273331
+  type: 'test'
+  ...
+# Subtest: a spelling fix of the same words is accepted
+ok 383 - a spelling fix of the same words is accepted
+  ---
+  duration_ms: 1.75497
+  type: 'test'
+  ...
+# Subtest: anything that is more than a spelling fix is refused
+ok 384 - anything that is more than a spelling fix is refused
+  ---
+  duration_ms: 0.419451
+  type: 'test'
+  ...
+# Subtest: parseProof tolerates fences and garbage
+ok 385 - parseProof tolerates fences and garbage
+  ---
+  duration_ms: 0.898061
+  type: 'test'
+  ...
+# Subtest: short texts are not proofread, long ones are cut into at most three pieces
+ok 386 - short texts are not proofread, long ones are cut into at most three pieces
+  ---
+  duration_ms: 1.524203
+  type: 'test'
+  ...
+# Subtest: engine: the author's typo is corrected by the second reader and the student gets the clean text
+ok 387 - engine: the author's typo is corrected by the second reader and the student gets the clean text
+  ---
+  duration_ms: 52.708431
+  type: 'test'
+  ...
+# Subtest: engine: a proofreader that returns a rewrite or nonsense changes nothing
+ok 388 - engine: a proofreader that returns a rewrite or nonsense changes nothing
+  ---
+  duration_ms: 6.463572
+  type: 'test'
+  ...
+# Subtest: engine: a proofreader that fails never breaks the answer
+ok 389 - engine: a proofreader that fails never breaks the answer
+  ---
+  duration_ms: 4514.92226
+  type: 'test'
+  ...
+# Subtest: engine: JSON tasks, short answers and a switched-off proofreader are never proofread
+ok 390 - engine: JSON tasks, short answers and a switched-off proofreader are never proofread
+  ---
+  duration_ms: 9.280986
+  type: 'test'
+  ...
+# Subtest: a FREE (small) key is never given the extra request
+ok 391 - a FREE (small) key is never given the extra request
+  ---
+  duration_ms: 2.0803
+  type: 'test'
+  ...
+# Subtest: an answer that already struggled (a failed attempt) is not given more work
+ok 392 - an answer that already struggled (a failed attempt) is not given more work
+  ---
+  duration_ms: 4.115002
+  type: 'test'
+  ...
+# Subtest: two proofreadings never run at the same time
+ok 393 - two proofreadings never run at the same time
+  ---
+  duration_ms: 3.353075
+  type: 'test'
+  ...
+# Subtest: pdftext reads real PDFs: ASCII85+Flate streams, embedded TrueType (ToUnicode), compressed object streams — page by page
+ok 394 - pdftext reads real PDFs: ASCII85+Flate streams, embedded TrueType (ToUnicode), compressed object streams — page by page
+  ---
+  duration_ms: 52.397138
+  type: 'test'
+  ...
+# Subtest: pdftext reads Arabic from a LibreOffice PDF (visual order → logical order, word gaps kept), also from compressed object streams
+ok 395 - pdftext reads Arabic from a LibreOffice PDF (visual order → logical order, word gaps kept), also from compressed object streams
+  ---
+  duration_ms: 10.135993
+  type: 'test'
+  ...
+# Subtest: pdftext is honest about what it cannot read: scanned pages, junk, truncated files
+ok 396 - pdftext is honest about what it cannot read: scanned pages, junk, truncated files
+  ---
+  duration_ms: 1.780619
+  type: 'test'
+  ...
+# Subtest: provenance is attached AT EXTRACTION: readItem tags every source type; a PDF carries its text layer and page list; a scanned one is marked unread
+ok 397 - provenance is attached AT EXTRACTION: readItem tags every source type; a PDF carries its text layer and page list; a scanned one is marked unread
+  ---
+  duration_ms: 10.923498
+  type: 'test'
+  ...
+# Subtest: the source model: pages and blocks are numbered, sentence boundaries are normalised, and missing text makes it STRICT
+ok 398 - the source model: pages and blocks are numbered, sentence boundaries are normalised, and missing text makes it STRICT
+  ---
+  duration_ms: 5.471404
+  type: 'test'
+  ...
+# Subtest: typed text, a PDF text layer and an OCR transcript give IDENTICAL cleanup, stripping and seeded-error patches
+ok 399 - typed text, a PDF text layer and an OCR transcript give IDENTICAL cleanup, stripping and seeded-error patches
+  ---
+  duration_ms: 20.907431
+  type: 'test'
+  ...
+# Subtest: a scanned PDF / an unread image is STRICT: origin is unknown, so the invented mnemonic and framework are removed — never waved through
+ok 400 - a scanned PDF / an unread image is STRICT: origin is unknown, so the invented mnemonic and framework are removed — never waved through
+  ---
+  duration_ms: 0.997641
+  type: 'test'
+  ...
+# Subtest: every seeded error is handled identically whether the source was text, a PDF or an image
+ok 401 - every seeded error is handled identically whether the source was text, a PDF or an image
+  ---
+  duration_ms: 18.016161
+  type: 'test'
+  ...
+# Subtest: the source itself is checked against the KB for every source type: «source says X, reference says Y»
+ok 402 - the source itself is checked against the KB for every source type: «source says X, reference says Y»
+  ---
+  duration_ms: 0.876519
+  type: 'test'
+  ...
+# Subtest: END TO END · a lesson from a PDF with a text layer: the output is cleaned, stripped, patched and labeled; no extra request
+ok 403 - END TO END · a lesson from a PDF with a text layer: the output is cleaned, stripped, patched and labeled; no extra request
+  ---
+  duration_ms: 94.000994
+  type: 'test'
+  ...
+# Subtest: END TO END · a lesson from a SCANNED PDF goes through the same pipeline in strict mode
+ok 404 - END TO END · a lesson from a SCANNED PDF goes through the same pipeline in strict mode
+  ---
+  duration_ms: 29.839252
+  type: 'test'
+  ...
+# Subtest: END TO END · the extraction stage output (the text shown from an image / the map of a file) is cleaned like every other text
+ok 405 - END TO END · the extraction stage output (the text shown from an image / the map of a file) is cleaned like every other text
+  ---
+  duration_ms: 33.470087
+  type: 'test'
+  ...
+# Subtest: parseDuration reads every shape Google uses
+ok 406 - parseDuration reads every shape Google uses
+  ---
+  duration_ms: 1.252244
+  type: 'test'
+  ...
+# Subtest: parseQuota: a finished DAILY quota is recognised from quotaId even though the message says nothing about a day and suggests 'retry in 20s'
+ok 407 - parseQuota: a finished DAILY quota is recognised from quotaId even though the message says nothing about a day and suggests 'retry in 20s'
+  ---
+  duration_ms: 0.529617
+  type: 'test'
+  ...
+# Subtest: parseQuota: per-minute, token window, and 'no quota at all'
+ok 408 - parseQuota: per-minute, token window, and 'no quota at all'
+  ---
+  duration_ms: 0.836739
+  type: 'test'
+  ...
+# Subtest: parseQuota: several violations at once → the DAILY one wins; without details it falls back to the message like the old code
+ok 409 - parseQuota: several violations at once → the DAILY one wins; without details it falls back to the message like the old code
+  ---
+  duration_ms: 0.472592
+  type: 'test'
+  ...
+# Subtest: daily 429: the model is finished UNTIL THE RESET (not 20 s), its limit is learned, and the daily counter says 0 left
+ok 410 - daily 429: the model is finished UNTIL THE RESET (not 20 s), its limit is learned, and the daily counter says 0 left
+  ---
+  duration_ms: 29.091357
+  type: 'test'
+  ...
+# Subtest: per-minute 429: Google's retry hint is honoured and the limit is learned; pacing then keeps the model out of the wall
+ok 411 - per-minute 429: Google's retry hint is honoured and the limit is learned; pacing then keeps the model out of the wall
+  ---
+  duration_ms: 1.091042
+  type: 'test'
+  ...
+# Subtest: a request Google rejected without doing the work is refunded (not counted per minute or per day)
+ok 412 - a request Google rejected without doing the work is refunded (not counted per minute or per day)
+  ---
+  duration_ms: 5.951816
+  type: 'test'
+  ...
+# Subtest: two names, one quota: a 429 that names gemini-3.8-flash while we called gemini-flash-latest finishes BOTH
+ok 413 - two names, one quota: a 429 that names gemini-3.8-flash while we called gemini-flash-latest finishes BOTH
+  ---
+  duration_ms: 5.718866
+  type: 'test'
+  ...
+# Subtest: a model with NO quota on this key (Pro on a free key) is finished, is not announced as 'quota finished today', and does not count as pressure
+ok 414 - a model with NO quota on this key (Pro on a free key) is finished, is not announced as 'quota finished today', and does not count as pressure
+  ---
+  duration_ms: 6.819714
+  type: 'test'
+  ...
+# Subtest: pressure: false for an unknown key, true once a free-tier-sized limit has been learned (daily or per-minute), false for a big limit
+ok 415 - pressure: false for an unknown key, true once a free-tier-sized limit has been learned (daily or per-minute), false for a big limit
+  ---
+  duration_ms: 5.945456
+  type: 'test'
+  ...
+# Subtest: a learned per-minute limit is forgotten after 12 h without a new 429 (the student may have upgraded)
+ok 416 - a learned per-minute limit is forgotten after 12 h without a new 429 (the student may have upgraded)
+  ---
+  duration_ms: 1.097622
+  type: 'test'
+  ...
+# Subtest: isScarce / orderForTask: when the Flash models are nearly spent the word list moves to Flash-Lite; every other job keeps its order
+ok 417 - isScarce / orderForTask: when the Flash models are nearly spent the word list moves to Flash-Lite; every other job keeps its order
+  ---
+  duration_ms: 29.463257
+  type: 'test'
+  ...
+# Subtest: budgetBias: no nudge while plenty is left or unknown; the nearer to empty, the later the model is chosen among equals
+ok 418 - budgetBias: no nudge while plenty is left or unknown; the nearer to empty, the later the model is chosen among equals
+  ---
+  duration_ms: 12.188311
+  type: 'test'
+  ...
+# Subtest: quotaNote: one honest sentence when something finished today, empty otherwise; the 'latest' alias is not listed twice
+ok 419 - quotaNote: one honest sentence when something finished today, empty otherwise; the 'latest' alias is not listed twice
+  ---
+  duration_ms: 6.429595
+  type: 'test'
+  ...
+# Subtest: the ledger survives an app restart and belongs to ONE key: a different key starts clean
+ok 420 - the ledger survives an app restart and belongs to ONE key: a different key starts clean
+  ---
+  duration_ms: 9.375538
+  type: 'test'
+  ...
+# Subtest: storage that is cleared behind our back is noticed (no stale memory)
+ok 421 - storage that is cleared behind our back is noticed (no stale memory)
+  ---
+  duration_ms: 5.512475
+  type: 'test'
+  ...
+# Subtest: isSmallKey: every key is small until there is evidence of a big quota (a paid-size limit, or more Flash requests in a day than the free tier ever allows)
+ok 422 - isSmallKey: every key is small until there is evidence of a big quota (a paid-size limit, or more Flash requests in a day than the free tier ever allows)
+  ---
+  duration_ms: 7.506968
+  type: 'test'
+  ...
+# Subtest: typical first-answer time: unknown until 5 answers, then the median of the last 12; queue-sized outliers (> 90 s) are not part of 'normal'; remembered across a restart
+ok 423 - typical first-answer time: unknown until 5 answers, then the median of the last 12; queue-sized outliers (> 90 s) are not part of 'normal'; remembered across a restart
+  ---
+  duration_ms: 2.169415
+  type: 'test'
+  ...
+# Subtest: reuse.words / similarity: spelling variants and noise words do not matter, a different question does
+ok 424 - reuse.words / similarity: spelling variants and noise words do not matter, a different question does
+  ---
+  duration_ms: 0.911762
+  type: 'test'
+  ...
+# Subtest: reuse · the same easy question asked again is answered from the saved answer: zero requests
+ok 425 - reuse · the same easy question asked again is answered from the saved answer: zero requests
+  ---
+  duration_ms: 72.907813
+  type: 'test'
+  ...
+# Subtest: reuse · NEVER for a merely similar question, a different place, a long conversation, an attachment, a non-easy question, or when switched off
+ok 426 - reuse · NEVER for a merely similar question, a different place, a long conversation, an attachment, a non-easy question, or when switched off
+  ---
+  duration_ms: 70.971239
+  type: 'test'
+  ...
+# Subtest: reuse · an answer that came from a web search expires sooner (facts move); the list is capped; one entry per question
+ok 427 - reuse · an answer that came from a web search expires sooner (facts move); the list is capped; one entry per question
+  ---
+  duration_ms: 51.56158
+  type: 'test'
+  ...
+# \# solve prompt tokens: v3.42 1022 → v3.43.1 1019 (NCLEX) / 843 (generic)
+# \# worst-case output words: 5 options: 185 words · 5 options+CALC: 245 words · 6 options: 200 words · 6 options+CALC: 260 words
+# Subtest: the solve prompt orders the fields PREMISE → ANSWER → … and tells the model to reason before it commits
+ok 428 - the solve prompt orders the fields PREMISE → ANSWER → … and tells the model to reason before it commits
+  ---
+  duration_ms: 1.048438
+  type: 'test'
+  ...
+# Subtest: the solve prompt preserves open-ended clinical tasks and only evaluates options that actually exist
+ok 429 - the solve prompt preserves open-ended clinical tasks and only evaluates options that actually exist
+  ---
+  duration_ms: 0.170747
+  type: 'test'
+  ...
+# Subtest: the solver DATA field preserves explicit numeric inputs for the deterministic calculator without inflating lesson prompts
+ok 430 - the solver DATA field preserves explicit numeric inputs for the deterministic calculator without inflating lesson prompts
+  ---
+  duration_ms: 0.439992
+  type: 'test'
+  ...
+# Subtest: BUDGET · prompt tokens ≤ the frozen v3.42 baseline (heaviest profile line included), thinking budget and output cap unchanged
+ok 431 - BUDGET · prompt tokens ≤ the frozen v3.42 baseline (heaviest profile line included), thinking budget and output cap unchanged
+  ---
+  duration_ms: 0.735437
+  type: 'test'
+  ...
+# Subtest: BUDGET · the numerical-data handoff remains bounded for 5- and 6-option calculation items
+ok 432 - BUDGET · the numerical-data handoff remains bounded for 5- and 6-option calculation items
+  ---
+  duration_ms: 0.869318
+  type: 'test'
+  ...
+# Subtest: parser: PREMISE is read, cut at the hard limit, and its position relative to ANSWER is known; the lesson writers still get the whole brief
+ok 433 - parser: PREMISE is read, cut at the hard limit, and its position relative to ANSWER is known; the lesson writers still get the whole brief
+  ---
+  duration_ms: 2.058458
+  type: 'test'
+  ...
+# Subtest: the solve stage refuses inconsistent numeric readings from the OCR and solver passes
+ok 434 - the solve stage refuses inconsistent numeric readings from the OCR and solver passes
+  ---
+  duration_ms: 6.235423
+  type: 'test'
+  ...
+# Subtest: tiers: no premise (or one written after the answer) caps the tier at MEDIUM even for a calibrated profile; a premise-first brief can reach HIGH
+ok 435 - tiers: no premise (or one written after the answer) caps the tier at MEDIUM even for a calibrated profile; a premise-first brief can reach HIGH
+  ---
+  duration_ms: 6.621374
+  type: 'test'
+  ...
+# Subtest: logprobs: the ANSWER token is found after the premise line, a premise that says «the answer:» in its middle is not mistaken for it, DATA doubts still work
+ok 436 - logprobs: the ANSWER token is found after the premise line, a premise that says «the answer:» in its middle is not mistaken for it, DATA doubts still work
+  ---
+  duration_ms: 0.537789
+  type: 'test'
+  ...
+# Subtest: end to end: visual transcription precedes solve, the premise rides in the brief, and the solve plus writers retain their expected request order
+ok 437 - end to end: visual transcription precedes solve, the premise rides in the brief, and the solve plus writers retain their expected request order
+  ---
+  duration_ms: 99.399928
+  type: 'test'
+  ...
+# Subtest: the AI-error-driven batch has five unique, schema-valid, evidence-backed draft records
+ok 438 - the AI-error-driven batch has five unique, schema-valid, evidence-backed draft records
+  ---
+  duration_ms: 3.158754
+  type: 'test'
+  ...
+# Subtest: the strict builder independently rebuilds all five entries and accepts no unsupported candidate
+ok 439 - the strict builder independently rebuilds all five entries and accepts no unsupported candidate
+  ---
+  duration_ms: 2.636547
+  type: 'test'
+  ...
+# Subtest: all 80 entries load for review, but no draft from any batch reaches student retrieval
+ok 440 - all 80 entries load for review, but no draft from any batch reaches student retrieval
+  ---
+  duration_ms: 7.561549
+  type: 'test'
+  ...
+# Subtest: retrieval selects only the warfarin enantiomer pathway record for the matching pharmacology question
+ok 441 - retrieval selects only the warfarin enantiomer pathway record for the matching pharmacology question
+  ---
+  duration_ms: 4.490148
+  type: 'test'
+  ...
+# Subtest: IC50/Ki/Kd retrieval preserves the assay distinction and does not leak into unrelated questions
+ok 442 - IC50/Ki/Kd retrieval preserves the assay distinction and does not leak into unrelated questions
+  ---
+  duration_ms: 3.088267
+  type: 'test'
+  ...
+# Subtest: feline aldosterone knowledge requires veterinary discipline and explicit cat context
+ok 443 - feline aldosterone knowledge requires veterinary discipline and explicit cat context
+  ---
+  duration_ms: 1.545926
+  type: 'test'
+  ...
+# Subtest: feline ABCB1/ivermectin sensitivity is retrieved only in feline veterinary context
+ok 444 - feline ABCB1/ivermectin sensitivity is retrieved only in feline veterinary context
+  ---
+  duration_ms: 3.700318
+  type: 'test'
+  ...
+# Subtest: Knot of Henry retrieval distinguishes the tendon decussation from the medial plantar nerve
+ok 445 - Knot of Henry retrieval distinguishes the tendon decussation from the medial plantar nerve
+  ---
+  duration_ms: 1.261218
+  type: 'test'
+  ...
+# Subtest: unlicensed source-dependent toluene material stays out of the retrievable KB and remains explicitly audited
+ok 446 - unlicensed source-dependent toluene material stays out of the retrievable KB and remains explicitly audited
+  ---
+  duration_ms: 3.620398
+  type: 'test'
+  ...
+# Subtest: the 2026 pharmacogenomics expansion contains ten unique, valid, fully sourced draft entries
+ok 447 - the 2026 pharmacogenomics expansion contains ten unique, valid, fully sourced draft entries
+  ---
+  duration_ms: 3.448269
+  type: 'test'
+  ...
+# Subtest: the expansion builder independently reproduces ten accepted entries and rejects none
+ok 448 - the expansion builder independently reproduces ten accepted entries and rejects none
+  ---
+  duration_ms: 2.350877
+  type: 'test'
+  ...
+# Subtest: all 80 shipped specialist entries load for review but remain unavailable to student retrieval while draft
+ok 449 - all 80 shipped specialist entries load for review but remain unavailable to student retrieval while draft
+  ---
+  duration_ms: 7.384743
+  type: 'test'
+  ...
+# Subtest: retrieval returns the precise relevant expansion entry only after an explicit approval fixture
+ok 450 - retrieval returns the precise relevant expansion entry only after an explicit approval fixture
+  ---
+  duration_ms: 3.614239
+  type: 'test'
+  ...
+# Subtest: the fifth expansion contains 34 unique, schema-valid, source-backed draft records
+ok 451 - the fifth expansion contains 34 unique, schema-valid, source-backed draft records
+  ---
+  duration_ms: 4.044656
+  type: 'test'
+  ...
+# Subtest: the strict builder rebuilds all 34 candidates and rejects none
+ok 452 - the strict builder rebuilds all 34 candidates and rejects none
+  ---
+  duration_ms: 4.558319
+  type: 'test'
+  ...
+# Subtest: all 80 shipped specialist records load for audit but drafts never enter student retrieval
+ok 453 - all 80 shipped specialist records load for audit but drafts never enter student retrieval
+  ---
+  duration_ms: 9.289539
+  type: 'test'
+  ...
+# Subtest: Swiss neonatal EOS recommendations require both Switzerland and explicit neonatal context
+ok 454 - Swiss neonatal EOS recommendations require both Switzerland and explicit neonatal context
+  ---
+  duration_ms: 5.659977
+  type: 'test'
+  ...
+# Subtest: neonatal context inference does not collapse neonates into the generic pediatric population
+ok 455 - neonatal context inference does not collapse neonates into the generic pediatric population
+  ---
+  duration_ms: 1.035308
+  type: 'test'
+  ...
+# Subtest: diabetic-foot microbiology knowledge preserves geographic and resistance heterogeneity
+ok 456 - diabetic-foot microbiology knowledge preserves geographic and resistance heterogeneity
+  ---
+  duration_ms: 2.582907
+  type: 'test'
+  ...
+# Subtest: bone culture and histopathology discordance retrieval does not imply either test is universally definitive
+ok 457 - bone culture and histopathology discordance retrieval does not imply either test is universally definitive
+  ---
+  duration_ms: 3.210352
+  type: 'test'
+  ...
+# Subtest: GRADE certainty by outcome and lowest critical outcome records retrieve for guideline appraisal
+ok 458 - GRADE certainty by outcome and lowest critical outcome records retrieve for guideline appraisal
+  ---
+  duration_ms: 1.876834
+  type: 'test'
+  ...
+# Subtest: the evidence-appraisal rules activate for literature questions even when no specialized entry matches
+ok 459 - the evidence-appraisal rules activate for literature questions even when no specialized entry matches
+  ---
+  duration_ms: 4.746883
+  type: 'test'
+  ...
+# Subtest: ordinary clinical questions do not receive the evidence-appraisal block
+ok 460 - ordinary clinical questions do not receive the evidence-appraisal block
+  ---
+  duration_ms: 0.26566
+  type: 'test'
+  ...
+# Subtest: the specialized prompt continues to prohibit fabricated patient data and cross-species transfer
+ok 461 - the specialized prompt continues to prohibit fabricated patient data and cross-species transfer
+  ---
+  duration_ms: 0.243436
+  type: 'test'
+  ...
+# Subtest: the major expansion contains 24 unique, valid, evidence-backed draft entries
+ok 462 - the major expansion contains 24 unique, valid, evidence-backed draft entries
+  ---
+  duration_ms: 4.130937
+  type: 'test'
+  ...
+# Subtest: the strict builder independently rebuilds all 24 records with no unsupported candidate
+ok 463 - the strict builder independently rebuilds all 24 records with no unsupported candidate
+  ---
+  duration_ms: 5.161247
+  type: 'test'
+  ...
+# Subtest: all 80 specialist entries load for internal review, but all draft entries remain excluded from student retrieval
+ok 464 - all 80 specialist entries load for internal review, but all draft entries remain excluded from student retrieval
+  ---
+  duration_ms: 7.657964
+  type: 'test'
+  ...
+# Subtest: dental fractional dosing retrieves only in dentistry context and preserves the heuristic limitation
+ok 465 - dental fractional dosing retrieves only in dentistry context and preserves the heuristic limitation
+  ---
+  duration_ms: 5.428324
+  type: 'test'
+  ...
+# Subtest: FH/HLRCC retrieval distinguishes hereditary syndrome from the broader tumour term
+ok 466 - FH/HLRCC retrieval distinguishes hereditary syndrome from the broader tumour term
+  ---
+  duration_ms: 2.381293
+  type: 'test'
+  ...
+# Subtest: feline MDR1 sample frequency requires cat context and never leaks to dog or unspecified species
+ok 467 - feline MDR1 sample frequency requires cat context and never leaks to dog or unspecified species
+  ---
+  duration_ms: 2.251638
+  type: 'test'
+  ...
+# Subtest: warfarin interaction knowledge does not become a fixed dose-change rule
+ok 468 - warfarin interaction knowledge does not become a fixed dose-change rule
+  ---
+  duration_ms: 2.200071
+  type: 'test'
+  ...
+# Subtest: the specialized prompt prevents fabricated case data and invalid conversion of laboratory or in-vitro evidence
+ok 469 - the specialized prompt prevents fabricated case data and invalid conversion of laboratory or in-vitro evidence
+  ---
+  duration_ms: 0.479001
+  type: 'test'
+  ...
+# Subtest: the first real specialist batch is compact, sourced, current and explicitly draft pending human clinical review
+ok 470 - the first real specialist batch is compact, sourced, current and explicitly draft pending human clinical review
+  ---
+  duration_ms: 1.282339
+  type: 'test'
+  ...
+# Subtest: draft pilot knowledge loads for review but never reaches production retrieval or student prompts
+ok 471 - draft pilot knowledge loads for review but never reaches production retrieval or student prompts
+  ---
+  duration_ms: 7.739796
+  type: 'test'
+  ...
+# Subtest: baseline and evaluation-only enriched prompts differ only by the selected specialist references
+ok 472 - baseline and evaluation-only enriched prompts differ only by the selected specialist references
+  ---
+  duration_ms: 0.672472
+  type: 'test'
+  ...
+# Subtest: the paired benchmark uses the same model settings, alternates order, and writes blind A/B outputs plus a separate key
+ok 473 - the paired benchmark uses the same model settings, alternates order, and writes blind A/B outputs plus a separate key
+  ---
+  duration_ms: 1.394138
+  type: 'test'
+  ...
+# Subtest: benchmark refuses to run without an explicit API key
+ok 474 - benchmark refuses to run without an explicit API key
+  ---
+  duration_ms: 1.18969
+  type: 'test'
+  ...
+# Subtest: approved relevant expert knowledge reaches the actual prompt with applicability, exceptions and traceable source
+ok 475 - approved relevant expert knowledge reaches the actual prompt with applicability, exceptions and traceable source
+  ---
+  duration_ms: 12.705079
+  type: 'test'
+  ...
+# Subtest: unrelated, stale, unapproved and out-of-scope entries never reach the answer prompt
+ok 476 - unrelated, stale, unapproved and out-of-scope entries never reach the answer prompt
+  ---
+  duration_ms: 6.657998
+  type: 'test'
+  ...
+# Subtest: image-only prompt receives only a small profile-scoped candidate shelf, and context-specific entries fail closed when context is missing
+ok 477 - image-only prompt receives only a small profile-scoped candidate shelf, and context-specific entries fail closed when context is missing
+  ---
+  duration_ms: 3.351624
+  type: 'test'
+  ...
+# Subtest: analysis orchestration actually uses the same enrichment helper before solve and answer-writing requests
+ok 478 - analysis orchestration actually uses the same enrichment helper before solve and answer-writing requests
+  ---
+  duration_ms: 1.580799
+  type: 'test'
+  ...
+# Subtest: lesson writers treat solve briefs as preliminary and re-check them against the original question
+ok 479 - lesson writers treat solve briefs as preliminary and re-check them against the original question
+  ---
+  duration_ms: 0.873414
+  type: 'test'
+  ...
+# Subtest: an entry with value, scope, applicability, exceptions, verified evidence and approval is accepted, and the builder resolves its evidence
+ok 480 - an entry with value, scope, applicability, exceptions, verified evidence and approval is accepted, and the builder resolves its evidence
+  ---
+  duration_ms: 3.14333
+  type: 'test'
+  ...
+# Subtest: an exam-specific entry with no jurisdiction is accepted (the exam is its specificity anchor); «no exceptions» needs a stated reason
+ok 481 - an exam-specific entry with no jurisdiction is accepted (the exam is its specificity anchor); «no exceptions» needs a stated reason
+  ---
+  duration_ms: 0.620373
+  type: 'test'
+  ...
+# Subtest: a dated recent guideline change is an anchor of its own
+ok 482 - a dated recent guideline change is an anchor of its own
+  ---
+  duration_ms: 0.567895
+  type: 'test'
+  ...
+# Subtest: generic textbook entries are rejected: generic category, no specificity anchor, boilerplate justification
+ok 483 - generic textbook entries are rejected: generic category, no specificity anchor, boilerplate justification
+  ---
+  duration_ms: 0.654605
+  type: 'test'
+  ...
+# Subtest: an entry that merely restates the general layer is rejected (no duplication of the safety layer)
+ok 484 - an entry that merely restates the general layer is rejected (no duplication of the safety layer)
+  ---
+  duration_ms: 1.013375
+  type: 'test'
+  ...
+# Subtest: the real general KB does not flag a genuinely specialized entry as a duplicate (no false positives), and forbidden_patterns / rule fields are refused
+ok 485 - the real general KB does not flag a genuinely specialized entry as a duplicate (no false positives), and forbidden_patterns / rule fields are refused
+  ---
+  duration_ms: 100.591221
+  type: 'test'
+  ...
+# Subtest: unsupported entries are rejected: no evidence, unknown source, unverified or non-open license, quote not verbatim, wrong evidence type
+ok 486 - unsupported entries are rejected: no evidence, unknown source, unverified or non-open license, quote not verbatim, wrong evidence type
+  ---
+  duration_ms: 0.537118
+  type: 'test'
+  ...
+# Subtest: evidence must actually support the statement: an invented number or an unrelated quote is rejected
+ok 487 - evidence must actually support the statement: an invented number or an unrelated quote is rejected
+  ---
+  duration_ms: 0.778451
+  type: 'test'
+  ...
+# Subtest: schema gaps are named: missing clinical scope, applicability, exceptions, approval, review date; duplicate ids
+ok 488 - schema gaps are named: missing clinical scope, applicability, exceptions, approval, review date; duplicate ids
+  ---
+  duration_ms: 0.59131
+  type: 'test'
+  ...
+# Subtest: registerSpecialized (strict) refuses an invalid entry; a hand-written entry with unverified evidence never validates
+ok 489 - registerSpecialized (strict) refuses an invalid entry; a hand-written entry with unverified evidence never validates
+  ---
+  duration_ms: 0.902038
+  type: 'test'
+  ...
+# Subtest: retrieval returns an approved, current, in-scope, relevant entry together with its conditions and exceptions
+ok 490 - retrieval returns an approved, current, in-scope, relevant entry together with its conditions and exceptions
+  ---
+  duration_ms: 0.667594
+  type: 'test'
+  ...
+# Subtest: retrieval relevance: an unrelated question, a single common word and an empty query return nothing; an alias phrase is enough
+ok 491 - retrieval relevance: an unrelated question, a single common word and an empty query return nothing; an alias phrase is enough
+  ---
+  duration_ms: 0.606823
+  type: 'test'
+  ...
+# Subtest: retrieval ranks the better match first and honours k
+ok 492 - retrieval ranks the better match first and honours k
+  ---
+  duration_ms: 0.530679
+  type: 'test'
+  ...
+# Subtest: scope mismatches are never returned: discipline, exam, jurisdiction (an unknown region cannot satisfy a specific one), institution, population
+ok 493 - scope mismatches are never returned: discipline, exam, jurisdiction (an unknown region cannot satisfy a specific one), institution, population
+  ---
+  duration_ms: 0.736077
+  type: 'test'
+  ...
+# Subtest: outdated, not-yet-effective, superseded, retired, draft and hand-injected unverified entries are never retrieved
+ok 494 - outdated, not-yet-effective, superseded, retired, draft and hand-injected unverified entries are never retrieved
+  ---
+  duration_ms: 0.658811
+  type: 'test'
+  ...
+# Subtest: globally applicable expert knowledge is accepted without a country, exam, or institution anchor
+ok 495 - globally applicable expert knowledge is accepted without a country, exam, or institution anchor
+  ---
+  duration_ms: 0.354954
+  type: 'test'
+  ...
+# Subtest: a specialty label alone cannot turn generic textbook content into specialized knowledge
+ok 496 - a specialty label alone cannot turn generic textbook content into specialized knowledge
+  ---
+  duration_ms: 0.193751
+  type: 'test'
+  ...
+# Subtest: approved status requires explicit human checks of claim support, clinical accuracy, and scope/exceptions
+ok 497 - approved status requires explicit human checks of claim support, clinical accuracy, and scope/exceptions
+  ---
+  duration_ms: 0.242335
+  type: 'test'
+  ...
+# Subtest: the specialized layer is separate: pilot drafts load for review but remain excluded from production retrieval and do not change the general safety KB
+ok 498 - the specialized layer is separate: pilot drafts load for review but remain excluded from production retrieval and do not change the general safety KB
+  ---
+  duration_ms: 23.727855
+  type: 'test'
+  ...
+# Subtest: balanced solve has short silence limits (it writes a tiny brief) and a box shorter than the old 120 s first-byte wait
+ok 499 - balanced solve has short silence limits (it writes a tiny brief) and a box shorter than the old 120 s first-byte wait
+  ---
+  duration_ms: 0.603067
+  type: 'test'
+  ...
+# Subtest: a solve that hangs is cancelled at the box and the lesson is written at once WITHOUT the brief (it used to wait for the hung request)
+ok 500 - a solve that hangs is cancelled at the box and the lesson is written at once WITHOUT the brief (it used to wait for the hung request)
+  ---
+  duration_ms: 365.165324
+  type: 'test'
+  ...
+# Subtest: a solve that answers inside the box keeps the verified path: the brief reaches the writer
+ok 501 - a solve that answers inside the box keeps the verified path: the brief reaches the writer
+  ---
+  duration_ms: 28.087035
+  type: 'test'
+  ...
+# Subtest: an uncovered high-risk statement: internal label + gap stay, the student view is completely quiet (no warning, no count)
+ok 502 - an uncovered high-risk statement: internal label + gap stay, the student view is completely quiet (no warning, no count)
+  ---
+  duration_ms: 2.189333
+  type: 'test'
+  ...
+# Subtest: a confirmed KB error is corrected in place and shown as ONE calm fix, never as a warning
+ok 503 - a confirmed KB error is corrected in place and shown as ONE calm fix, never as a warning
+  ---
+  duration_ms: 1.578615
+  type: 'test'
+  ...
+# Subtest: itemSeverity: only a concrete risk is a warning
+ok 504 - itemSeverity: only a concrete risk is a warning
+  ---
+  duration_ms: 0.209635
+  type: 'test'
+  ...
+# Subtest: solve banner: bookkeeping and unavailable confidence never reach the student
+ok 505 - solve banner: bookkeeping and unavailable confidence never reach the student
+  ---
+  duration_ms: 0.249255
+  type: 'test'
+  ...
+# Subtest: exam items: no coverage → no badge; grounded / verified → a positive pointer; concrete defect or contradiction → the only warning
+ok 506 - exam items: no coverage → no badge; grounded / verified → a positive pointer; concrete defect or contradiction → the only warning
+  ---
+  duration_ms: 5.434124
+  type: 'test'
+  ...
+# Subtest: saved mistakes: only a concrete concern holds an item back
+ok 507 - saved mistakes: only a concrete concern holds an item back
+  ---
+  duration_ms: 2.960994
+  type: 'test'
+  ...
+# Subtest: developer mode is off by default and switched on by a flag; gaps are still recorded
+ok 508 - developer mode is off by default and switched on by a flag; gaps are still recorded
+  ---
+  duration_ms: 1.455239
+  type: 'test'
+  ...
+# Subtest: source files: the student-facing components no longer print counts, «pending» or «not grounded»
+ok 509 - source files: the student-facing components no longer print counts, «pending» or «not grounded»
+  ---
+  duration_ms: 1.693357
+  type: 'test'
+  ...
+# Subtest: easy words are dropped even when the AI labels them B2 / MED (the dictionary decides, not the AI)
+ok 510 - easy words are dropped even when the AI labels them B2 / MED (the dictionary decides, not the AI)
+  ---
+  duration_ms: 2.83195
+  type: 'test'
+  ...
+# Subtest: real B2+ words, medical terms, abbreviations, phrasal verbs and fixed exam phrases survive
+ok 511 - real B2+ words, medical terms, abbreviations, phrasal verbs and fixed exam phrases survive
+  ---
+  duration_ms: 1.646367
+  type: 'test'
+  ...
+# Subtest: the dictionary is only ever consulted for EVERYDAY words: a rare word is never 'easy'
+ok 512 - the dictionary is only ever consulted for EVERYDAY words: a rare word is never 'easy'
+  ---
+  duration_ms: 0.374854
+  type: 'test'
+  ...
+# Subtest: keepEntry: an AI tag of A1 / A2 / B1 always drops the entry
+ok 513 - keepEntry: an AI tag of A1 / A2 / B1 always drops the entry
+  ---
+  duration_ms: 0.123536
+  type: 'test'
+  ...
+# Subtest: waiting card logic: stages, a bar that never reaches 100 %, rotating items of three kinds
+ok 514 - waiting card logic: stages, a bar that never reaches 100 %, rotating items of three kinds
+  ---
+  duration_ms: 7.534874
+  type: 'test'
+  ...
+1..514
+# tests 514
+# suites 0
+# pass 514
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21419.551671

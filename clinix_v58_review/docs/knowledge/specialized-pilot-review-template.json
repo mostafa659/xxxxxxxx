@@ -1,0 +1,15 @@
+{
+  "pilotId": "specialized-pharmacogenomics-pilot-2026-09",
+  "reviewerName": "",
+  "reviewerRole": "",
+  "reviewDate": "",
+  "entries": [
+    {"id": "pgx.fda.evidence-tier-semantics", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.table-inclusion-not-testing-mandate", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.abacavir-hla-b-5701", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.aficamten-cyp2c9-pm", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.mtrnr1-aminoglycoside-ototoxicity", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.azathioprine-tpmt-nudt15", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""},
+    {"id": "pgx.fda.carbamazepine-hla-b-1502", "claimSupport": false, "clinicalAccuracy": false, "scopeAndExceptions": false, "notes": ""}
+  ]
+}
