@@ -12,8 +12,8 @@ const PAIR_RE = new RegExp(`(?:^|[;|,\\n])\\s*([A-Za-z][A-Za-z0-9_\\u2080-\\u208
 
 const KEY_ALIASES = {
   map: ["map", "mean arterial pressure"],
-  sbp: ["sbp", "systolic blood pressure", "systolic bp", "systolic_bp"],
-  dbp: ["dbp", "diastolic blood pressure", "diastolic bp", "diastolic_bp"],
+  sbp: ["sbp", "systolic blood pressure", "systolic bp", "systolic_bp", "bp systolic", "bp_systolic"],
+  dbp: ["dbp", "diastolic blood pressure", "diastolic bp", "diastolic_bp", "bp diastolic", "bp_diastolic"],
   cvp: ["cvp", "central venous pressure"],
   co: ["co", "cardiac output"],
   vo2: ["vo2", "oxygen consumption"],
@@ -186,10 +186,19 @@ export function mergeExtractedClinicalData(...readings) {
 
 export function replaceAuditItemsByMessage(existing = [], incoming = [], getMessage = (item) => item?.msg ?? item?.message ?? item?.en ?? "") {
   // A preliminary solve audit and the final source-backed audit can report the
-  // same finding. Keep the final finding (which may carry a more specific code)
-  // once, instead of showing duplicate warnings to the learner.
-  const incomingMessages = new Set(incoming.map((item) => String(getMessage(item) || "").trim()).filter(Boolean));
-  return [...existing.filter((item) => !incomingMessages.has(String(getMessage(item) || "").trim())), ...incoming];
+  // same finding. Keep the final finding once, and deduplicate the incoming batch
+  // itself as well. The latter matters when several English conflicts share one
+  // localized Arabic summary.
+  const keyOf = (item) => String(getMessage(item) || "").trim();
+  const incomingMessages = new Set(incoming.map(keyOf).filter(Boolean));
+  const seen = new Set();
+  const uniqueIncoming = incoming.filter((item) => {
+    const key = keyOf(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return [...existing.filter((item) => !incomingMessages.has(keyOf(item))), ...uniqueIncoming];
 }
 
 export function extractLabelledClinicalData(text = "") {

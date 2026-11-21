@@ -650,6 +650,37 @@ test("source extraction preserves structured underscore fields and Unicode acid-
   assert.equal(facts.na.value, 129);
 });
 
+test("source corroboration accepts BP_systolic/BP_diastolic aliases exactly as emitted by the app", () => {
+  const source = "BP_systolic=82 mmHg; BP_diastolic=48 mmHg; HR=40 bpm; Na=129 mmol/L; Cl=94 mmol/L; HCO3=14 mmol/L; Albumin=2.6 g/dL; PaCO2=30 mmHg";
+  const solver = "BP_systolic=82 mmHg; BP_diastolic=48 mmHg; Na=129 mmol/L; Cl=94 mmol/L; HCO3=14 mmol/L; Albumin=2.6 g/dL; PaCO2=30 mmHg";
+  const authority = extractLabelledClinicalData(source);
+  const audit = auditClinicalCalculations({
+    dataText: solver,
+    modelDataText: solver,
+    authorityDataText: authority,
+    contextText: "Calculate MAP, anion gap and Winter compensation in metabolic acidosis.",
+    narrative: "Estimated MAP = 59.33 mmHg. Anion gap = 21 mmol/L. Winter expected PaCO2 = 29 mmHg.",
+    requireAuthorityInputs: true,
+  });
+  assert.equal(parseClinicalData(authority).sbp.value, 82);
+  assert.equal(parseClinicalData(authority).dbp.value, 48);
+  assert.equal(parseClinicalData(authority).paco2.value, 30);
+  assert.deepEqual(audit.sourceVerification.missingSourceFields, []);
+  assert.deepEqual(audit.sourceVerification.missingModelFields, []);
+  assert.ok(!audit.conflicts.some((x) => x.code === "clinical-inputs-not-independently-confirmed"));
+  assert.equal(audit.results.find((x) => x.id === "map").value, 59.33);
+  assert.equal(audit.results.find((x) => x.id === "winter").value, 29);
+});
+
+test("localized duplicate warnings are collapsed within the incoming audit batch", () => {
+  const result = replaceAuditItemsByMessage([], [
+    { en: "Anion gap mismatch", ar: "الحساب المستقل كشف تعارضًا." },
+    { en: "Winter mismatch", ar: "الحساب المستقل كشف تعارضًا." },
+  ], (item) => item.ar);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].ar, "الحساب المستقل كشف تعارضًا.");
+});
+
 test("source corroboration accepts structured SBP/DBP and Unicode PaCO₂ labels", () => {
   const solver = "systolic_bp=82 mmHg; diastolic_bp=48 mmHg; sodium=129 mmol/L; chloride=94 mmol/L; bicarbonate=14 mmol/L; albumin=2.6 g/dL; paco2=30 mmHg";
   const source = "systolic_bp=82 mmHg; diastolic_bp=48 mmHg; sodium=129 mmol/L; chloride=94 mmol/L; HCO₃=14 mmol/L; albumin=2.6 g/dL; PaCO₂=30 mmHg";

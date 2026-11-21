@@ -192,7 +192,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
           const calculationFlags = audit.conflicts.map((c) => ({ code: c.code, msg: c.message }));
           const calculationConcerns = audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }));
           assess.flags = replaceAuditItemsByMessage(assess.flags || [], calculationFlags, (item) => item.msg);
-          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], calculationConcerns, (item) => item.en);
+          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], calculationConcerns, (item) => item.ar || item.en);
           assess.issues = [...new Set([...(assess.issues || []), ...audit.conflicts.map((c) => c.message)])];
         }
       }
