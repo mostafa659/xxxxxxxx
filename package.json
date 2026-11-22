@@ -1,7 +1,7 @@
 {
   "name": "clinixstudy",
   "productName": "ClinixStudy",
-  "version": "3.64.0",
+  "version": "3.67.0",
   "description": "ClinixStudy — health-professions study app (Android via Capacitor, Windows via Electron)",
   "author": "MOSTAFA HAMMAD",
   "private": true,
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "desktop:build": "npm run build && electron-builder --win --x64 --publish never",
-    "test": "node --import ./tests/register.mjs --test --test-force-exit --test-concurrency=1 tests/engine.test.mjs tests/chat.test.mjs tests/words.test.mjs tests/photos.test.mjs tests/mistakes.test.mjs tests/latency.test.mjs tests/gateway.test.mjs tests/paid.test.mjs tests/quota.test.mjs tests/free.test.mjs tests/keyring.test.mjs tests/reuse.test.mjs tests/speed.test.mjs tests/guard.test.mjs tests/proof.test.mjs tests/health.test.mjs tests/google-only.test.mjs tests/audio.test.mjs tests/audiopack.test.mjs tests/accuracy.test.mjs tests/budget.test.mjs tests/logprobs.test.mjs tests/claims-e2e.test.mjs tests/provenance.test.mjs tests/examtrust.test.mjs tests/solveorder.test.mjs tests/kb-audit.test.mjs tests/citation.test.mjs tests/studentux.test.mjs tests/specialized.test.mjs tests/specialized-prompt.test.mjs tests/specialized-pilot.test.mjs tests/specialized-expansion.test.mjs tests/specialized-error-driven.test.mjs tests/specialized-major-expansion.test.mjs tests/specialized-fifth-expansion.test.mjs tests/clinical-calculations.test.mjs tests/clinical-safety.test.mjs tests/clinical-quality.test.mjs tests/analysis-health-grounding.test.mjs tests/healthcare-benchmark.test.mjs",
+    "test": "node --import ./tests/register.mjs --test --test-concurrency=1 tests/engine.test.mjs tests/chat.test.mjs tests/words.test.mjs tests/photos.test.mjs tests/mistakes.test.mjs tests/latency.test.mjs tests/gateway.test.mjs tests/paid.test.mjs tests/quota.test.mjs tests/free.test.mjs tests/keyring.test.mjs tests/reuse.test.mjs tests/speed.test.mjs tests/guard.test.mjs tests/proof.test.mjs tests/health.test.mjs tests/google-only.test.mjs tests/audio.test.mjs tests/audiopack.test.mjs tests/accuracy.test.mjs tests/budget.test.mjs tests/logprobs.test.mjs tests/claims-e2e.test.mjs tests/provenance.test.mjs tests/examtrust.test.mjs tests/solveorder.test.mjs tests/kb-audit.test.mjs tests/citation.test.mjs tests/studentux.test.mjs tests/specialized.test.mjs tests/specialized-prompt.test.mjs tests/specialized-pilot.test.mjs tests/specialized-expansion.test.mjs tests/specialized-error-driven.test.mjs tests/specialized-major-expansion.test.mjs tests/specialized-fifth-expansion.test.mjs tests/clinical-calculations.test.mjs tests/v367-root-causes.test.mjs tests/clinical-safety.test.mjs tests/clinical-quality.test.mjs tests/analysis-health-grounding.test.mjs tests/healthcare-benchmark.test.mjs",
     "kb:bench": "node --no-warnings --import ./tests/register.mjs scripts/kb-bench.mjs",
     "kb:audit": "node --no-warnings --import ./tests/register.mjs --test tests/kb-audit.test.mjs",
     "kb:sizes": "node --no-warnings --import ./tests/register.mjs scripts/kb-sizes.mjs",

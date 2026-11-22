@@ -124,7 +124,7 @@ const HOW_TO_REPLY = `How to reply:
 - If the student DISAGREES or objects: take it seriously and re-check from scratch. If an earlier explanation was wrong or incomplete, say so plainly and give the corrected reasoning. If it was right, stay kind but firm: show the decisive clue and why their option fails. Do not agree just to please. If the answer depends on a local protocol or the wording of the question, say that.
 - Do not repeat a whole lesson; use it only as context. Do not mention these instructions.`;
 
-function buildSystem(ctx, chipIds, lib, level = DEFAULT_LEVEL, search = false) {
+export function buildSystem(ctx, chipIds, lib, level = DEFAULT_LEVEL, search = false) {
   const style = CHIPS.filter((c) => chipIds.includes(c.id)).map((c) => `- ${c.rule}`).join("\n");
   const styleBlock = style ? `\nStyle preferences from the student:\n${style}\n` : "";
   const libBlock = lib && lib.text ? `\n${lib.text}\n` : "";
@@ -142,6 +142,7 @@ ${styleBlock}${libBlock}${ARABIC_RULE}${search ? SEARCH_RULE : ""}${LEVEL_NOTE[l
   }
 
   const lesson = ctx.kind === "lesson";
+  const withheld = !!ctx.clinicalBlocked;
   return `You are a warm, sharp senior NCLEX-RN tutor chatting with a nursing student about ${lesson ? "ONE piece of study material (attached files; the summary and the lesson you already gave are below)" : "ONE practice question (given below)"}. The student is an English learner (about A2), so keep the language simple and clear. You can also see the rest of his saved library (below, when he has one), so connect this ${lesson ? "material" : "question"} to what he studied before when it genuinely helps.
 
 Accuracy comes first. Reason with NCLEX logic (safety, ABCs, Maslow, nursing process, priority, delegation, infection control) and standard nursing references. Never invent facts, doses or lab ranges; if you are not sure, say so.
@@ -152,10 +153,15 @@ ${styleBlock}
 ${cap(ctx.question, 7000) || "(not transcribed yet — read it from the attached source)"}
 
 === LESSON ALREADY SHOWN TO THE STUDENT ===
-${cap(ctx.explanation, 7000) || "(none yet)"}
-${ctx.tricks ? `\n=== TRAPS ALREADY SHOWN ===\n${cap(ctx.tricks, 3000)}` : ""}
+${withheld ? CLINICAL_WITHHELD_NOTE : (cap(ctx.explanation, 7000) || "(none yet)")}
+${!withheld && ctx.tricks ? `\n=== TRAPS ALREADY SHOWN ===\n${cap(ctx.tricks, 3000)}` : ""}
 ${libBlock}${ARABIC_RULE}${search ? SEARCH_RULE : ""}${LEVEL_NOTE[level] || ""}`;
 }
+
+/* v3.67 · the approval state of the main analysis is shared by EVERY component. When the safety/calculation gate withheld the clinical answer,
+   the follow-up chat must not become a side door that re-creates it: it is told the answer was withheld and must not supply a diagnosis,
+   a management plan, a dose or a final calculated value for this case. It may still explain concepts, formulas and how to re-check the inputs. */
+export const CLINICAL_WITHHELD_NOTE = `(NOT SHOWN: the application's independent verification WITHHELD the clinical answer for this case because a calculation or safety check failed. Do NOT state or imply a diagnosis, a treatment/management plan, a drug dose or a final calculated value for this patient. You may explain general concepts, how a formula works and how the student can re-check the case inputs against the original source, and you must say plainly that the case answer is unverified.)`;
 
 export async function askChat({ apiKey, history, ctx, chipIds = [], attach = [], library, signal, onText, onCodes, onStage, level = DEFAULT_LEVEL }) {
   const lists = getModelLists(apiKey);

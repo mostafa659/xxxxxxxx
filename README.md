@@ -1,3 +1,9 @@
+## v3.67.0 — Shared Root-Cause Remediation: Calculation Claims, Per-Measurement Extraction, Tiered Gating
+
+Fixes five shared defects behind the v3.59–v3.66 recurring failures: the verifier read the first operand of a worked formula as the reported result (`AG 129`, `Winter 1.5` were operands of correct formulas); source extraction scoped baseline/current per line and required glued units; corroboration required the regex to re-derive a value and one unconfirmed formula blocked everything; the same finding was printed several ways; and the approval state was not shared by the solve banner, chat and handoff. New modules: `calc-claims.js`, `clinical-measurements.js`, `arith.js`.
+
+Verification: `npm test` → **580/580 passed** (536 existing + 44 new), 0 failed/skipped; `npm run build` exit 0. No live Gemini run, clinician review or medical-accuracy improvement is claimed. See [the root-cause and remediation report](docs/ROOT_CAUSE_AND_REMEDIATION_v3.67.0.md) and [test/build record](docs/TEST_RESULTS_v3.67.0.md).
+
 ## v3.63.0 — Close TrustPanel Supplementary-Content Bypass
 
 - **Confirmed leak fixed:** when the critical clinical synthesis gate blocked the generated explanation, AI-authored analogies and memory aids were still emitted on a separate TrustPanel payload and could contain patient-specific advice.

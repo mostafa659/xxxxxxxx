@@ -696,7 +696,7 @@ export default function Editor({ initial, history, kind: kindProp, boot, apiKey,
           )}
           {chatEver && (
             <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} apiKey={apiKey} onNeedKey={onNeedKey}
-              ctx={{ kind, question: result?.original_question_text, explanation: result?.explanation, tricks: result?.tricks, imageUrl, doc }}
+              ctx={{ kind, question: result?.original_question_text, explanation: result?.explanation, tricks: result?.tricks, imageUrl, doc, clinicalBlocked: !!trust?.clinicalSynthesisBlocked }}
               chipIds={chips} storeKey={savedId ? `clinix:chat:${savedId}` : null} library={lib} onOpenItem={onOpenItem} />
           )}
         </>

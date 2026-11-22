@@ -7,20 +7,22 @@
  * sieving coefficient is NOT silently replaced with the unbound fraction.
  */
 
+import { extractMeasurements } from "./clinical-measurements.js";
+import { extractClaims, verifyClaims } from "./calc-claims.js";
+
 const NUM = "-?[0-9\\u0660-\\u0669]+(?:[.,٫][0-9\\u0660-\\u0669]+)?";
-const PAIR_RE = new RegExp(`(?:^|[;|,\\n])\\s*([A-Za-z][A-Za-z0-9_]*)\\s*=\\s*(${NUM})\\s*([^;,\\n]*)`, "g");
+const PAIR_RE = new RegExp(`(?:^|[;|,\\n])\\s*([A-Za-z][A-Za-z0-9_\\u2080-\\u2089]*(?: [A-Za-z][A-Za-z0-9_\\u2080-\\u2089]*){0,3})\\s*=\\s*(${NUM})\\s*([^;,\\n]*)`, "g");
 
 const KEY_ALIASES = {
   map: ["map", "mean arterial pressure"],
-  sbp: ["sbp", "systolic blood pressure", "systolic bp", "systolic_bp"],
-  dbp: ["dbp", "diastolic blood pressure", "diastolic bp", "diastolic_bp"],
+  sbp: ["sbp", "systolic blood pressure", "systolic bp", "systolic_bp", "bp systolic", "bp_systolic"],
+  dbp: ["dbp", "diastolic blood pressure", "diastolic bp", "diastolic_bp", "bp diastolic", "bp_diastolic"],
   cvp: ["cvp", "central venous pressure"],
   co: ["co", "cardiac output"],
   vo2: ["vo2", "oxygen consumption"],
   cao2: ["cao2", "arterial oxygen content"],
   cvo2: ["cvo2", "venous oxygen content"],
   hb: ["hb", "hemoglobin", "haemoglobin", "current hb", "current_hb", "current hemoglobin", "current haemoglobin"],
-  hb_baseline: ["historical hb", "historical_hb", "baseline hb", "baseline_hb", "historical hemoglobin", "baseline hemoglobin", "historical haemoglobin", "baseline haemoglobin"],
   sao2: ["sao2", "arterial oxygen saturation"],
   pao2: ["pao2", "arterial oxygen partial pressure"],
   svo2: ["svo2", "venous oxygen saturation"],
@@ -45,17 +47,36 @@ const KEY_ALIASES = {
   sc: ["sc", "sieving coefficient"],
   scequalsfu: ["scequalsfu", "sc equals fu", "sieving coefficient equals fu"],
   cssu: ["cssu", "target unbound concentration", "unbound target concentration"],
+  hr: ["hr", "heart rate", "pulse", "pulse rate"],
+  lactate: ["lactate", "lactic acid", "serum lactate"],
 };
 
-const normKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const normKey = (s) => String(s || "").replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d))).toLowerCase().replace(/[^a-z0-9]/g, "");
 const num = (s) => Number(String(s).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/٫/g, ".").replace(",", "."));
 const round = (x, d = 2) => Number.isFinite(x) ? Number(x.toFixed(d)) : null;
 const close = (a, b, abs = 0.5, rel = 0.015) => Math.abs(a - b) <= Math.max(abs, Math.abs(b) * rel);
 
+/* v3.67 · ONE identity scheme for a reading: <analyte>[baseline|hemolyzed].
+   Before, «historical_hb» became `hb_baseline` (alias table) while «hb_baseline» and every table column became `hbbaseline` (normalised key):
+   the same concept lived under two names, so channels could silently fail to meet. Qualifier words (baseline / historical / current / repeat /
+   hemolyzed …) are now stripped from ANY spelling of a key and re-attached in a single canonical form. */
+const QUALIFIER_RE = /(?:^|[\s_\-()\[\]/,:])(baseline|historical|prior|previous|premorbid|usual|pre-?admission|current|latest|present|repeat(?:ed)?|non[-_ ]?h(?:a)?emoly[sz]ed|h(?:a)?emoly[sz]ed)(?=$|[\s_\-()\[\]/,:])/gi;
+const exactAlias = (k) => { for (const [canon, aliases] of Object.entries(KEY_ALIASES)) if (aliases.some((a) => normKey(a) === k)) return canon; return null; };
+export function knownKey(key) { const k = String(key || ""); if (Object.hasOwn(KEY_ALIASES, k)) return true; const m = /^(.*?)(?:baseline|hemolyzed)$/.exec(k); return !!(m && m[1] && Object.hasOwn(KEY_ALIASES, m[1])); }
+
 function canonicalKey(key) {
   const k = normKey(key);
-  for (const [canon, aliases] of Object.entries(KEY_ALIASES)) {
-    if (aliases.some((a) => normKey(a) === k)) return canon;
+  const direct = exactAlias(k);
+  if (direct) return direct;
+  const quals = [];
+  const stripped = String(key || "").replace(QUALIFIER_RE, (m, q) => { quals.push(q.toLowerCase().replace(/[^a-z]/g, "")); return " "; });
+  if (quals.length) {
+    const base = exactAlias(normKey(stripped));
+    if (base) {
+      const baseline = quals.some((q) => /^(?:baseline|historical|prior|previous|premorbid|usual|preadmission)$/.test(q));
+      const hemolyzed = quals.some((q) => /^h(?:a)?emoly[sz]ed$/.test(q));
+      return `${base}${baseline ? "baseline" : ""}${hemolyzed ? "hemolyzed" : ""}`;
+    }
   }
   return k;
 }
@@ -70,12 +91,22 @@ export function parseClinicalDataDiagnostics(text = "") {
     const key = canonicalKey(m[1]);
     const value = num(m[2]);
     if (!Number.isFinite(value)) continue;
-    const reading = { key, value, unit: String(m[3] || "").trim().replace(/\s+/g, " "), raw: m[0].trim() };
-    if (!facts[key]) facts[key] = reading; // first reading wins; conflicting repeats are never silently overwritten
+    let tail = String(m[3] || "").trim().replace(/\s+/g, " ");
+    let scopedKey = key;
+    // «potassium=7.1 mmol/L (hemolyzed)», «hb=11.2 g/dL (baseline)»: a qualifier printed after the unit scopes THIS reading, not the analyte
+    const cue = /\(\s*([^()]*?(?:baseline|historical|prior|previous|premorbid|usual|h(?:a)?emoly[sz]ed|non[-\s]?h(?:a)?emoly[sz]ed|repeat(?:ed)?|current)[^()]*?)\s*\)/i.exec(tail);
+    if (cue && Object.hasOwn(KEY_ALIASES, key)) {
+      const nonHemo = /non[-\s]?h(?:a)?emoly[sz]ed/i.test(cue[1]);
+      if (/baseline|historical|prior|previous|premorbid|usual/i.test(cue[1])) scopedKey = `${key}baseline`;
+      else if (!nonHemo && /h(?:a)?emoly[sz]ed/i.test(cue[1])) scopedKey = `${key}hemolyzed`;
+      tail = tail.replace(cue[0], "").trim();
+    }
+    const reading = { key: scopedKey, value, unit: tail, raw: m[0].trim().replace(/^[;|,\s]+/, "") };
+    if (!facts[scopedKey]) facts[scopedKey] = reading; // first reading wins; conflicting repeats are never silently overwritten
     else {
-      const prior = facts[key];
+      const prior = facts[scopedKey];
       if (!close(prior.value, reading.value, 0.0001, 0.0001) || (prior.unit && reading.unit && prior.unit.toLowerCase() !== reading.unit.toLowerCase())) {
-        duplicates.push({ key, first: prior, repeated: reading });
+        duplicates.push({ key: scopedKey, first: prior, repeated: reading });
       }
     }
   }
@@ -86,28 +117,23 @@ export function parseClinicalData(text = "") {
   return parseClinicalDataDiagnostics(text).facts;
 }
 
-function qualifierForMeasurement(source, index) {
+/* Site / sample-route identity of a measurement (ECMO circuit position, arterial site …) — a property of the LINE it is printed on.
+   v3.67: TIME scope (baseline / current / repeat / hemolyzed) is no longer decided here. It used to be: any «baseline» word earlier on the line
+   tagged every later value as baseline. It is now decided per measurement in clinical-measurements.js. */
+function siteTagForMeasurement(source, index) {
   const t = String(source || "");
   const lineStart = t.lastIndexOf("\n", Math.max(0, index)) + 1;
   const lineEndRaw = t.indexOf("\n", index);
   const lineEnd = lineEndRaw < 0 ? t.length : lineEndRaw;
   const line = t.slice(lineStart, lineEnd).toLowerCase();
-  const beforeOnLine = t.slice(lineStart, index).toLowerCase();
-  const lastHeading = [...t.slice(0, index).matchAll(/(?:^|\n)\s*#{1,6}\s*([^\n]+)/g)].at(-1);
-  const headingText = String(lastHeading?.[1] || "").toLowerCase();
-  const tags = [];
-  if (/post[-\s]?(?:oxygenator|membrane)|ecmo\s+post/.test(line)) tags.push("ecmo_post_oxygenator");
-  else if (/pre[-\s]?(?:oxygenator|membrane)|ecmo\s+pre/.test(line)) tags.push("ecmo_pre_oxygenator");
-  else if (/right\s+radial/.test(line)) tags.push("right_radial");
-  else if (/left\s+radial/.test(line)) tags.push("left_radial");
-  else if (/left\s+(?:femoral|pedal|toe)|femoral\s*\/\s*pedal/.test(line)) tags.push("left_femoral_pedal");
-  else if (/right\s+(?:femoral|pedal|toe)/.test(line)) tags.push("right_femoral_pedal");
-  else if (/pulmonary\s+artery\s+catheter|\bPAC\b/.test(line)) tags.push("pulmonary_artery_catheter");
-  // Do not let a baseline column header leak into unrelated rows later in the section.
-  // Markdown tables are handled with explicit column identity below.
-  if (/\b(?:baseline|historical|prior|previous|preoperative|pre-op)\b/.test(`${headingText} ${beforeOnLine}`)
-      || /\b(?:two|three|four|six|twelve)\s+(?:days?|weeks?|months?|years?)\s+ago\b/.test(beforeOnLine)) tags.push("baseline");
-  return tags.length ? tags.join("_") : "";
+  if (/post[-\s]?(?:oxygenator|membrane)|ecmo\s+post/.test(line)) return "ecmo_post_oxygenator";
+  if (/pre[-\s]?(?:oxygenator|membrane)|ecmo\s+pre/.test(line)) return "ecmo_pre_oxygenator";
+  if (/right\s+radial/.test(line)) return "right_radial";
+  if (/left\s+radial/.test(line)) return "left_radial";
+  if (/left\s+(?:femoral|pedal|toe)|femoral\s*\/\s*pedal/.test(line)) return "left_femoral_pedal";
+  if (/right\s+(?:femoral|pedal|toe)/.test(line)) return "right_femoral_pedal";
+  if (/pulmonary\s+artery\s+catheter|\bPAC\b/.test(line)) return "pulmonary_artery_catheter";
+  return "";
 }
 
 function markdownCells(line) {
@@ -160,7 +186,7 @@ function extractMarkdownTablePairs(source) {
       excluded.add(row);
       if (cells.length < headers.length) continue;
       const baseKey = canonicalKey(cells[0]);
-      if (!Object.hasOwn(KEY_ALIASES, baseKey)) continue;
+      if (!knownKey(baseKey)) continue;
       for (let col = 1; col < headers.length; col++) {
         const parsed = numericCell(cells[col]);
         if (!parsed) continue;
@@ -186,69 +212,46 @@ export function mergeExtractedClinicalData(...readings) {
 
 export function replaceAuditItemsByMessage(existing = [], incoming = [], getMessage = (item) => item?.msg ?? item?.message ?? item?.en ?? "") {
   // A preliminary solve audit and the final source-backed audit can report the
-  // same finding. Keep the final finding (which may carry a more specific code)
-  // once, instead of showing duplicate warnings to the learner.
-  const incomingMessages = new Set(incoming.map((item) => String(getMessage(item) || "").trim()).filter(Boolean));
-  return [...existing.filter((item) => !incomingMessages.has(String(getMessage(item) || "").trim())), ...incoming];
+  // same finding. Keep the final finding once, and deduplicate the incoming batch
+  // itself as well. The latter matters when several English conflicts share one
+  // localized Arabic summary.
+  const keyOf = (item) => String(getMessage(item) || "").trim();
+  const incomingMessages = new Set(incoming.map(keyOf).filter(Boolean));
+  const seen = new Set();
+  const uniqueIncoming = incoming.filter((item) => {
+    const key = keyOf(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return [...existing.filter((item) => !incomingMessages.has(keyOf(item))), ...uniqueIncoming];
 }
 
 export function extractLabelledClinicalData(text = "") {
   const source = String(text || "");
   const table = extractMarkdownTablePairs(source);
   const scanSource = source.split(/\r?\n/).map((line, i) => table.excluded.has(i) ? "" : line).join("\n");
-  const specs = [
-    ["map", new RegExp(`(?:mean\\s+arterial\\s+pressure|\\bMAP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["sbp", new RegExp(`(?:systolic\\s+blood\\s+pressure|\\bSBP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["dbp", new RegExp(`(?:diastolic\\s+blood\\s+pressure|\\bDBP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["cvp", new RegExp(`(?:central\\s+venous\\s+pressure|\\bCVP\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["co", new RegExp(`(?:cardiac\\s+output|\\bCO\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*min)`, "i")],
-    ["vo2", new RegExp(`(?:oxygen\\s+consumption|\\bVO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*min)`, "i")],
-    ["cao2", new RegExp(`(?:arterial\\s+oxygen\\s+content|\\bCaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
-    ["cvo2", new RegExp(`(?:venous\\s+oxygen\\s+content|\\bCvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mL\\s*\\/\\s*dL)`, "i")],
-    ["hb", new RegExp(`(?:hemoglobin|haemoglobin|\\bHb\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
-    ["sao2", new RegExp(`(?:arterial\\s+oxygen\\s+saturation|\\bSaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(%)`, "i")],
-    ["pao2", new RegExp(`(?:arterial\\s+oxygen\\s+partial\\s+pressure|\\bPaO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["svo2", new RegExp(`(?:venous\\s+oxygen\\s+saturation|\\bSvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(%)`, "i")],
-    ["pvo2", new RegExp(`(?:venous\\s+oxygen\\s+partial\\s+pressure|\\bPvO2\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*hg)`, "i")],
-    ["fu", new RegExp(`(?:unbound\\s+fraction|free\\s+fraction|\\bfu\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
-    ["sc", new RegExp(`(?:sieving\\s+coefficient|\\bSC\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
-    ["clint", new RegExp(`(?:intrinsic\\s+clearance|\\bCLint\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
-    ["qeff", new RegExp(`(?:delivered\\s+effluent\\s+flow|effective\\s+effluent\\s+flow|\\bQeff\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(L\\s*\\/\\s*h)`, "i")],
-    ["cssu", new RegExp(`(?:target\\s+unbound\\s+concentration|unbound\\s+Css|\\bCssu\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*L)`, "i")],
-    ["ethanoldivisor", new RegExp(`(?:ethanol\\s+(?:conversion\\s+)?divisor|ethanol\\s+coefficient|\\bEthanolDivisor\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
-    ["na", new RegExp(`(?:sodium|\\bNa\\+?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["glucose", new RegExp(`(?:glucose|blood\\s+sugar)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["bun", new RegExp(`(?:blood\\s+urea\\s+nitrogen|\\bBUN\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["urea", new RegExp(`\\burea\\b\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL|mmol\\s*\\/\\s*L)`, "i")],
-    ["measuredosm", new RegExp(`(?:measured\\s+(?:serum\\s+)?osmolality)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mOsm\\s*\\/\\s*kg)`, "i")],
-    ["ethanol", new RegExp(`(?:ethanol|alcohol\\s+level)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mg\\s*\\/\\s*dL)`, "i")],
-    ["ph", new RegExp(`\\bpH\\b\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})`, "i")],
-    ["chloride", new RegExp(`(?:chloride|\\bCl-?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["hco3", new RegExp(`(?:bicarbonate|\\bHCO3-?)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mmol\\s*\\/\\s*L|mEq\\s*\\/\\s*L)`, "i")],
-    ["albumin", new RegExp(`(?:albumin|\\bAlb\\b)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(g\\s*\\/\\s*dL)`, "i")],
-    ["paco2", new RegExp(`(?:PaCO2|arterial\\s+carbon\\s+dioxide)\\s*(?:was|is|of|[:=]|\\|)?\\s*(${NUM})\\s*(mm\\s*\\/?\\s*hg)`, "i")],
-  ];
   const pairs = [...table.pairs];
-  // A combined BP cell (for example, "Blood pressure | 82/48 mmHg") carries two inputs.
-  // Extract SBP and DBP separately so MAP can be recomputed without inventing either value.
-  const bpPattern = /(?:blood\s+pressure|\bBP\b)\s*(?:was|is|of|[:=]|\|)?\s*(\d{2,3})\s*\/\s*(\d{2,3})\s*(mm\s*hg)/ig;
-  for (const match of scanSource.matchAll(bpPattern)) {
-    const qualifier = qualifierForMeasurement(scanSource, match.index);
-    const suffix = qualifier ? `_${qualifier}` : "";
-    pairs.push(`sbp${suffix}=${match[1]} ${String(match[3]).replace(/\s+/g, "")}`);
-    pairs.push(`dbp${suffix}=${match[2]} ${String(match[3]).replace(/\s+/g, "")}`);
-  }
-  for (const [key, re] of specs) {
-    // Preserve every occurrence: selecting only the first match can silently pick a baseline,
-    // reference-range value, or earlier time point instead of the current result.
-    const global = new RegExp(re.source, `${re.flags.replace(/g/g, "")}g`);
-    for (const match of scanSource.matchAll(global)) {
-      // Site/sample qualifiers are part of a measurement's identity. Right-radial
-      // patient gas and post-oxygenator gas, for example, are not competing readings.
-      const qualifier = qualifierForMeasurement(scanSource, match.index);
-      const scopedKey = qualifier ? `${key}_${qualifier}` : key;
-      pairs.push(`${scopedKey}=${match[1]} ${String(match[2] || "").replace(/\s+/g, "")}`.trim());
+  // Preserve already-structured key=value readings from a source-reading pass.
+  // The original source reader may emit canonical/underscore labels (e.g.
+  // systolic_bp=82, diastolic_bp=48) rather than prose labels. Previously these
+  // were accepted by parseClinicalData in solver DATA but discarded when the
+  // same text passed through this label extractor for authority/source checks.
+  // Permit unicode subscript digits in keys (e.g. PaCO₂=30) and canonicalize
+  // them to ASCII clinical identities before handing them to the audit.
+  const structured = parseClinicalDataDiagnostics(source);
+  for (const [key, reading] of Object.entries(structured.facts)) {
+    if (knownKey(key)) {
+      pairs.push(`${key}=${reading.value} ${reading.unit}`.trim());
     }
+  }
+  // v3.67: every analyte (including a combined «BP 82/48» cell, hemolyzed/repeat samples and baseline/current pairs) goes through ONE
+  // measurement extractor with per-measurement time/sample scope. Site tags (ECMO circuit, radial/femoral) still come from the line.
+  const { measurements } = extractMeasurements(scanSource);
+  for (const m of measurements) {
+    const site = siteTagForMeasurement(scanSource, m.index);
+    const key = [m.key, site, m.role === "baseline" ? "baseline" : "", m.sample].filter(Boolean).join("_");
+    pairs.push(`${key}=${m.value} ${m.unit}`.trim());
   }
   if (/(?:\bSC\b|sieving\s+coefficient)\s*(?:=|equals?|is equal to)\s*(?:\bfu\b|unbound\s+fraction)|(?:\bfu\b|unbound\s+fraction)\s*(?:=|equals?|is equal to)\s*(?:\bSC\b|sieving\s+coefficient)/i.test(source)) pairs.push("scequalsfu=1 relationship");
   return pairs.join("; ");
@@ -261,39 +264,7 @@ function missing(facts, keys) { return keys.filter((k) => !fact(facts, k)); }
 function unitIs(facts, key, patterns) { const u = unit(facts, key); return patterns.some((p) => p.test(u)); }
 function validFraction(facts, key) { const v = value(facts, key); return v != null && v > 0 && v <= 1; }
 
-function labelledNumber(text, aliases) {
-  const t = String(text || "");
-  for (const alias of aliases) {
-    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const boundary = /^[A-Za-z0-9]+$/.test(alias) ? `\\b${escaped}\\b` : escaped;
-    const re = new RegExp(`${boundary}\\s*(?:[:=]|is|of|\\|)?\\s*(${NUM})`, "i");
-    const m = re.exec(t);
-    if (m) return num(m[1]);
-  }
-  return null;
-}
-
-function compareLabeled(text, result) {
-  const aliases = {
-    svr: ["systemic vascular resistance", "SVR"],
-    og: ["osmolal gap", "osmolar gap", "OG"],
-    co: ["cardiac output", "CO"],
-    ag: ["corrected anion gap", "anion gap", "AG"],
-    winter: ["Winter expected PaCO2", "expected PaCO2", "expected PaCO₂"],
-    r0: ["R0", "R₀", "maintenance infusion rate", "infusion rate"],
-  };
-  const conflicts = [];
-  for (const r of result.results) {
-    const keys = aliases[r.id];
-    if (!keys) continue;
-    const observed = labelledNumber(text, keys);
-    if (observed == null) continue;
-    if (!close(observed, r.value, r.id === "og" ? 0.5 : 0.1, 0.015)) {
-      conflicts.push({ code: `reported-${r.id}-mismatch`, severity: "high", id: r.id, reported: observed, computed: r.value, unit: r.unit, message: `${r.label}: the answer reports ${observed} ${r.unit}, while the independent calculation from the extracted inputs is ${r.value} ${r.unit}.` });
-    }
-  }
-  return conflicts;
-}
+/* v3.67: the first-number-after-label parser (`labelledNumber`/`compareLabeled`) was REMOVED. See calc-claims.js: results are now read from the arithmetic chain. */
 
 function claimsTripleAcidBase(text = "") {
   const t = String(text || "");
@@ -329,6 +300,16 @@ function computeFromFacts(facts, contextText = "") {
       && unitIs(facts, "sbp", [/^mmhg$/]) && unitIs(facts, "dbp", [/^mmhg$/])) {
     addResult(results, "map", "Estimated mean arterial pressure", (systolic + 2 * diastolic) / 3, "mmHg", "(SBP + 2×DBP) ÷ 3", "Approximation; use a directly measured MAP when available.");
     notes.push("MAP was estimated from SBP/DBP using (SBP + 2×DBP)/3; use directly measured MAP when supplied.");
+  }
+
+  // Change from baseline: arithmetic only (no staging, no diagnosis). Current and baseline are distinct identities (hb vs hbbaseline).
+  if (value(facts, "hb") != null && value(facts, "hbbaseline") != null && unitIs(facts, "hb", [/^g\/dl$/]) && unitIs(facts, "hbbaseline", [/^g\/dl$/])) {
+    addResult(results, "hb-decline", "Hemoglobin change from baseline (decline)", value(facts, "hbbaseline") - value(facts, "hb"), "g/dL", "baseline Hb − current Hb", "Arithmetic only; interpret with bleeding source, volume status and sampling time.");
+  }
+  if (value(facts, "creatinine") != null && value(facts, "creatininebaseline") != null && value(facts, "creatininebaseline") > 0
+      && unitIs(facts, "creatinine", [/^mg\/dl$/]) && unitIs(facts, "creatininebaseline", [/^mg\/dl$/])) {
+    addResult(results, "creatinine-delta", "Creatinine rise from baseline", value(facts, "creatinine") - value(facts, "creatininebaseline"), "mg/dL", "current creatinine − baseline creatinine", "Arithmetic only; staging of kidney injury requires the applicable criteria and timing.");
+    addResult(results, "creatinine-ratio", "Creatinine ratio (current ÷ baseline)", value(facts, "creatinine") / value(facts, "creatininebaseline"), "× baseline", "current creatinine ÷ baseline creatinine");
   }
 
   if (domains.hemodynamics) {
@@ -438,16 +419,22 @@ function computeFromFacts(facts, contextText = "") {
       } else missingInputs.push("Anion gap requires Na, Cl and HCO₃ in mmol/L (or mEq/L).");
     } else missingInputs.push(`Anion gap not calculated: missing ${missing(facts, ["na", "chloride", "hco3"]).join(", ")}.`);
 
-    if (value(facts, "hco3") != null && value(facts, "paco2") != null && (/winter|metabolic acidosis/.test(String(contextText).toLowerCase()) || claimsTripleAcidBase(contextText))) {
-      if (unitIs(facts, "hco3", [/^mmol\/l$/]) && unitIs(facts, "paco2", [/^mmhg$/])) {
+    // v3.67: Winter's EXPECTED PaCO₂ is a function of HCO₃ alone. PaCO₂ is needed only to COMPARE with it. Requiring both made one missing
+    // PaCO₂ withhold a number that never depended on it.
+    if (value(facts, "hco3") != null && (/winter|metabolic acidosis/.test(String(contextText).toLowerCase()) || claimsTripleAcidBase(contextText))) {
+      if (unitIs(facts, "hco3", [/^mmol\/l$/, /^meq\/l$/])) {
         const expected = 1.5 * value(facts, "hco3") + 8;
-        addResult(results, "winter", "Winter expected PaCO₂", expected, "mmHg", "1.5×HCO₃ + 8 ± 2", "Expected range: result ±2 mmHg. Compare with measured PaCO₂; do not diagnose a mixed disorder without the full acid-base context.");
+        addResult(results, "winter", "Winter expected PaCO₂", expected, "mmHg", `1.5×HCO₃ + 8 ± 2 = 1.5×${value(facts, "hco3")} + 8`, "Expected range: result ±2 mmHg. Compare with measured PaCO₂; do not diagnose a mixed disorder without the full acid-base context.");
+      }
+      if (unitIs(facts, "hco3", [/^mmol\/l$/, /^meq\/l$/]) && value(facts, "paco2") != null && unitIs(facts, "paco2", [/^mmhg$/])) {
+        const expected = 1.5 * value(facts, "hco3") + 8;
         const actual = value(facts, "paco2");
         const low = expected - 2, high = expected + 2;
         if (actual < low) notes.push(`Measured PaCO₂ ${actual} mmHg is below Winter's expected range (${round(low)}–${round(high)} mmHg); this supports an additional respiratory alkalosis in the stated metabolic-acidosis context.`);
         else if (actual > high) notes.push(`Measured PaCO₂ ${actual} mmHg is above Winter's expected range (${round(low)}–${round(high)} mmHg); this supports an additional respiratory acidosis in the stated metabolic-acidosis context.`);
         else notes.push(`Measured PaCO₂ ${actual} mmHg is within Winter's expected range (${round(low)}–${round(high)} mmHg).`);
-      } else missingInputs.push("Winter's formula requires HCO₃ in mmol/L and PaCO₂ in mmHg.");
+      } else if (value(facts, "paco2") != null) missingInputs.push("Winter's comparison requires PaCO₂ in mmHg.");
+      else if (!unitIs(facts, "hco3", [/^mmol\/l$/, /^meq\/l$/])) missingInputs.push("Winter's formula requires HCO₃ in mmol/L.");
     }
   }
 
@@ -536,16 +523,15 @@ function authorityInputRequirements(facts, computed, generatedText = "", context
   // Each result owns only the inputs used by its formula. A missing CVP/Fick
   // measurement must never suppress independently confirmed acid-base math.
   const requirements = [];
-  const hasNumber = (aliases) => labelledNumber(generatedText, aliases) != null;
-  const mapClaim = hasNumber(["estimated mean arterial pressure", "mean arterial pressure", "MAP"]);
-  const svrClaim = hasNumber(["systemic vascular resistance", "SVR"]);
-  const fickCoClaim = hasNumber(["Fick cardiac output", "cardiac output by Fick", "cardiac output"])
-    && /fick/i.test(generatedText);
-  const agClaim = hasNumber(["albumin-corrected anion gap", "corrected anion gap", "anion gap", "AG"]);
-  const correctedAgClaim = hasNumber(["albumin-corrected anion gap", "corrected anion gap"]);
-  const winterClaim = hasNumber(["Winter expected PaCO2", "expected PaCO2", "expected PaCO₂"]);
-  const ogClaim = hasNumber(["osmolal gap", "osmolar gap", "OG"]);
-  const r0Claim = hasNumber(["maintenance infusion rate", "infusion rate", "R0", "R₀"]);
+  const claimIds = new Set(extractClaims(generatedText).map((c) => c.id));
+  const mapClaim = claimIds.has("map");
+  const svrClaim = claimIds.has("svr");
+  const fickCoClaim = claimIds.has("co") && /fick/i.test(generatedText);
+  const agClaim = claimIds.has("ag");
+  const correctedAgClaim = claimIds.has("corrected-ag");
+  const winterClaim = claimIds.has("winter");
+  const ogClaim = claimIds.has("og");
+  const r0Claim = claimIds.has("r0");
   const resultIds = new Set(computed.results.map((r) => r.id));
   const add = (id, fields, resultIdsForGate = [id]) => requirements.push({ id, fields: [...new Set(fields)], resultIds: resultIdsForGate });
   const mapFields = [fact(facts, "map") ? "map" : "map-or-sbp+dbp"];
@@ -595,8 +581,11 @@ function authorityInputRequirements(facts, computed, generatedText = "", context
     add("delta-gap", ["na", "chloride", "hco3", ...(fact(facts, "albumin") ? ["albumin"] : [])]);
   }
   if (resultIds.has("winter") || winterClaim || /winter|respiratory compensation|تعويض تنفسي/i.test(contextText)) {
-    add("winter", ["hco3", "paco2"]);
+    add("winter", ["hco3"]);
   }
+  // Change-from-baseline results are verification targets: they demand corroboration only when the answer actually states them.
+  if (claimIds.has("hb-decline")) add("hb-decline", ["hb", "hbbaseline"]);
+  if (claimIds.has("creatinine-delta") || claimIds.has("creatinine-ratio")) add("creatinine-delta", ["creatinine", "creatininebaseline"], ["creatinine-delta", "creatinine-ratio"]);
   if (claimsTripleAcidBase(generatedText)) add("triple-acid-base", ["na", "chloride", "hco3", "ph", "paco2"]);
 
   if (resultIds.has("r0") || r0Claim) {
@@ -605,16 +594,47 @@ function authorityInputRequirements(facts, computed, generatedText = "", context
   }
   return requirements;
 }
-function missingAuthorityFields(required, authorityFacts) {
+/* v3.67 · «is this value printed next to its own label in the ORIGINAL source text?»
+   Corroboration used to require that our regex extractor re-derived the field from the source. When the extractor merely failed to parse a
+   phrasing, a value the source plainly contains was reported as "missing from the source" (false missing-input warnings). A value is now also
+   accepted as source-grounded when the same number appears within a short window after any alias of its analyte in the original text.
+   This is a provenance check (the number exists in the source next to that label), not a transcription guarantee. Time/sample-scoped keys
+   (baseline, hemolyzed) are NOT grounded this way: their identity must come from the extractor. */
+const GROUND_ALIASES = { sbp: ["bp", "blood pressure", "systolic"], dbp: ["bp", "blood pressure", "diastolic"] };
+export function groundedInSource(sourceText, key, val) {
+  const text = String(sourceText || "");
+  if (!text || !Number.isFinite(val) || /(?:baseline|hemolyzed)$/.test(key)) return false;
+  const aliases = [...(KEY_ALIASES[key] || []), ...(GROUND_ALIASES[key] || [])].filter((a) => a.length > 1 || key === "potassium");
+  if (!aliases.length) return false;
+  const lower = text.toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d)));
+  for (const alias of aliases) {
+    const a = alias.toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d)));
+    let from = 0;
+    for (;;) {
+      const i = lower.indexOf(a, from);
+      if (i < 0) break;
+      from = i + a.length;
+      const before = lower[i - 1], after = lower[i + a.length];
+      if ((before && /[a-z0-9]/.test(before)) || (after && /[a-z]/.test(after))) continue;
+      const window = lower.slice(from, from + 70).split(/\n|[;؛]|(?<![0-9])\.\s/)[0];
+      for (const n of window.matchAll(/(?<![0-9.,])[0-9]+(?:[.,][0-9]+)?(?![0-9])/g)) {
+        if (Math.abs(Number(n[0].replace(",", ".")) - val) < 1e-9) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function missingAuthorityFields(required, authorityFacts, grounded = () => false) {
   const labels = {
     "map-or-sbp+dbp": "MAP or SBP+DBP", "bun-or-urea": "BUN or urea",
     "sc-or-scequalsfu": "SC or an explicitly stated SC=fu relationship",
   };
   return required.filter((key) => {
-    if (key === "map-or-sbp+dbp") return !(authorityFacts.map || (authorityFacts.sbp && authorityFacts.dbp));
-    if (key === "bun-or-urea") return !(authorityFacts.bun || authorityFacts.urea);
+    if (key === "map-or-sbp+dbp") return !((authorityFacts.map || grounded("map")) || ((authorityFacts.sbp || grounded("sbp")) && (authorityFacts.dbp || grounded("dbp"))));
+    if (key === "bun-or-urea") return !(authorityFacts.bun || authorityFacts.urea || grounded("bun") || grounded("urea"));
     if (key === "sc-or-scequalsfu") return !(authorityFacts.sc || authorityFacts.scequalsfu);
-    return !authorityFacts[key];
+    return !(authorityFacts[key] || grounded(key));
   }).map((key) => labels[key] || key);
 }
 
@@ -636,7 +656,7 @@ export function extractCorrectAnswerSection(text = "") {
   return (next ? t.slice(start, start + next.index) : t.slice(start)).trim();
 }
 
-export function auditClinicalCalculations({ dataText = "", secondaryDataText = "", authorityDataText = "", modelDataText = "", requireAuthorityInputs = false, narrative = "", answerText = "", calcText = "", contextText = "", optionText = "" } = {}) {
+export function auditClinicalCalculations({ dataText = "", secondaryDataText = "", authorityDataText = "", modelDataText = "", sourceText = "", requireAuthorityInputs = false, narrative = "", answerText = "", calcText = "", contextText = "", optionText = "" } = {}) {
   const generatedText = [narrative, answerText, calcText, optionText].filter(Boolean).join("\n");
   const combined = [contextText, generatedText].filter(Boolean).join("\n");
   const sourceTexts = [dataText, ...(Array.isArray(secondaryDataText) ? secondaryDataText : [secondaryDataText]), authorityDataText].filter((x) => String(x || "").trim());
@@ -689,22 +709,33 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   const requirements = requireAuthorityInputs
     ? authorityInputRequirements(calculationFacts, rawComputed, generatedText, contextText)
     : [];
+  // a field counts as source-confirmed when the extractor re-derived it OR the SAME value is printed next to its label in the original source
+  const grounded = (key) => !!facts[key] && groundedInSource(sourceText, key, facts[key].value);
   const missingByRequirement = requirements.map((requirement) => ({
     requirement,
-    authority: missingAuthorityFields(requirement.fields, authorityFacts),
+    authority: missingAuthorityFields(requirement.fields, authorityFacts, grounded),
     model: missingAuthorityFields(requirement.fields, modelFacts),
   }));
   const failedRequirements = missingByRequirement.filter((x) => x.authority.length || x.model.length);
   const missingAuthority = [...new Set(failedRequirements.flatMap((x) => x.authority))];
   const missingModel = [...new Set(failedRequirements.flatMap((x) => x.model))];
   const unverifiedResultIds = new Set(failedRequirements.flatMap((x) => x.requirement.resultIds));
-  if (failedRequirements.length) {
-    const detail = failedRequirements.map((x) => `${x.requirement.id}: source ${x.authority.length ? x.authority.join(", ") : "complete"}; solver ${x.model.length ? x.model.join(", ") : "complete"}`).join(" | ");
-    inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", message: `Inputs required for these specific numerical calculations were not independently confirmed: ${detail}. Do not confirm those results from a single extraction channel.` });
-  }
+  // Tiering (v3.67): an unconfirmed input of the anion-gap family (Na/Cl/HCO₃/albumin) can change the whole acid-base interpretation → blocking.
+  // An unconfirmed input of any other formula (MAP, Winter, Fick/SVR, osmolal gap, R0, Δ-baseline) withholds THAT formula only.
+  const CORE_FAMILY = new Set(["ag", "corrected-ag", "delta-gap", "triple-acid-base"]);
+  const describe = (list) => list.map((x) => `${x.requirement.id}: source ${x.authority.length ? x.authority.join(", ") : "complete"}; solver ${x.model.length ? x.model.join(", ") : "complete"}`).join(" | ");
+  const blockingFailed = failedRequirements.filter((x) => CORE_FAMILY.has(x.requirement.id));
+  const withheldFailed = failedRequirements.filter((x) => !CORE_FAMILY.has(x.requirement.id));
+  if (blockingFailed.length) inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "high", impact: "blocking", message: `Inputs required for these specific numerical calculations were not independently confirmed: ${describe(blockingFailed)}. Do not confirm those results from a single extraction channel.` });
+  if (withheldFailed.length) inputConflicts.push({ code: "clinical-inputs-not-independently-confirmed", severity: "moderate", impact: "formula-withheld", message: `Inputs required for these specific numerical calculations were not independently confirmed: ${describe(withheldFailed)}. Only these calculations are withheld; independently verified results are unaffected.` });
+  // Auxiliary change-from-baseline results are shown/verified only when BOTH readings were seen by the source channel.
+  const auxNeeds = { "hb-decline": ["hb", "hbbaseline"], "creatinine-delta": ["creatinine", "creatininebaseline"], "creatinine-ratio": ["creatinine", "creatininebaseline"] };
+  const auxWithheld = (id) => requireAuthorityInputs && auxNeeds[id] && auxNeeds[id].some((k) => !authorityFacts[k]);
+  const paco2Confirmed = !requireAuthorityInputs || !!authorityFacts.paco2 || grounded("paco2");
   const computed = {
     ...rawComputed,
-    results: rawComputed.results.filter((result) => !unverifiedResultIds.has(result.id)),
+    notes: paco2Confirmed ? rawComputed.notes : rawComputed.notes.filter((n) => !/^Measured PaCO₂/.test(n)),
+    results: rawComputed.results.filter((result) => !unverifiedResultIds.has(result.id) && !auxWithheld(result.id)),
   };
   const claimsTriple = claimsTripleAcidBase(combined);
   if (claimsTriple && !["na", "chloride", "hco3", "ph", "paco2"].some((key) => conflictedKeys.has(key))) {
@@ -721,14 +752,17 @@ export function auditClinicalCalculations({ dataText = "", secondaryDataText = "
   // Numeric comparison targets the selected answer and calculation, never deliberately wrong distractors.
   const textToCheck = [answerText, narrative, calcText, optionText].filter(Boolean).join("\n");
   const formulaFindings = narrativeRuleFindings(combined, mergedDataText || dataText);
-  const valueConflicts = compareLabeled(textToCheck, computed);
+  const claims = extractClaims(textToCheck);
+  const valueConflicts = verifyClaims(claims, computed.results);
   const unsupportedOutputs = [];
-  const hasOutput = (re) => re.test(textToCheck);
-  if (computed.domains.hemodynamics && !computed.results.some((r) => r.id === "svr") && hasOutput(/\b(?:SVR|systemic vascular resistance)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "svr-without-inputs", severity: "high", message: "An SVR result is reported, but the structured case inputs are insufficient to independently calculate it. Do not present the number as verified." });
-  if (computed.domains.osmolality && !computed.results.some((r) => r.id === "og") && hasOutput(/\b(?:OG|osmolal gap|osmolar gap)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "og-without-inputs", severity: "high", message: "An osmolal-gap result is reported, but sodium, glucose, BUN, and measured osmolality (with a consistent ethanol method when applicable) were not all available. Do not present the number as verified." });
-  if (computed.domains.acidBase && !computed.results.some((r) => r.id === "ag") && hasOutput(/\b(?:albumin[- ]corrected\s+)?anion\s+gap\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "ag-without-inputs", severity: "high", message: "An anion-gap number is reported, but verified sodium, chloride and bicarbonate values in compatible units are not all available. Do not present the number as verified." });
-  if (computed.domains.crRT && computed.domains.proteinPK && !computed.results.some((r) => r.id === "r0") && hasOutput(/(?:\bR\s*[₀0]|(?:maintenance\s+)?infusion\s+rate)\s*(?:=|:|is)\s*\d/i)) unsupportedOutputs.push({ code: "r0-without-inputs", severity: "high", message: "An infusion rate is reported without all required drug-specific PK/CRRT inputs. Do not provide a numerical maintenance rate or substitute an assumed sieving coefficient." });
-  const conflicts = [...inputConflicts, ...formulaFindings, ...valueConflicts, ...unsupportedOutputs];
+  const claimed = new Set(claims.map((c) => c.id));
+  const hasResult = (id) => computed.results.some((r) => r.id === id);
+  if (computed.domains.hemodynamics && !hasResult("svr") && claimed.has("svr")) unsupportedOutputs.push({ code: "svr-without-inputs", severity: "high", message: "An SVR result is reported, but the structured case inputs are insufficient to independently calculate it. Do not present the number as verified." });
+  if (computed.domains.osmolality && !hasResult("og") && claimed.has("og")) unsupportedOutputs.push({ code: "og-without-inputs", severity: "high", message: "An osmolal-gap result is reported, but sodium, glucose, BUN, and measured osmolality (with a consistent ethanol method when applicable) were not all available. Do not present the number as verified." });
+  if (computed.domains.acidBase && !hasResult("ag") && claimed.has("ag")) unsupportedOutputs.push({ code: "ag-without-inputs", severity: "high", message: "An anion-gap number is reported, but verified sodium, chloride and bicarbonate values in compatible units are not all available. Do not present the number as verified." });
+  if (computed.domains.crRT && computed.domains.proteinPK && !hasResult("r0") && claimed.has("r0")) unsupportedOutputs.push({ code: "r0-without-inputs", severity: "high", message: "An infusion rate is reported without all required drug-specific PK/CRRT inputs. Do not provide a numerical maintenance rate or substitute an assumed sieving coefficient." });
+  const seenConflict = new Set();
+  const conflicts = [...inputConflicts, ...formulaFindings, ...valueConflicts, ...unsupportedOutputs].filter((c) => { const k = `${c.code}|${c.message}`; if (seenConflict.has(k)) return false; seenConflict.add(k); return true; });
   const activeCalculationDomain = computed.domains.hemodynamics || computed.domains.osmolality || computed.domains.acidBase
     || (computed.domains.crRT && computed.domains.proteinPK) || computed.domains.pringle || computed.domains.lactate;
   return {
@@ -761,10 +795,15 @@ export function buildPreGenerationCalculationHandoff(sourceText = "") {
   if (!source) return "";
   const extracted = extractLabelledClinicalData(source);
   if (!String(extracted || "").trim()) return "";
+  // v3.67: the trigger is DATA-driven as well as keyword-driven. A case that merely lists Na/Cl/HCO₃ with an acidaemic pH or a low bicarbonate never says
+  // «anion gap», so the lesson writers used to receive no verified numbers at all and had to do the arithmetic themselves.
+  const f = parseClinicalData(extracted);
+  const acidaemic = (f.ph && f.ph.value < 7.35) || (f.hco3 && f.hco3.value < 22);
+  const dataHint = f.na && f.chloride && f.hco3 && acidaemic ? "\nacid-base: metabolic acidosis anion gap" : "";
   const audit = auditClinicalCalculations({
     dataText: extracted,
     modelDataText: extracted,
-    contextText: source,
+    contextText: `${source}${dataHint}`,
     requireAuthorityInputs: false,
   });
   if (!audit.triggered) return "";
@@ -812,9 +851,9 @@ export function renderClinicalAuditForStudent(audit, lang = "ar") {
 // management prose while one of these high-impact numeric conflicts remains.
 export function blocksClinicalSynthesisForCalculationConflict(audit, clinicalContext = false) {
   if (!clinicalContext || !audit || !audit.domains?.acidBase || !Array.isArray(audit.conflicts)) return false;
-  const blocking = /^(?:reported-(?:corrected-)?ag-mismatch|ag-without-inputs|extraction-(?:na|chloride|hco3|albumin)-mismatch|within-source-(?:na|chloride|hco3|albumin)-ambiguous)$/;
+  const blocking = /^(?:reported-(?:corrected-)?ag-(?:mismatch|arithmetic-inconsistent)|ag-without-inputs|extraction-[a-z0-9_]+-mismatch|within-source-[a-z0-9_]+-ambiguous)$/;
   return audit.conflicts.some((c) => c?.severity === "high" && blocking.test(String(c.code || "")))
-    || audit.conflicts.some((c) => c?.severity === "high" && c.code === "clinical-inputs-not-independently-confirmed");
+    || audit.conflicts.some((c) => c?.severity === "high" && c.impact !== "formula-withheld" && c.code === "clinical-inputs-not-independently-confirmed");
 }
 
 // When the model's number is wrong but source channels agree, show only the
@@ -842,3 +881,8 @@ export function renderClinicalCalculationConflictForStudent(audit, lang = "ar") 
     : "";
   return [head, intro, ...rows, ...(conflicts.length ? [ar ? "**سبب الإيقاف:**" : "**Blocking findings:**", ...conflicts] : []), sourceCaveat].filter(Boolean).join("\n");
 }
+
+/* conflicts that must clear the answer / force LOW (everything except a single formula being withheld) */
+export const isBlockingConflict = (c) => !!c && c.impact !== "formula-withheld";
+export const GENERIC_CALCULATION_CONFLICT_AR = "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه.";
+export const FORMULA_WITHHELD_AR = "تعذر تأكيد مدخلات حساب معيّن من المصدر؛ حُجب هذا الحساب وحده ولم تتأثر الحسابات الأخرى المؤكدة.";

@@ -10,7 +10,8 @@ import { norm } from "./accuracy.js";
 import { profileKey, examOf, penalizesWrongPicks } from "./profile.js";
 import { CAL, DEFAULT_THRESHOLDS } from "./calibration.js";
 import { rangeInfo, rangeContradiction, patientOf, describeRange } from "./kb/ranges.js";
-import { auditClinicalCalculations, maskOptionsWhenCalculationConflicts } from "./clinical-calculations.js";
+import { auditClinicalCalculations, maskOptionsWhenCalculationConflicts, isBlockingConflict, GENERIC_CALCULATION_CONFLICT_AR, FORMULA_WITHHELD_AR } from "./clinical-calculations.js";
+import { evalExpr } from "./arith.js";
 
 export const TIERS = ["LOW", "MEDIUM", "HIGH"];
 const tierMin = (a, b) => TIERS[Math.min(TIERS.indexOf(a), TIERS.indexOf(b))];
@@ -145,21 +146,8 @@ const CONV = { // [from, to, factor]  value_to = value_from × factor
 const UNIT_RX = "mcg|µg|μg|mg|kg|g|lb|ml|mL|dl|dL|l|L|h|hr|hrs|min|s|cm|mm|m|in|mmol|mol|gtt";
 const normUnit = (u) => String(u || "").toLowerCase().replace("μ", "µ").replace(/^hrs?$/, "h");
 
-/* evaluate "15 mg/kg × 70 kg ÷ 3" → number (units are ignored inside an expression; a step's unit change is checked separately) */
-export function evalExpr(expr) {
-  const s = String(expr).replace(/,(?=\d{3}\b)/g, "").replace(/×|x(?=\s*[\d(])|\*/gi, "*").replace(/÷|:/g, "/").replace(/(?<=\d)\s*(?:mg|mcg|µg|μg|kg|g|lb|ml|mL|dl|dL|l|L|h|hr|min|s|cm|mm|m|in|mmol|mol|gtt|units?|IU|mEq|drops?)\b(?:\s*\/\s*(?:kg|h|hr|min|dl|dL|l|L|ml|mL|m2|m²|day|d))*/gi, "").replace(/\s+/g, "");
-  if (!/^[\d.+\-*/()]+$/.test(s) || !s) return null;
-  try { // tiny recursive-descent parser: no eval
-    let i = 0;
-    const peek = () => s[i];
-    const num = () => { const st = i; while (/[\d.]/.test(s[i] || "")) i++; if (st === i) throw new Error("num"); return parseFloat(s.slice(st, i)); };
-    const atom = () => { if (peek() === "(") { i++; const v = sum(); if (peek() !== ")") throw new Error(")"); i++; return v; } if (peek() === "-") { i++; return -atom(); } return num(); };
-    const prod = () => { let v = atom(); while (peek() === "*" || peek() === "/") { const o = s[i++]; const r = atom(); v = o === "*" ? v * r : v / r; } return v; };
-    const sum = () => { let v = prod(); while (peek() === "+" || peek() === "-") { const o = s[i++]; const r = prod(); v = o === "+" ? v + r : v - r; } return v; };
-    const v = sum();
-    return i === s.length && Number.isFinite(v) ? v : null;
-  } catch (e) { return null; }
-}
+/* evaluate "15 mg/kg × 70 kg ÷ 3" → number. v3.67: the implementation now lives in arith.js (shared with the clinical verifier). */
+export { evalExpr };
 const decimalsOf = (x) => { const m = /\.(\d+)/.exec(String(x)); return m ? m[1].length : 0; };
 
 /* → { ok, steps:[{text, ok, why}], final: number|null } ;  CALC: <step>; <step> => <final>   a step is  "expression = result unit"  or  "N unitA = M unitB" */
@@ -318,6 +306,7 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
     dataText: b.data,
     secondaryDataText: sourceDataText,
     authorityDataText: sourceDataText,
+    sourceText: stem,
     modelDataText: b.data,
     requireAuthorityInputs: true,
     narrative: b.calc || "",
@@ -327,9 +316,14 @@ export function assessSolve({ raw, logprobs, stem = "", profile, kbFlags = [], s
     optionText: yes ? `${yes.letter}) ${yes.why}` : "",
   });
   for (const c of clinicalCalculationAudit.conflicts) {
+    if (!isBlockingConflict(c)) {   // v3.67: one formula withheld ≠ a failed answer: a concern for that formula only (no flag, no LOW tier)
+      issues.push(c.message);
+      if (!concerns.some((x) => x.code === "formula-inputs-unconfirmed")) concerns.push({ code: "formula-inputs-unconfirmed", en: c.message, ar: FORMULA_WITHHELD_AR });
+      continue;
+    }
     flags.push({ code: "clinical-calculation", msg: c.message });
     issues.push(c.message);
-    concerns.push({ code: c.code, en: c.message, ar: "ظهر تعارض بين الحساب المستقل والرقم أو المعادلة المذكورة في الإجابة؛ لا تعتمد النتيجة قبل تصحيح الحساب." });
+    concerns.push({ code: c.code, en: c.message, ar: GENERIC_CALCULATION_CONFLICT_AR });
   }
   if (/\b(?:calculat|dose|dosage|mL\/h|drip|rate|conversion)\w*/i.test(`${b.type} ${stem}`) && !b.calc) { reasons.push("a calculation item without a CALC line"); issues.push("a calculation item without a CALC line"); }   // bookkeeping: internal only
 
@@ -386,10 +380,14 @@ export function banner(a, lang = "ar") {
   const ar = lang !== "en";
   /* v3.45: only CONCRETE reasons reach the student (a failed check, a measured low probability, a number that may be misread, a SATA option that may also be right).
      Bookkeeping (uncalibrated subject, no probabilities, premise order, a moderate-but-not-low probability, no CALC line) stays in `a.reasons` / `a.issues` for the developer. */
-  const why = [...(a.flags || []).map((f) => f.msg), ...(a.concerns || []).map((c) => (ar ? c.ar : c.en))].filter(Boolean).slice(0, 4);
+  // v3.67: a finding reaches the student ONCE. Flags and concerns are two views of the same finding (the English flag message and its localized concern),
+  // so lines are de-duplicated on normalised text before the list is cut.
+  const seenWhy = new Set();
+  const why = [...(a.flags || []).map((f) => f.msg), ...(a.concerns || []).map((c) => (ar ? c.ar : c.en))].filter(Boolean)
+    .filter((line) => { const k = String(line).replace(/\s+/g, " ").trim().toLowerCase(); if (seenWhy.has(k)) return false; seenWhy.add(k); return true; }).slice(0, 4);
   const head = ar ? (a.tier === "LOW" ? "الذكاء الاصطناعي مش متأكد من الإجابة دي" : "راجع الإجابة دي كويس") : (a.tier === "LOW" ? "AI is not sure about this answer" : "Double-check this answer");
   const guardConflicts = [
-    ...(a.clinicalCalculationAudit?.conflicts || []),
+    ...(a.clinicalCalculationAudit?.conflicts || []).filter(isBlockingConflict),
     ...(a.clinicalSafetyAudit?.conflicts || []),
   ];
   const calculationConflict = guardConflicts.length > 0;
@@ -425,7 +423,7 @@ function maskCalculationConflictsInLesson(text, lang, conflicts) {
 export function reconcileLesson(text, a, lang = "ar") {
   if (!a) return { text, mismatch: false, replaced: false };
   const t = String(text || "");
-  const calcConflicts = a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts || [];
+  const calcConflicts = (a.clinicalCalculationAudit && a.clinicalCalculationAudit.conflicts || []).filter(isBlockingConflict);
   const safetyConflicts = a.clinicalSafetyAudit && a.clinicalSafetyAudit.conflicts || [];
   const guardConflicts = [...calcConflicts, ...safetyConflicts];
   if (guardConflicts.length) {

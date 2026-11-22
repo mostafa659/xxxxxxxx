@@ -342,7 +342,7 @@ export default function ChatPanel({
         const via = `${{ diagram: "رسم توضيحي بالمفتاح المجاني", gemini: "Gemini" }[out.engine]}${justLook ? " · ستايل جديد" : ""}${out.notes.length ? " · " + out.notes[0] : ""}`;
         patch(ai.id, (m) => ({ ...m, img: { mime: out.mime, data: out.data, spec: out.spec, style: out.style, bilingual: out.bilingual }, text: justLook ? "غيّرتلك الشكل والألوان، المحتوى زي ما هو 🎨" : fixText(out.text || ""), via }));
       } else if (wantExam) {
-        const here = ctx.kind === "global" ? "" : `${ctx.kind === "lesson" ? "STUDY MATERIAL" : "QUESTION"}: ${String(ctx.question || "").slice(0, 1800)}\nEXPLANATION: ${String(ctx.explanation || "").slice(0, 2200)}`;
+        const here = ctx.kind === "global" ? "" : `${ctx.kind === "lesson" ? "STUDY MATERIAL" : "QUESTION"}: ${String(ctx.question || "").slice(0, 1800)}\nEXPLANATION: ${ctx.clinicalBlocked ? "(withheld by the application safety gate)" : String(ctx.explanation || "").slice(0, 2200)}`;
         /* v3.20: the exam is written in parallel batches and every question appears the moment it is ready (no more minutes of dots).
            A progress update only brings new questions / title: whatever the student already answered is kept. */
         const out = await makeExam({

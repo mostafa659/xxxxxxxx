@@ -21,7 +21,7 @@ import { prepareSpecializedPrompt } from "./kb/specialized-prompt.js";
 import { render, indexSource, HIGH_RISK } from "./accuracy.js";
 import { stats as trustStats } from "./trust.js";
 import { assessSolve, parseBrief, banner as makeBanner, reconcileLesson } from "./solvecheck.js";
-import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, buildPreGenerationCalculationHandoff, stripOptionReviewSection, extractCorrectAnswerSection } from "./clinical-calculations.js";
+import { auditClinicalCalculations, formatClinicalCalculationAudit, extractClinicalDataBlock, extractLabelledClinicalData, mergeOriginalSourceText, mergeExtractedClinicalData, replaceAuditItemsByMessage, stripPartialClinicalDataBlock, renderClinicalAuditForStudent, renderClinicalCalculationConflictForStudent, blocksClinicalSynthesisForCalculationConflict, buildPreGenerationCalculationHandoff, stripOptionReviewSection, extractCorrectAnswerSection, isBlockingConflict, GENERIC_CALCULATION_CONFLICT_AR, FORMULA_WITHHELD_AR } from "./clinical-calculations.js";
 import { filterTrustForBlockedClinicalSynthesis } from "./studentview.js";
 import { auditClinicalSafety, formatClinicalSafetyAudit, isPotentialClinicalContext } from "./clinical-safety.js";
 import { auditClinicalQuality, formatClinicalQualityAudit, formatGroundingSources, isHealthDomainContext, CLINICAL_QUALITY_INSTRUCTION } from "./clinical-quality.js";
@@ -108,7 +108,10 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       assess = assessSolve({ raw: brief, logprobs: res.logprobs, stem: sourceText, profile: prof(), sourceDataText: extractLabelledClinicalData(sourceText) });
       /* When the visual source-read stage did not run, the solve brief is only a partial model extraction—not an independent source. */
       if (!extraction) { const pb = parseBrief(brief); const t = cleanResidue([pb.data, pb.keyword, pb.concepts, ...pb.options.map((o) => o.why)].filter(Boolean).join("\n")); if (t.trim()) extraction = { sourceType: srcTypeOf(), text: t, complete: false, name: "solve-brief" }; }
-      emitTrust({ phase: "solve", assess, banner: makeBanner(assess, has(chips, "en") ? "en" : "ar") });
+      const solveBanner = makeBanner(assess, has(chips, "en") ? "en" : "ar");
+      // The solve phase runs BEFORE the safety/quality gates: on clinical content it must not display the preliminary conclusion at all.
+      if (solveBanner && isPotentialClinicalContext(`${sourceText}\n${brief}`)) { solveBanner.likely = ""; solveBanner.runnerUp = ""; solveBanner.perOption = []; }
+      emitTrust({ phase: "solve", assess, banner: solveBanner, clinicalPending: isPotentialClinicalContext(`${sourceText}\n${brief}`) });
       const calculationHandoff = formatClinicalCalculationAudit(assess.clinicalCalculationAudit);
       return `${brief}\nTIER: ${assess.tier}${calculationHandoff ? `\n${calculationHandoff}` : ""}`;
     } catch (e) { return brief; }
@@ -149,6 +152,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         dataText: primaryData,
         secondaryDataText: [hiddenData ? briefData : "", hiddenData || briefData ? ocrData : "", localSourceData].filter(Boolean),
         authorityDataText: authorityData,
+        sourceText: mergeOriginalSourceText(ocrText, sample()),
         modelDataText: hiddenData || briefData,
         requireAuthorityInputs: true,
         narrative: stripOptionReviewSection(`${cleanExplanation}\n${cleanTricks}`),
@@ -179,21 +183,28 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         safetyAudit.status = "blocked";
       }
       if (audit.triggered) {
-        if (!assess && audit.conflicts.length) {
+        const blockingConflicts = audit.conflicts.filter(isBlockingConflict);
+        const withheldConflicts = audit.conflicts.filter((c) => !isBlockingConflict(c));
+        if (!assess && blockingConflicts.length) {
           assess = { tier: "LOW", answer: "", letters: [], runnerUp: null, perOption: [], perOptionAdvice: false, flags: [], concerns: [], reasons: [], issues: [], clinicalCalculationAudit: audit };
         } else if (assess) {
           assess.clinicalCalculationAudit = audit;
         }
-        if (assess && audit.conflicts.length) {
+        if (assess && blockingConflicts.length) {
           assess.tier = "LOW";
           assess.eligible = false;
           assess.answer = "";
           assess.letters = [];
-          const calculationFlags = audit.conflicts.map((c) => ({ code: c.code, msg: c.message }));
-          const calculationConcerns = audit.conflicts.map((c) => ({ code: c.code, en: c.message, ar: "الحساب المستقل كشف تعارضًا في الأرقام أو المعادلة؛ لا تعتمد الاختيار قبل تصحيحه." }));
+          const calculationFlags = blockingConflicts.map((c) => ({ code: c.code, msg: c.message }));
+          const calculationConcerns = blockingConflicts.map((c) => ({ code: c.code, en: c.message, ar: GENERIC_CALCULATION_CONFLICT_AR }));
           assess.flags = replaceAuditItemsByMessage(assess.flags || [], calculationFlags, (item) => item.msg);
-          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], calculationConcerns, (item) => item.en);
-          assess.issues = [...new Set([...(assess.issues || []), ...audit.conflicts.map((c) => c.message)])];
+          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], calculationConcerns, (item) => item.ar || item.en);
+          assess.issues = [...new Set([...(assess.issues || []), ...blockingConflicts.map((c) => c.message)])];
+        }
+        // A withheld formula is a notice about THAT formula: it never clears the answer, never forces LOW and never becomes a flag.
+        if (assess && withheldConflicts.length) {
+          assess.concerns = replaceAuditItemsByMessage(assess.concerns || [], [{ code: "formula-inputs-unconfirmed", en: withheldConflicts[0].message, ar: FORMULA_WITHHELD_AR }], (item) => item.ar || item.en);
+          assess.issues = [...new Set([...(assess.issues || []), ...withheldConflicts.map((c) => c.message)])];
         }
       }
       if (safetyAudit.conflicts.length) {
@@ -267,8 +278,11 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       addGaps(p, gaps);
       const all = rt ? [rx, rt] : [rx];
       const synthesisSuppressed = !!(safetyAudit.conflicts.length || calculationSynthesisBlocked);
+      const finalBanner = assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null;
+      // the withheld-synthesis body already lists the blocking findings once: the banner must not print them a second time
+      if (finalBanner && synthesisSuppressed) finalBanner.why = [];
       emitTrust(filterTrustForBlockedClinicalSynthesis({
-        phase: "final", profile: profileKey(p), assess, banner: assess ? makeBanner(assess, has(chips, "en") ? "en" : "ar") : null, lessonMismatch: mismatch,
+        phase: "final", profile: profileKey(p), assess, banner: finalBanner, lessonMismatch: mismatch,
         calculationAudit: audit.triggered ? { status: audit.status, results: audit.results, missingInputs: audit.missingInputs, conflicts: audit.conflicts } : null,
         clinicalSafetyAudit: safetyAudit.triggered ? safetyAudit : null,
         calculationSynthesisBlocked, clinicalSynthesisBlocked: synthesisSuppressed,
