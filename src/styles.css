@@ -1491,3 +1491,10 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--teal-2) 
 .exam-trust{margin:4px 0 0;font-size:.82rem;opacity:.9}
 .exam-trust[data-t="verified"]{color:#16a34a}.exam-trust[data-t="pending"]{color:#d97706}.exam-trust[data-t="unverified"]{color:#dc2626}
 .exam-trust summary{cursor:pointer;font-size:.82rem}.exam-trust[data-t="verified"]{color:#16a34a}.exam-trust[data-t="grounded"]{color:#2563eb}.exam-trust[data-t="fixed"]{color:#16a34a}.exam-trust[data-t="note"]{color:#6b7280}.exam-trust[data-t="warn"]{color:#d97706}.exam-trust[data-t="audit"]{color:#6b7280;font-size:.75rem}.exam-trust[data-t="good"]{color:#16a34a}.exam-snippet{font-size:.8rem;opacity:.85;margin:.3rem 0}
+
+/* v3.70 · adaptive route note + optional-words switch */
+.route-note { margin: 8px 2px 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.route-note b { color: var(--teal); }
+.switch-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card-3); cursor: pointer; }
+.switch-row input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--teal); flex: none; }
+.switch-row small { display: block; opacity: .75; font-weight: 600; font-size: 11.5px; }

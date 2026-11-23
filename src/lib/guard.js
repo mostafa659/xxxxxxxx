@@ -16,7 +16,15 @@
    Nothing here calls the network, and nothing here changes text that is already clean (fast path). */
 
 /* which calls carry Arabic prose for the student. OCR transcripts, JSON, SVG and the hidden solve stay exactly as the model wrote them. */
-export const PROSE_TASK = /^(?:lesson:(?!diagram|chatplan)|words$|word:tr$)/;
+/* v3.68 · ROOT CAUSE of the "One bullet: …" leak seen in the v3.67.0 audit run: this pattern only knew the chat/topic names ("lesson:chat", "lesson:topic"),
+   but the analysis pipeline names its writers lessonA / lessonB / lessonBm / lessonBx / lessonM / lessonT / lessonS / lessonH (with or without ":mode").
+   None of them matched, so the leak stripper, the Arabic spelling repair and the self-correction rewrite NEVER ran on the main explanation.
+   The guard test only pinned the names that already matched. The names are now one family (lesson + capital letter) and tests/v368-root-causes.test.mjs
+   extracts every task name the pipeline really emits from the source files and requires the right classification for each. */
+/* v3.69 · the PROOFREADER (extra requests, gemini.js) keeps its v3.40 scope. Widening PROSE_TASK in v3.68 silently switched it on for every main lesson writer
+   (up to 3 extra requests per answer on a big key), a cost nobody asked for. Guard = free, local, every writer; proofreader = the original task set only. */
+export const PROOF_TASK = /^(?:lesson:(?!diagram|chatplan)|words$|word:tr$)/;
+export const PROSE_TASK = /^(?:lesson:(?!diagram|chatplan)|lesson[A-Z][A-Za-z]*(?::|$)|words$|word:tr$)/;
 
 /* ── 1 · prompt leak ── */
 

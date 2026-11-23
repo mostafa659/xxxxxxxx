@@ -61,7 +61,7 @@ function Credit() {
     <div className="credit" role="note" aria-label="BY / MOSTAFA HAMMAD WITH AI" dir="ltr">
       <span className="credit-dim">BY /</span>
       <b>MOSTAFA HAMMAD</b>
-      <span className="credit-dim">WITH AI</span>
+      <span className="credit-dim">WITH AI · v3.70</span>
     </div>
   );
 }

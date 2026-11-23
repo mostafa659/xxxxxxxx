@@ -38,7 +38,7 @@ async function fontsReady() {
 }
 
 try { retireManualModes(); } catch (e) { /* ignore */ }
-const EMPTY_BOOT = { questions: [], words: [], apiKey: "", mode: null, goal: 5, perf: {}, topics: { list: [], pinned: [], auto: true }, vocab: {}, mistakes: [] };
+const EMPTY_BOOT = { questions: [], words: [], apiKey: "", mode: null, wordsOn: false, goal: 5, perf: {}, topics: { list: [], pinned: [], auto: true }, vocab: {}, mistakes: [] };
 
 async function start() {
   const [boot] = await Promise.all([

@@ -78,10 +78,12 @@ export const LESSON_SECTIONS = [
   { key: "tricks", title: "نقاط الحفظ والفخاخ", sub: "اللي بيجي في الامتحان", icon: "lightbulb", rows: 6, cls: "sec-coral", step: "tricks",
     wait: "بيجهّز لك نقاط الحفظ والفخاخ…" },
 ];
-export const sectionsFor = (kind) => (kind === "lesson" ? LESSON_SECTIONS : SECTIONS);
+export const sectionsFor = (kind, withWords = true) => (kind === "lesson" ? LESSON_SECTIONS : SECTIONS).filter((x) => withWords || x.key !== "new_words");
 
 /* the model stages that run for one analysis. A question has NO "ocr" stage any more (v3.40.10); a lesson keeps it (it is the background study summary). */
-export const tasksFor = (kind) => (kind === "lesson" ? ["ocr", "reason", "words"] : ["reason", "words"]);
+/* v3.70 · the new-words list is OPTIONAL (a student who does not enable it gets no words card and no word-list request). `withWords` defaults to true only so that
+   callers that predate the switch behave as before; the app passes the student's setting (default OFF, wordsPref in lib/prefs.js). */
+export const tasksFor = (kind, withWords = true) => (kind === "lesson" ? ["ocr", "reason", ...(withWords ? ["words"] : [])] : ["reason", ...(withWords ? ["words"] : [])]);
 
 export const EMPTY_RESULT = { original_question_text: "", new_words: "", explanation: "", tricks: "" };
 
@@ -107,6 +109,22 @@ export const MODES = {
     /* part A needs no answer, so it starts at second 0 and runs while the answer is still being solved → it can afford to THINK */
     writeA: { tier: "fast", levels: ["low", "minimal"], budget: 1024, maxOut: 20000, idleMs: 60000, firstMs: 100000 },
   },
+  /* v3.70 · chosen by the adaptive router (lib/difficulty.js), never typed by hand:
+     light     EASY question: no silent solve. Part A + ONE writer that solves by itself (2 requests instead of 3–4), shorter parts, low thinking.
+     deepflash HARD question on a SMALL / free key: its strong lane has no quota, so the depth is bought with thinking on Flash instead of a request that would 429. */
+  light: {
+    id: "light", label: "سريع", sub: "", icon: "scale", hidden: true,
+    skipSolve: true,
+    solve: { tier: "fast", levels: ["low", "minimal"], budget: 1024, maxOut: 14000, idleMs: 45000, firstMs: 60000 },
+    write: { tier: "fast", levels: ["minimal", "low"], budget: 0, maxOut: 14000, idleMs: 60000, firstMs: 90000, words: { a: 520, b: 720 } },
+    writeA: { tier: "fast", levels: ["minimal", "low"], budget: 0, maxOut: 14000, idleMs: 60000, firstMs: 90000 },
+  },
+  deepflash: {
+    id: "deepflash", label: "دقة قصوى", sub: "", icon: "target", hidden: true,
+    solve: { tier: "fast", levels: ["high", "medium"], budget: 8192, maxOut: 32000, idleMs: 90000, firstMs: 120000 },
+    write: { tier: "fast", levels: ["low", "minimal"], budget: 1024, maxOut: 24000, idleMs: 90000, firstMs: 120000, words: { a: 850, b: 1300 } },
+    writeA: { tier: "fast", levels: ["medium", "low"], budget: 2048, maxOut: 24000, idleMs: 90000, firstMs: 140000 },
+  },
   deep: {
     id: "deep", label: "دقة قصوى", sub: "أعمق تفكير", icon: "target",
     solve: { tier: "pro", levels: ["high"], budget: 16384, maxOut: 40000, idleMs: 150000, firstMs: 240000 },
@@ -118,7 +136,29 @@ export const MODES = {
 /* v3.36 · how long (ms) the writers may wait for the silent solve's verified brief before they start WITHOUT it (the writer then solves by itself, exactly like the
    no-brief path that already existed for a failed solve). The brief is a quality bonus, never a reason for the whole lesson to stand still behind a stuck request.
    Mutable on purpose: the tests shrink it. */
-export const SOLVE_BOX = { balanced: 30000, deep: 120000 };
+export const SOLVE_BOX = { balanced: 30000, deep: 120000, deepflash: 90000, light: 30000 };
+
+/* v3.69 · TASK-CONTRACT PATH, ONE REQUEST (lib/taskcontract.js). Used automatically when the source prescribes its own numbered tasks.
+   Why one request: on a free key the strong models have NO quota and a Flash model has about 20 requests a day and 5 a minute (AI Studio, Oct 2026),
+   so a plan of 6 strong requests is not "slower", it is impossible. Every step that is not language reasoning now runs in code for free:
+   skeleton, headings, per-item audit, citation audit, reasoning-trap audit, anchors, references, cache. The model is asked ONCE; a second
+   request happens only for items the audit proves defective (≤ 1 batched repair), and a re-run of the same case costs zero.
+   tier "auto": a big/paid key starts on the strong model, a small/free key on Flash. The lightest lane (Flash-Lite) is last resort and is disclosed. */
+export const CONTRACT = {
+  enabled: true,
+  version: "3.69.0",
+  wordsBudget: 3800,        // soft total for the whole answer; split over the items by weight
+  once: { tier: "auto", levels: ["medium", "low"], budget: 8192, maxOut: 48000, idleMs: 150000, firstMs: 240000, avoidWeak: true },
+  onceExpertPaid: { levels: ["high", "medium"], budget: 16384 },   // only when the case scores "expert" AND the key is not small
+  repair: { tier: "auto", levels: ["low", "minimal"], budget: 2048, maxOut: 24000, idleMs: 120000, firstMs: 180000, avoidWeak: true },
+  repairOnce: true,
+  repairMaxItems: 10,       // more defective items than this = the model is not following the contract: report, do not pay for a second full answer
+  cache: true,
+};
+export const contractEnabled = () => {
+  try { if (typeof localStorage !== "undefined" && localStorage.getItem("clinix.contract") === "0") return false; } catch (e) { /* storage may be unavailable */ }
+  return CONTRACT.enabled !== false;
+};
 
 export const CHEERS = [
   "كل سؤال بتحله بيقرّبك من الـ RN 💙",

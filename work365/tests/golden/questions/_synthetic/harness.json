@@ -1,4 +1,0 @@
-[
- {"id":"syn-1","profile":"general","format":"mcq","stem":"SYNTHETIC harness item: which organ makes bile?","options":{"A":"Gallbladder","B":"Liver","C":"Pancreas","D":"Stomach"},"key":["B"],"source":{"name":"synthetic","license":"CC0","url":"n/a"},"verifiedBy":"harness","verifiedAt":"2026-11-14"},
- {"id":"syn-2","profile":"general","format":"sata","stem":"SYNTHETIC harness item: select 2 accessory organs.","options":{"A":"Liver","B":"Ileum","C":"Pancreas","D":"Rectum"},"key":["A","C"],"source":{"name":"synthetic","license":"CC0","url":"n/a"},"verifiedBy":"harness","verifiedAt":"2026-11-14"}
-]

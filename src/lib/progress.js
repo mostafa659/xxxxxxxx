@@ -8,13 +8,16 @@ export const DEFAULT_PERF = {
   words:              { ms: 6500,  chars: 1100 },
   "reason2:balanced": { ms: 15000, chars: 3300 },
   "reason2:deep":     { ms: 38000, chars: 4300 },
+  "reason2:light":    { ms: 9000,  chars: 2600 },       // v3.70 · routed presets
+  "reason2:deepflash":{ ms: 30000, chars: 4300 },
+  "reason2:auto":     { ms: 15000, chars: 3300 },
 };
 
 // "reason2": the lesson is now a parallel pipeline, so numbers learned from the old single-stream version are ignored
 export const perfKey = (task, modeId) => (task === "reason" ? `reason2:${modeId}` : task);
 
 const fresh = (k, perf, now) => {
-  const p = perf[k] || DEFAULT_PERF[k];
+  const p = perf[k] || DEFAULT_PERF[k] || DEFAULT_PERF["reason2:balanced"];
   return { start: now, end: null, chars: 0, expMs: p.ms, expChars: p.chars, state: "run" };
 };
 
@@ -79,11 +82,11 @@ export function snapshot(tracker, now = Date.now()) {
 
 export function learn(perf, task, modeId, ms, chars) {
   const k = perfKey(task, modeId);
-  const base = perf[k] || DEFAULT_PERF[k];
+  const base = perf[k] || DEFAULT_PERF[k] || DEFAULT_PERF["reason2:balanced"];
   const mix = (a, b) => Math.round(a * 0.55 + b * 0.45);
   return { ...perf, [k]: { ms: mix(base.ms, Math.max(800, ms)), chars: mix(base.chars, Math.max(60, chars)) } };
 }
 
-export const expectedMs = (perf, task, modeId) => (perf[perfKey(task, modeId)] || DEFAULT_PERF[perfKey(task, modeId)]).ms;
+export const expectedMs = (perf, task, modeId) => (perf[perfKey(task, modeId)] || DEFAULT_PERF[perfKey(task, modeId)] || DEFAULT_PERF["reason2:balanced"]).ms;
 
 export const fmtRemaining = (s) => (s >= 90 ? `~${Math.ceil(s / 60)} د` : `~${s} ث`);

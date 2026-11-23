@@ -50,7 +50,9 @@ test("output caps, thinking budgets and the number of modes are unchanged", () =
     assert.equal(MODES[id].writeA.maxOut, m.writeAMaxOut, `${id} writeA maxOut`);
     assert.equal(MODES[id].solve.budget, m.solveBudget, `${id} thinking budget`);
   }
-  assert.deepEqual(Object.keys(MODES).sort(), Object.keys(base.modes).sort());
+  /* v3.70: the two routed presets (light, deepflash) are hidden: the student-visible modes are exactly the baseline ones */
+  assert.deepEqual(Object.keys(MODES).filter((k) => !MODES[k].hidden).sort(), Object.keys(base.modes).sort());
+  for (const k of Object.keys(MODES).filter((x) => MODES[x].hidden)) assert.ok(MODES[k].write.maxOut <= base.modes.deep.writeMaxOut && MODES[k].solve.maxOut <= base.modes.deep.solveMaxOut, `${k} stays inside the deep caps`);
 });
 
 test("the solve brief is cheaper: RATIONALE is gone and CALC/DATA/ANSWER-first are in", () => {

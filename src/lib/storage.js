@@ -100,7 +100,7 @@ export const store = {
   },
 };
 
-const BOOT_KEYS = ["clinix:questions", "clinix:words", "clinix:apikey", "clinix:mode", "clinix:goal", "clinix:perf", "clinix:topics", "clinix:vocab", "clinix:mistakes"];
+const BOOT_KEYS = ["clinix:questions", "clinix:words", "clinix:apikey", "clinix:mode", "clinix:wordsOn", "clinix:goal", "clinix:perf", "clinix:topics", "clinix:vocab", "clinix:mistakes"];
 
 export async function loadBoot() {
   try {
@@ -130,6 +130,7 @@ function shape(o) {
     words: Array.isArray(o["clinix:words"]) ? o["clinix:words"] : [],
     apiKey: typeof o["clinix:apikey"] === "string" ? o["clinix:apikey"].trim() : "",
     mode: typeof o["clinix:mode"] === "string" ? o["clinix:mode"] : null,
+    wordsOn: o["clinix:wordsOn"] === "on",
     goal: Number.isFinite(o["clinix:goal"]) ? o["clinix:goal"] : 5,
     topics: shapeTopics(o["clinix:topics"]),
     mistakes: Array.isArray(o["clinix:mistakes"]) ? o["clinix:mistakes"] : [],

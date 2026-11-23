@@ -36,7 +36,7 @@ test("a new question has no stored transcript, so its title and its one-line pre
 
 test("the batch (many questions in one upload) no longer waits for an ocr part that will never come", () => {
   const b = src("lib/batch.js");
-  assert.ok(b.includes('tasksFor("question")') && !/part:\s*\{\s*ocr/.test(b));
+  assert.ok(/tasksFor\("question"(?:, withWords)?\)/.test(b) && !/part:\s*\{\s*ocr/.test(b));
 });
 
 /* ── 2 · translation: Google only ── */

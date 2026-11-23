@@ -41,7 +41,7 @@ import * as Ring from "./keyring.js";
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { MODEL_FAST, MODEL_PRO, GATEWAY_URL, GATEWAY_TOKEN, API_BASE_URL, NET, PAID, cap, SERVICE_TIER } from "./config.js";
 import { tierOf, taskClass, mediaOf, estimateTokens, tierStages, planLanes, hedgeDelayMs, nextReadyIn, readyLanes, begin as laneBegin, noteOk, noteBusy, noteDead, noteTooBig, noteSlow, clearDead as clearDeadLanes, clearCool as clearCoolLanes, coolFor, setBias, isDead, isCooling } from "./router.js";
-import { makeGuard, REWRITE_AT, allowRetry } from "./guard.js";
+import { makeGuard, REWRITE_AT, allowRetry, PROOF_TASK } from "./guard.js";
 import { proofOn, allowProof, shouldProof, chunkForProof, parseProof, applyProof, PROOF_SYSTEM, PROOF_MS, smallKeyGate, proofBusy, proofStart, proofEnd, foldClaims, parseVerdicts, claimsGrounding } from "./proof.js";
 import { readSources } from "./sources.js";
 import {
@@ -841,7 +841,7 @@ async function guardedTask(args, trace) {
   }
   /* v3.40 · the proofreader: a second, independent reader of the final text (proof.js). It fails open and never holds the answer longer than PROOF_MS. */
   const clean = !(trace.slept > 0 || trace.hedges > 0 || (trace.attempts || []).some((a) => a.outcome === "fail"));     // an answer that already struggled is not given more work
-  if (proofOn() && clean && shouldProof(out.text) && !(args.signal && args.signal.aborted)
+  if (proofOn() && args.proof !== false && PROOF_TASK.test(String(args.task || "")) && clean && shouldProof(out.text) && !(args.signal && args.signal.aborted)
       && !proofBusy() && !(smallKeyGate() && (isSmallKey(args.apiKey) || pressure(args.apiKey)))) {
     proofStart();
     let pr;

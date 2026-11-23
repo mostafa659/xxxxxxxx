@@ -7,8 +7,8 @@
    Text-first questions skip transcription. Lessons keep their separate source-reading
    / study-summary stage. See config.js for quota and request-count behaviour. */
 
-import { MODES, LESSON_MODE, LESSON_SLICES, SLICE_MIN_PAGES } from "./config.js";
-import { buildOcrPrompt, buildWordsPrompt, buildSolvePrompt, buildLessonPrompt, buildLessonAPrompt, buildLessonBPrompt, buildStudySummaryPrompt, buildStudyLessonPrompt, buildStudyAPrompt, buildStudyBPrompt, buildStudyHeadPrompt, buildStudySlicePrompt, buildStudyTailPrompt, studyHeadings } from "./prompts.js";
+import { MODES, LESSON_MODE, LESSON_SLICES, SLICE_MIN_PAGES, CONTRACT, contractEnabled } from "./config.js";
+import { buildOcrPrompt, buildWordsPrompt, buildSolvePrompt, buildLessonPrompt, buildLessonAPrompt, buildLessonBPrompt, buildStudySummaryPrompt, buildStudyLessonPrompt, buildStudyAPrompt, buildStudyBPrompt, buildStudyHeadPrompt, buildStudySlicePrompt, buildStudyTailPrompt, studyHeadings, buildContractOncePrompt, buildContractRepairPrompt } from "./prompts.js";
 import { createSlicedLesson, shouldSlice } from "./lessonflow.js";
 import { fixText, ARABIC_RULE } from "./text.js";
 import { cleanOcr, cleanWords, cleanBrief, splitReason } from "./parse.js";
@@ -29,7 +29,13 @@ import { readSources } from "./sources.js";
 import { selectClaims, applyCached, applyVerdicts } from "./claims.js";
 import { addGaps } from "./reports.js";
 import { getModelLists, runTask } from "./gemini.js";
-import { weakFirst } from "./router.js";
+import { weakFirst, tierOf } from "./router.js";
+import { buildDifficultyPrompt, parseDifficulty, heuristicLevel, combineLevels, modeForLevel, routeKey, getRoute, putRoute, ROUTE_BOX_MS, LEVELS } from "./difficulty.js";
+import { parseTaskContract, parseItemOutput, auditItems, defects, assembleAnswer, targetWords } from "./taskcontract.js";
+import { auditCitations, annotateCitations } from "./citation-audit.js";
+import { getContractResult, putContractResult, contractKey } from "./contract-cache.js";
+import { selectAnchors, formatAnchors, formatAnchorReferences } from "./clinical-anchors.js";
+import { auditReasoningTraps, formatReasoningTraps } from "./reasoning-traps.js";
 import { sourceParts, sourceNote, itemsFromSaved } from "./docs.js";
 import { createFileCache, looksLikeFileError } from "./gfiles.js";
 import { stageOf, summarize } from "./latency.js";
@@ -51,10 +57,10 @@ const has = (ids, id) => Array.isArray(ids) && ids.includes(id);
 const isAbort = (err) => !err || err.name === "AbortError";
 const secs = (ms) => Math.round(ms / 100) / 10;
 
-export function createAnalysis({ kind = "question", history, dataUrl, doc, extra, chips, apiKey, modeId, profile: profileArg, onUpdate, onDone, onError, onNotice, onTrust }) {
+export function createAnalysis({ kind = "question", history, dataUrl, doc, extra, chips, apiKey, modeId, withWords = true, onRoute = () => {}, profile: profileArg, onUpdate, onDone, onError, onNotice, onTrust }) {
   const L = kind === "lesson";                 // study material (books, notes, slides, pasted text) instead of one exam question
-  const mode = MODES[modeId] || MODES.balanced;
-  const wordsCap = L ? { a: Math.round(mode.write.words.a * 1.7), b: Math.round(mode.write.words.b * 1.4) } : mode.write.words;
+  let mode = MODES[modeId] || MODES.balanced;                 // v3.70: "auto" starts as balanced and is replaced by the router's choice before the answer is written
+  let wordsCap = L ? { a: Math.round(mode.write.words.a * 1.7), b: Math.round(mode.write.words.b * 1.4) } : mode.write.words;
   const lists = getModelLists(apiKey);
   const src = sourceParts(doc, dataUrl);       // the screenshot, the PDF or the text document
   const note = sourceNote(doc, extra, kind);   // "" for a plain screenshot
@@ -266,6 +272,13 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         ? `## 🧭 ${has(chips, "en") ? "General healthcare quality checks" : "فحوص جودة الإجابة الصحية العامة"}\n${formatClinicalQualityAudit(qualityAudit, has(chips, "en") ? "en" : "ar")}`
         : "";
       if (qualitySection && !safetyAudit.conflicts.length && !calculationSynthesisBlocked) ex = `${ex}\n\n${qualitySection}`;
+      /* v3.68 · reasoning-pattern advisories (confounded negative used to exclude, artifact asserted as fact, single-cause forcing, unsupported cut-off, invented counterfactual) */
+      try {
+        const srcAll = mergeOriginalSourceText(ocrText, sample());
+        const anchorsTxt = selectAnchors(srcAll).map((a) => [...a.statements, ...(a.inference || [])].join(" ")).join(" ");
+        const traps = auditReasoningTraps({ source: srcAll, answer: `${cleanExplanation}\n${cleanTricks}`, anchorsText: anchorsTxt, openCase: !L && !/^\s*[A-E][.)]\s/m.test(srcAll) });
+        if (traps.length && !safetyAudit.conflicts.length && !calculationSynthesisBlocked) ex = `${ex}\n\n## 🔎 ${has(chips, "en") ? "Reasoning-pattern checks" : "فحوص أنماط الاستدلال"}\n${formatReasoningTraps(traps, has(chips, "en") ? "en" : "ar")}`;
+      } catch (e) { /* advisory only: never break the answer */ }
       const sourceSection = medicalSearchAttempted
         ? (formatGroundingSources(groundingSources.links, groundingSources.queries)
           || (has(chips, "en")
@@ -338,8 +351,8 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const healthContext = isHealthDomainContext(`${ocrText}\n${briefRaw}\n${sample()}\n${note}\n${prompt.user}`);
     // One grounded evidence pass per analysis: solve-stage in deep mode, otherwise the main answer-writing stage.
     // Avoid attaching Google Search to OCR/word-list/formatting-only calls.
-    const isAnswerStage = /^(?:solve:|lessonB|lessonM)/i.test(task);
-    const useMedicalSearch = !!(healthContext && isAnswerStage && !medicalSearchAttempted);
+    const isAnswerStage = /^(?:solve:|lessonB|lessonM|lessonC)/i.test(task);
+    const useMedicalSearch = !!(healthContext && isAnswerStage && !medicalSearchAttempted && cfg.search !== false);
     if (useMedicalSearch) medicalSearchAttempted = true;
     const originalSystem = prompt.system || "";
     const system = healthContext && isAnswerStage && !originalSystem.includes("UNIVERSAL HEALTHCARE ANSWER QUALITY PROTOCOL")
@@ -351,11 +364,11 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     const call = async (useFiles) => {
       const all = [...src, { text: note + prompt.user }];
       return runTask({
-        apiKey, task,
+        apiKey, task, proof: !/^lessonC/.test(task),
         /* v3.35: reading the question text off the screenshot and listing its words are easy jobs: the WEAKEST model first (Flash-Lite), the middle one next and the
            strong one only if nothing else can answer. (A lesson's "ocr" stage is a study summary, not a transcript: it keeps the old order.) */
-        models: orderForTask(apiKey, task, cfg.tier === "pro" || (task === "ocr" && !L) ? proFirst : task === "words" ? weakFirst(fastFirst) : fastFirst),      // v3.33: when the strong models are nearly spent today, the word list goes to Flash-Lite (quota.js)
-        system: system + (L || task !== "ocr" ? ARABIC_RULE : ""),   // the OCR transcript must stay exactly as written
+        models: (() => { const base = orderForTask(apiKey, task, (cfg.tier === "auto" ? !isSmallKey(apiKey) : cfg.tier === "pro") || (task === "ocr" && !L) ? proFirst : (task === "words" || task === "route") ? weakFirst(fastFirst) : fastFirst); return cfg.avoidWeak ? [...base.filter((m) => tierOf(m) !== "weak"), ...base.filter((m) => tierOf(m) === "weak")] : base; })(),      // v3.33: when the strong models are nearly spent today, the word list goes to Flash-Lite (quota.js)
+        system: system + ((L || task !== "ocr") && task !== "route" ? ARABIC_RULE : ""),   // the OCR transcript must stay exactly as written
         noSearchSystem,
         search: useMedicalSearch,
         parts: useFiles ? await files.swap(all, signal) : all,
@@ -600,7 +613,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       }
     };
 
-    if (L) { S.t0s.solve = 0; startBC(null); }
+    if (L || mode.skipSolve) { S.t0s.solve = 0; startBC(null); }          // v3.70: an EASY question (mode "light") needs no silent solve: one writer solves by itself
     else {
       /* v3.36 · the solve is TIME-BOXED. Everything after it (main + traps) used to wait for it with no limit: one request stuck in Google's queue (429 / 503 / a silent
          connection) held the whole lesson for minutes, although the writing itself takes ~40 s. Now: the brief arrives inside the box → the verified path, exactly as
@@ -740,11 +753,188 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
     flow.start();
   }
 
-  function runReason() {
+
+  /* ── reason, TASK CONTRACT, ONE REQUEST (v3.69) ──
+     The source prescribes its own numbered tasks (lib/taskcontract.js). Request budget on the happy path: ONE generative request.
+       1. cache hit (same case, same contract version)                                       → 0 requests
+       2. ONE request: the model thinks, then writes the item-addressed skeleton (`@@2.3@@ …`)
+       3. code: parse → audit every item (present, long enough, fields named, word limit, list length) + reasoning-trap audit + citation audit
+       4. defective items only → ONE batched repair request (never a second full answer); nothing defective → no request
+       5. code: assemble headings/labels, mark unverified citations, add references + notices, cache, then the normal trustPass
+     Everything in 1/3/5 is free. A free key has ≈ 20 Flash requests a day: the model is asked only for what code cannot do. */
+  const docText = () => (doc ? itemsFromSaved(null, doc).map((x) => (x.t === "text" ? x.text : x.t === "pdf" ? x.ptext || "" : "")).join("\n").slice(0, 60000) : "");
+  const fullSourceText = () => mergeOriginalSourceText(ocrText, docText());
+  let _contract = { key: "", value: null };
+  const contractNow = () => {
+    if (L || !contractEnabled()) return null;
+    const text = fullSourceText();
+    const key = `${text.length}:${ocrText.length}`;
+    if (_contract.key === key) return _contract.value;
+    let value = null;
+    try { const c = parseTaskContract(text); value = c.active ? c : null; } catch (e) { value = null; }
+    _contract = { key, value };
+    return value;
+  };
+  let bypassContractCache = false;
+
+  function runReasonContract(contract) {
+    live.reason?.abort();
+    const ctrl = new AbortController();
+    live.reason = ctrl;
+    const sig = ctrl.signal;
+    const t0 = performance.now();
+    const since = () => performance.now() - t0;
+    const sourceText = fullSourceText();
+    const anchors = selectAnchors(sourceText);
+    const anchorsBlock = formatAnchors(anchors);
+    const anchorsText = anchors.map((a) => [...a.statements, ...(a.inference || [])].join(" ")).join(" ");
+    const handoff = sourceCalculationHandoff();
+    const lang = has(chips, "en") ? "en" : "ar";
+    const wordsFor = (it) => targetWords(contract, it, CONTRACT.wordsBudget);
+    const items = new Map();                 // key → text (the ONLY state of the answer)
+    let model = "", over = false, requests = 0, raw = "", cached = false;
+    const small = isSmallKey(apiKey);
+    const fail = (err, partial) => { if (over || sig.aborted) return; over = true; ctrl.abort(); onError("reason", err, partial || null); };
+    const merge = (text) => { for (const [k, v] of parseItemOutput(text, contract)) if (!items.has(k) || v.length >= (items.get(k) || "").length || k === "TRICKS") items.set(k, v); };
+    const replaceItems = (text) => { for (const [k, v] of parseItemOutput(text, contract)) items.set(k, v); };
+
+    /* flagged sentences → the items they live in (reasoning traps + unverified citations), so ONE repair request can fix them together with missing items */
+    const flagged = () => {
+      const out = new Map();
+      for (const [k, v] of items) {
+        if (k === "TRICKS") continue;
+        const traps = auditReasoningTraps({ source: sourceText, answer: v, anchorsText, openCase: true }).filter((t) => t.code !== "empty-mnemonic-label");
+        const cites = auditCitations(v, anchors).unverified;
+        const why = [...traps.map((t) => `${t.code}: ${t.message}`), ...cites.map((c) => `citation not in the verified set: "${c.cite}" — replace it by a retrieved reference or label it (من الذاكرة — راجع المصدر)`)];
+        if (why.length) out.set(k, why);
+      }
+      return out;
+    };
+
+    const conclude = (audit) => {
+      if (over || sig.aborted) return;
+      let explanation = assembleAnswer(contract, items);
+      const cit = auditCitations(explanation, anchors);
+      explanation = annotateCitations(explanation, cit, lang);
+      const notes = [];
+      const d = defects(audit);
+      if (d.size) {
+        const label = (k) => { const t = contract.tasks.find((x) => x.items.some((i) => i.key === k)); return t ? `Task ${t.number} (${k})` : k; };
+        const miss = audit.missing.map(label), thin = audit.thin.map((x) => label(x.key)), lim = audit.limit.map((x) => `${label(x.key)} ${x.words}/${x.limit}`);
+        const rows = [];
+        if (miss.length) rows.push(lang === "en" ? `Not answered: ${miss.join("; ")}.` : `لم تُكتب إجابتها: ${miss.join("؛ ")}.`);
+        if (thin.length) rows.push(lang === "en" ? `Too thin to rely on: ${thin.join("; ")}.` : `مختصرة أكثر من اللازم: ${thin.join("؛ ")}.`);
+        if (lim.length) rows.push(lang === "en" ? `Over the stated word limit: ${lim.join("; ")}.` : `تجاوزت حد الكلمات: ${lim.join("؛ ")}.`);
+        if (audit.count.length) rows.push(lang === "en" ? `List shorter than requested: ${audit.count.map((x) => `${label(x.key)} ${x.have}/${x.need}`).join("; ")}.` : `قائمة أقصر من المطلوب: ${audit.count.map((x) => `${label(x.key)} ${x.have}/${x.need}`).join("؛ ")}.`);
+        if (audit.fields.length) rows.push(lang === "en" ? `Fields not addressed: ${audit.fields.map((x) => label(x.key)).join("; ")}.` : `حقول لم تُغطَّ: ${audit.fields.map((x) => label(x.key)).join("؛ ")}.`);
+        notes.push(`${lang === "en" ? "## ⚠️ Completeness check (automatic)" : "## ⚠️ فحص اكتمال الإجابة (آلي)"}\n${rows.map((r) => `- ${r}`).join("\n")}\n${lang === "en" ? "The check is lexical: it shows a part is missing or thin, not that the content is correct." : "الفحص لفظي: يكشف الناقص أو المختصر، ولا يثبت صحة المحتوى."}`);
+      }
+      if (model && tierOf(model) === "weak") notes.push(lang === "en" ? "## ⚠️ Model-strength notice\nThis answer was written by the lightest model because the stronger ones were unavailable. Re-run later for a deeper answer before relying on it." : "## ⚠️ تنبيه قوة النموذج\nكُتبت هذه الإجابة بأخف نموذج لأن النماذج الأقوى لم تكن متاحة وقتها. أعد التشغيل لاحقًا للحصول على إجابة أعمق قبل الاعتماد عليها.");
+      const refs = formatAnchorReferences(anchors, lang);
+      if (refs) notes.push(refs);
+      const full = [explanation, ...notes].filter(Boolean).join("\n\n");
+      if (!d.size && CONTRACT.cache && !cached) putContractResult(contractKey(sourceText, CONTRACT.version), items, model);
+      over = true;
+      onUpdate("reason", { explanation: full, tricks: items.get("TRICKS") || "" }, { chars: full.length, model, final: true });
+      onDone("reason", { ms: since(), chars: full.length, model, stages: { total: secs(since()) }, requests });
+    };
+
+    const finish = () => {
+      if (over || sig.aborted) return;
+      if (![...items.keys()].some((k) => k !== "TRICKS")) return fail(new Error("contract-empty"), null);
+      let audit = auditItems(contract, items);
+      const want = defects(audit);
+      for (const [k, why] of flagged()) want.set(k, [...(want.get(k) || []), ...why]);
+      const keys = [...want.keys()];
+      if (!CONTRACT.repair || !CONTRACT.repairOnce || !keys.length) return conclude(audit);
+      if (keys.length > CONTRACT.repairMaxItems) return conclude(audit);      // the model is not following the contract: say so, do not buy a second full answer
+      const repairs = keys.map((key) => ({ key, reasons: want.get(key), existing: items.get(key) || "" }));
+      const context = [];
+      for (const t of contract.tasks) for (const it of t.items) { const v = items.get(it.key); if (v && !want.has(it.key) && context.length < 14) context.push(`${it.key}: ${v.split("\n")[0].slice(0, 170)}`); }
+      const cfg = { ...CONTRACT.repair };
+      requests++;
+      stage(`lessonC:${mode.id}`, cfg, buildContractRepairPrompt({ contract, repairs, context, anchorsBlock, wordsFor, chips, extra, profile: prof() }), sig, () => {})
+        .then((res) => { if (over || sig.aborted) return; const before = new Map(items); replaceItems(res.text); for (const [k, v] of before) if (!items.has(k)) items.set(k, v); model = model || res.model; conclude(auditItems(contract, items)); })
+        .catch((err) => { if (isAbort(err) || sig.aborted) return; conclude(auditItems(contract, items)); });      // a failed repair keeps the first draft and reports what is wrong
+    };
+
+    /* 1 · cache */
+    if (CONTRACT.cache && !bypassContractCache) {
+      const hit = getContractResult(contractKey(sourceText, CONTRACT.version));
+      if (hit && auditItems(contract, hit.items).complete) { for (const [k, v] of hit.items) items.set(k, v); model = hit.model; cached = true; return void setTimeout(finish, 0); }
+    }
+    bypassContractCache = false;
+
+    /* 2 · the one request */
+    const expertPaid = contract.complexity.level === "expert" && !small;
+    const cfg = { ...CONTRACT.once, ...(expertPaid ? CONTRACT.onceExpertPaid : {}), search: false };
+    requests++;
+    stageWithSpecialized(`lessonC:${mode.id}`, cfg,
+      buildContractOncePrompt({ contract, wordsFor, anchorsBlock, calculationHandoff: handoff, chips, extra, profile: prof() }),
+      sig, (full, m) => { raw = full; model = m || model; },
+      contract.tasks.map((t) => t.title).join("; "))
+      .then((res) => { if (over || sig.aborted) return; raw = res.text; model = res.model || model; merge(raw); finish(); })
+      .catch((err) => {
+        if (isAbort(err) || sig.aborted) return;
+        merge(raw);                                                           // tokens already paid for are never thrown away: parse what arrived, repair only the rest
+        if ([...items.keys()].some((k) => k !== "TRICKS")) return finish();
+        fail(err, null);
+      });
+  }
+
+  /* ── adaptive routing (v3.70) ── */
+  let bump = 0;                                       // "Retry" on an auto-routed answer goes ONE level deeper (the student is saying: not good enough)
+  const dispatchReason = () => {
     if (sliced) runReasonSliced();
     else if (LESSON_MODE === "single") runReasonSingle();
     else if (LESSON_MODE === "split") runReasonSplit();
     else runReasonFast();
+  };
+  const applyMode = (id) => { mode = MODES[id] || MODES.balanced; wordsCap = L ? { a: Math.round(mode.write.words.a * 1.7), b: Math.round(mode.write.words.b * 1.4) } : mode.write.words; };
+
+  async function decideRoute(sig) {
+    const small = isSmallKey(apiKey);
+    const text = fullSourceText();
+    const rules = heuristicLevel(text);
+    const noText = !text.trim();                       // an image / scanned PDF: the rules see nothing, so a failed model call must not read as "easy"
+    const src0 = text || `${(dataUrl || "").length}:${(dataUrl || "").slice(0, 300)}`;
+    const key = routeKey(src0, extra || "");
+    const hit = getRoute(key);
+    let verdict = hit ? { level: hit.level, reason: hit.reason || "" } : null, from = hit ? "cache" : "";
+    if (!verdict) {
+      const ctl = new AbortController();
+      const link = () => ctl.abort();
+      sig.addEventListener("abort", link, { once: true });
+      const timer = setTimeout(() => ctl.abort(), ROUTE_BOX_MS);
+      try {
+        const r = await stage("route", { tier: "fast", levels: ["minimal", "low"], budget: 0, maxOut: 400, idleMs: 8000, firstMs: ROUTE_BOX_MS }, buildDifficultyPrompt(), ctl.signal, () => {});
+        verdict = parseDifficulty(r && r.text);
+        if (verdict) from = "model";
+      } catch (e) { /* fail open to the rules: the router is never a reason for the answer not to start */ }
+      finally { clearTimeout(timer); sig.removeEventListener("abort", link); }
+    }
+    let level, source, floored = false;
+    if (verdict) { const c = combineLevels(verdict, rules); level = c.level; floored = c.floored; source = from === "cache" ? "cache" : "model"; }
+    else { level = noText ? "medium" : rules.level; source = "rules"; }
+    if (verdict && from === "model") putRoute(key, { level: verdict.level, reason: verdict.reason });
+    const base = LEVELS.indexOf(level);
+    const finalLevel = LEVELS[Math.min(LEVELS.length - 1, base + bump)];
+    return { level: finalLevel, mode: modeForLevel(finalLevel, { small }), source, floored, bumped: bump > 0 && finalLevel !== level, reason: (verdict && verdict.reason) || rules.reasons.join("; "), rules: rules.level };
+  }
+
+  function runReason() {
+    const contract = contractNow();
+    if (contract) { if (modeId === "auto") onRoute({ level: "hard", mode: "contract", source: "contract", reason: `${contract.tasks.length} prescribed tasks` }); return runReasonContract(contract); }
+    if (modeId !== "auto" || L) { if (modeId === "auto") applyMode("balanced"); return dispatchReason(); }
+    live.reason?.abort();
+    const ctrl = new AbortController();
+    live.reason = ctrl;
+    decideRoute(ctrl.signal).then((r) => {
+      if (ctrl.signal.aborted) return;
+      applyMode(r.mode);
+      onRoute(r);
+      dispatchReason();
+    }).catch((err) => { if (ctrl.signal.aborted || isAbort(err)) return; applyMode("balanced"); dispatchReason(); });
   }
 
   function run(name) {
@@ -755,7 +945,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
 
   return {
     start() {
-      if (!questionNeedsTranscript) { tasksFor(kind).forEach(run); return; }
+      if (!questionNeedsTranscript) { tasksFor(kind, withWords).forEach(run); return; }
       // For visual questions, run a separate vision-model transcription first so solver DATA can be compared
       // with a second reading pass. This is not independent OCR; high-risk values still need human confirmation.
       let launched = false;
@@ -763,7 +953,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
         if (launched) return;
         launched = true;
         run("reason");
-        run("words");
+        if (withWords) run("words");
       };
       const previousDone = onDone;
       const previousError = onError;
@@ -771,7 +961,7 @@ export function createAnalysis({ kind = "question", history, dataUrl, doc, extra
       onError = (name, e, last) => { previousError(name, e, last); if (name === "ocr") launchRemaining(); };
       run("ocr");
     },
-    retry(name) { if (TASK_KEYS[name]) run(name); },
+    retry(name) { if (name === "reason") { bypassContractCache = true; bump = Math.min(2, bump + 1); } if (TASK_KEYS[name]) run(name); },
     stop(name) { live[name]?.abort(); },
     cancel() { Object.values(live).forEach((c) => c.abort()); files.cancel(); },
   };

@@ -1,3 +1,23 @@
+## v3.70.0 — Adaptive difficulty router + optional words
+
+New first mode **تلقائي**: a small Gemini model rates each question easy / medium / hard and the app picks the preset (easy → no silent solve; hard → deep, or Flash-with-high-thinking on a free key); the free rule-based estimate is the fallback and a safety floor. The new-words list is now an **off-by-default switch** (off = no card, no request). `npm test` **619/619**, build OK; classifier accuracy and the UI in a browser are **not** verified. See [report](docs/ADAPTIVE_ROUTING_AND_OPTIONAL_WORDS_v3.70.0.md).
+
+---
+
+## v3.69.0 — Task contract in ONE request
+
+v3.68's plan (5–6 strong requests) is impossible on a free key (Pro quota 0, Flash ≈ 20/day). Now: 1 generative request on the clean path, ≤ 1 batched repair for audit-proven defective items, 0 for a repeat (cache). Item-addressed output, headings/labels/audits/citations/references in code, proofreader scope restored. `npm test` **601/601**, build OK; no live-model run claimed. See [report](docs/RE_ENGINEERING_v3.69.0.md) and `scripts/contract-bench.mjs`.
+
+---
+
+## v3.68.0 — Task contract path, verified anchors, guard fix
+
+Root causes found by auditing a 10-task consultant case (v3.67.0 scored ≈ 20/100 on the supplied rubric): the output guard never matched the main lesson writers (`PROSE_TASK`); sources that prescribe numbered tasks were forced into the exam-lesson template with a fast writer; template sections invite fabricated counterfactuals/mnemonics; no verified reference layer; no audit of reasoning shape. New: `taskcontract.js`, `clinical-anchors.js`, `reasoning-traps.js`, the contract path in `analysis.js`.
+
+Verification: `npm test` → **593/593 passed**; `npm run build` OK. No live Gemini run or clinician review is claimed. See [report](docs/ROOT_CAUSE_AND_REMEDIATION_v3.68.0.md).
+
+---
+
 ## v3.67.0 — Shared Root-Cause Remediation: Calculation Claims, Per-Measurement Extraction, Tiered Gating
 
 Fixes five shared defects behind the v3.59–v3.66 recurring failures: the verifier read the first operand of a worked formula as the reported result (`AG 129`, `Winter 1.5` were operands of correct formulas); source extraction scoped baseline/current per line and required glued units; corroboration required the regex to re-derive a value and one unconfirmed formula blocked everything; the same finding was printed several ways; and the approval state was not shared by the solve banner, chat and handoff. New modules: `calc-claims.js`, `clinical-measurements.js`, `arith.js`.

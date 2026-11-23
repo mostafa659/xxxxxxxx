@@ -296,13 +296,13 @@ ${H.options}
 ${H.answer}
 - **Letter)** and one line explaining why it wins over the others.
 ${H.vary}
-- 2 to 3 bullets: "If the stem said **…** instead, the answer would become **…** because …" — one small change each, so he learns the rule and not only this question.
+- ONLY when the item has real answer options: 2 to 3 bullets: "If the stem said **…** instead, the answer would become **…** because …". Open cases: omit this heading (an invented counterfactual is a fabrication).
 ` : ""}${hasTraps ? `${H.memo}
 > 3 to 5 short English sentences from the rationale that he can memorize (one per line, each starting with "> "), each followed by its translation on the next line (a normal line, no marker).
 
 TRICKS:
 - 2 to 4 bullets, each like "**Trap name:** short explanation" — tricky keywords, tempting distractors, look-alike words, common student mistakes. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
+- The last line: "💡 " followed by one short memory tip in English (a standard mnemonic or a rhyme; never an invented acronym; omit the line if none fits) with its Arabic translation in simple words (drug and medical names stay in English letters).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
@@ -365,13 +365,13 @@ ${H.options}
 ${H.answer}
 - **Letter)** and one line explaining why it wins over the others.
 ${H.vary}
-- 2 to 3 bullets: "If the stem said **…** instead, the answer would become **…** because …" — one small change each, so he learns the rule and not only this question.
+- ONLY when the item has real answer options: 2 to 3 bullets: "If the stem said **…** instead, the answer would become **…** because …". Open cases: omit this heading (an invented counterfactual is a fabrication).
 ${H.memo}
 > 3 to 5 short English sentences from the rationale that he can memorize (one per line, each starting with "> "), each followed by its translation on the next line (a normal line, no marker).
 
 TRICKS:
 - 2 to 4 bullets, each like "**Trap name:** short explanation" — tricky keywords, tempting distractors, look-alike words, common student mistakes. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
+- The last line: "💡 " followed by one short memory tip in English (a standard mnemonic or a rhyme; never an invented acronym; omit the line if none fits) with its Arabic translation in simple words (drug and medical names stay in English letters).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "question", extra)}Start directly with ===EXPLANATION===.`,
@@ -492,7 +492,7 @@ ${H.must}
 
 TRICKS:
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
+- The last line: "💡 " followed by one short memory tip in English (a standard mnemonic or a rhyme; never an invented acronym; omit the line if none fits) with its Arabic translation in simple words (drug and medical names stay in English letters).
 ` : ""}
 Length: aim for about ${part === "main" ? Math.round(words * 0.72) : part === "traps" ? Math.round(words * 0.3) : words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
@@ -539,7 +539,7 @@ ${H.memo}
 
 TRICKS:
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
+- The last line: "💡 " followed by one short memory tip in English (a standard mnemonic or a rhyme; never an invented acronym; omit the line if none fits) with its Arabic translation in simple words (drug and medical names stay in English letters).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded. Skip nothing important, but never pad.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXPLANATION===.`,
@@ -662,11 +662,86 @@ ${H.memo}
 > 3 to 5 short English sentences that sum up the key rules (one per line, each starting with "> "), each followed by its translation on the next line (a normal line, no marker).
 ===TRICKS===
 - 3 to 5 bullets, each like "**Trap name:** short explanation" — look-alike terms, tempting wrong choices, common student mistakes, exceptions. Trap names are in English.
-- The last line: "💡 " followed by one short memory tip (a mnemonic or a rhyme) in English with its Arabic translation in simple everyday words (keep drug and medical names in English letters inside the translation).
+- The last line: "💡 " followed by one short memory tip in English (a standard mnemonic or a rhyme; never an invented acronym; omit the line if none fits) with its Arabic translation in simple words (drug and medical names stay in English letters).
 
 Length: aim for about ${words} words in total — as deep as the quality bar requires, never padded.
 ${styleTail(chips, extra, profile)}${linkBlock(history, "material", extra)}${ARABIC_RULE}Start directly with ===EXAM===.`,
     user: "Write the exam part, the memory sentences and the traps for the study material.",
+  };
+}
+
+
+/* ───────────── v3.68 · TASK-CONTRACT PATH ─────────────
+   Used when the SOURCE prescribes its own deliverable (numbered tasks, per-task requirements, limits: lib/taskcontract.js).
+   It is deliberately NOT a lesson: no decode-the-English, no basics, no options, no "if the question changed", no mnemonic.
+   Two prompts:
+     • LEDGER  — one strong, silent request: the shared facts / discordances / confounded tests / leading model. Every writer receives it,
+                 so tasks written in parallel cannot contradict each other (a ten-task answer written in four pieces stays one answer).
+     • WRITER  — one per group of tasks. Receives the contract verbatim, the ledger and the verified anchors (lib/clinical-anchors.js). */
+
+const CONTRACT_REASONING_RULES = `EVIDENCE DISCIPLINE (applies to every task):
+• Label what you assert where it matters: [Fact] = stated in the source · [Inference] = follows from facts by a named rule · [Hypothesis] = plausible, not shown · [Unknown] = missing data. Never present a hypothesis as a fact.
+• A low or negative result obtained under a confounder (plasma, transfusion, a drug, delay, an interfering antibody, a different device) is INDETERMINATE unless the assay's performance in that situation justifies more. Say which direction the confounder pushes the number, what sample or repeat would settle it, and what to do meanwhile.
+• Two measurements that disagree (device vs laboratory, current vs baseline) are never resolved by picking the one that fits the favoured story. Give the mechanism that could make each wrong, the mechanism that could make each right, whether both can be true, and the arbitrating test.
+• Classification criteria ≠ mechanism. Meeting criteria for one syndrome does not exclude another cause of the same picture, and several processes can act at once. Do not force one cause; rank causes by probability AND by danger, which are different rankings.
+• Separate what must not be delayed from what should wait for a result, and say why each wait is safe or unsafe.
+• Do not recommend a product or procedure by reflex (transfusion, vitamin K, biopsy, plasma exchange, a drug change). State the indication in THIS patient, the risk, and the finding that would make it wrong.
+• Numbers: use only values given in the source or in the reference anchors. Never invent a threshold, percentage, dose, laboratory value, biopsy result or recommendation class. If you need one you do not have, write (راجع الرقم من مرجعك).
+• Citations: cite a guideline or paper only if it is listed in the anchors or you are certain it exists (authors, journal, year). A citation from memory is marked (من الذاكرة — راجع المصدر). Never attach an evidence grade you did not read.
+• Do not repeat the case back; every line must add a conclusion, a reason, a risk or an action.`;
+
+/* v3.69 · ONE request answers the whole contract. The "ledger" of v3.68 is gone: the model's own thinking is the analysis step, so a separate
+   request (and its wait) bought nothing but a second chance to hit a 429. The answer is ITEM-ADDRESSED: the model writes `@@2.3@@ text` for each item
+   of the skeleton below and nothing else — the application writes the task headings and the item labels (they cost no output tokens and cannot drift
+   from the request) and audits every item by key. Loose text markers, not JSON mode: format-constrained decoding degrades reasoning
+   (Tam et al., EMNLP-Industry 2024). */
+const skeletonOf = (contract, wordsFor) => (contract.tasks || []).map((t) => {
+  const rows = (t.items || []).map((it) => {
+    const w = wordsFor(it);
+    if (it.kind === "subject") return `  @@${it.key}@@  SUBJECT: ${it.label}\n      write each of these on its own line, starting with the field name in bold: ${it.fields.map((f) => `**${f.replace(/[.:]$/, "")}**`).join(" · ")}   [about ${w} words in total]`;
+    const lim = it.limit ? `  [HARD LIMIT ${it.limit} words]` : "";
+    const cnt = it.minCount ? `  [a list of AT LEAST ${it.minCount} numbered entries, one per line]` : "";
+    const ctx = it.lead && it.kind === "bullet" ? `  (under: ${it.lead})` : "";
+    return `  @@${it.key}@@  ${it.label}${ctx}${lim}${cnt}   [about ${w} words]`;
+  });
+  return `TASK ${t.number} — ${t.title}\n${rows.join("\n")}`;
+}).join("\n\n");
+
+export function buildContractOncePrompt({ contract, wordsFor, anchorsBlock = "", calculationHandoff = "", chips = [], extra = "", profile, effort = "" } = {}) {
+  const globals = (contract && contract.constraints || []).map((c) => `- ${c}`).join("\n");
+  return {
+    system: `You are a senior consultant coordinating a multidisciplinary team and, at the same time, the student's private clinical-reasoning coach. The request prescribes its own deliverable. You answer it completely, safely and compactly, in ONE pass.
+
+THIS IS NOT AN EXAM LESSON: no "what is the question asking", "decode the English", "the basics", "every option", "if the question changed", memory sentences or mnemonics. Never invent options, letters or variations of the case.
+
+HOW TO ANSWER (read twice):
+1. First THINK through the whole case: read every value with its unit, time point (current / baseline / before or after a treatment) and device or sample; list conflicts between measurements; list results whose meaning is distorted by treatment, timing or interference; rank the competing explanations by probability AND by danger; decide what cannot wait. Then write.
+2. The user message contains the ANSWER SKELETON: one line per item, each starting with a key such as @@2.3@@. Write the answer as the same keys, in the same order, each key alone on its own line followed by the text of that item. Write nothing before the first key. The application adds task headings and item titles itself: NEVER write a heading, never repeat the item title, never write a key you were not given.
+3. Every item gets a real answer. If something is unknown write "غير معروف / not known — needed: …" inside the item; never skip an item. Respect every [HARD LIMIT] and every [list of AT LEAST n].
+4. End with the key @@TRICKS@@ followed by 4 to 6 bullets "**Trap name:** why the tempting conclusion is wrong → the fact in THIS case that refutes it → the harm if acted on". No mnemonics.
+5. Be dense: fragments and numbered lines, no restating the case, no filler. Substance in English first; add a short Arabic gloss only for the decisive conclusions, not for every sentence.
+
+${CONTRACT_REASONING_RULES}
+
+${LAYOUT}
+${styleTail(chips, extra, profile)}${effort ? `\n${effort}\n` : ""}Start directly with the first key.`,
+    user: `ANSWER SKELETON (write exactly these keys, in this order):\n\n${skeletonOf(contract, wordsFor)}\n\n@@TRICKS@@  4–6 trap bullets\n\n${globals ? `GLOBAL REQUIREMENTS OF THE REQUEST:\n${globals}\n\n` : ""}${anchorsBlock ? `${anchorsBlock}\n\n` : ""}${calculationHandoff ? `${CALCULATION_AUTHORITY_RULE}\n\n${String(calculationHandoff).trim()}\n\n` : ""}The full case is attached. Think, then write the skeleton.`,
+  };
+}
+
+/* the surgical repair: only defective items, each with the reason, plus one line of context per other item so the rewrite cannot contradict what stands */
+export function buildContractRepairPrompt({ contract, repairs = [], context = [], anchorsBlock = "", wordsFor, chips = [], extra = "", profile } = {}) {
+  const byKey = new Map(((contract && contract.tasks) || []).flatMap((t) => (t.items || []).map((it) => [it.key, { it, t }])));
+  const rows = repairs.map(({ key, reasons, existing }) => {
+    const e = byKey.get(key);
+    if (!e) return "";
+    const { it, t } = e;
+    const spec = it.kind === "subject" ? `SUBJECT: ${it.label} — fields, each on its own line in bold: ${it.fields.map((f) => `**${f.replace(/[.:]$/, "")}**`).join(" · ")}` : it.label;
+    return `@@${key}@@  (Task ${t.number} — ${t.title})  ${spec}${it.limit ? `  [HARD LIMIT ${it.limit} words]` : ""}${it.minCount ? `  [AT LEAST ${it.minCount} numbered entries]` : ""}  [about ${wordsFor ? wordsFor(it) : 80} words]\n   PROBLEM: ${reasons.join(" | ")}${existing ? `\n   CURRENT TEXT (rewrite it; keep what is correct): ${String(existing).slice(0, 1400)}` : ""}`;
+  }).filter(Boolean).join("\n\n");
+  return {
+    system: `You are a senior consultant repairing specific items of a long clinical answer. Write ONLY the keys listed, each alone on its own line followed by its text, in the same order. Do not write headings, titles, other keys or commentary. Fix exactly the stated PROBLEM of each item; do not weaken correct content; do not contradict the context lines.\n\n${CONTRACT_REASONING_RULES}\n\n${LAYOUT}\n${styleTail(chips, extra, profile)}Start directly with the first key.`,
+    user: `ITEMS TO WRITE:\n\n${rows}\n\n${context.length ? `CONTEXT — conclusions already written (do not contradict):\n${context.map((c) => `- ${c}`).join("\n")}\n\n` : ""}${anchorsBlock ? `${anchorsBlock}\n\n` : ""}The full case is attached. Write the listed items now.`,
   };
 }
 

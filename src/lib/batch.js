@@ -61,9 +61,9 @@ export const focusNote = (q, note) =>
 
 /* run the full analysis for every selected question; `onState(list)` is called on every change.
    save(payload) → Promise<id>; saves are serialised so two questions never overwrite each other. */
-export function runBatch({ apiKey, items, plan, note, chips, history, modeId, save, onState, onFatal, concurrency = 2 }) {
+export function runBatch({ apiKey, items, plan, note, chips, history, modeId, withWords = true, save, onState, onFatal, concurrency = 2 }) {
   const ctrl = new AbortController();
-  const rows = plan.map((q) => ({ ...q, status: "wait", id: null, part: Object.fromEntries(tasksFor("question").map((t) => [t, "run"])), err: null }));
+  const rows = plan.map((q) => ({ ...q, status: "wait", id: null, part: Object.fromEntries(tasksFor("question", withWords).map((t) => [t, "run"])), err: null }));
   const push = () => onState(rows.map((r) => ({ ...r, part: { ...r.part } })));
   let chain = Promise.resolve();
   const saveSerial = (p) => { const r = chain.then(() => save(p)); chain = r.catch(() => {}); return r; };
@@ -88,7 +88,7 @@ export function runBatch({ apiKey, items, plan, note, chips, history, modeId, sa
       push(); resolve();
     };
     an = createAnalysis({
-      kind: "question", history, dataUrl: sub.imageUrl, doc: sub.doc, extra: focusNote(row, note), chips, apiKey, modeId,
+      kind: "question", history, dataUrl: sub.imageUrl, doc: sub.doc, extra: focusNote(row, note), chips, apiKey, modeId, withWords,
       onUpdate: (name, data) => { Object.entries(data).forEach(([k, v]) => { if (v !== null && v !== undefined) res[k] = v; }); },
       onDone: (name) => { row.part[name] = "done"; push(); check(); },
       onError: (name, err, partial) => {
