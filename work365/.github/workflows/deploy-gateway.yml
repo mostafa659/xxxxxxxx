@@ -1,0 +1,65 @@
+name: Deploy AI gateway (Cloudflare)
+
+# Publishes gateway/worker.js (entry) + gateway/core.js (logic) as a Cloudflare Worker. Needs 4 repo SECRETS (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN       (template "Edit Cloudflare Workers")
+#   CLOUDFLARE_ACCOUNT_ID
+#   GATEWAY_GEMINI_API_KEY     your PAID Google AI Studio key: it lives ONLY inside the Worker, never in the app
+#   GATEWAY_ACCESS_CODES       the access code(s) the app uses, comma separated (make one up: a long random string)
+# Then set the repo VARIABLE GATEWAY_URL to the address this workflow prints, and the SECRET GATEWAY_TOKEN to one of the access codes. Full guide: gateway/README.md
+
+# Manual on purpose: until the 4 secrets exist, an automatic run on every push would only show a red cross.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate gateway folder
+        id: gw
+        shell: bash
+        run: |
+          DIR=$(find . -maxdepth 4 -type f -name wrangler.toml -path '*/gateway/*' -not -path '*/node_modules/*' | head -1 | xargs -r dirname)
+          if [ -z "$DIR" ]; then echo "::error::gateway/wrangler.toml was not found in this repository."; exit 1; fi
+          echo "Gateway folder: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check the secrets are there (a missing one is the usual reason a deploy "works" but the app gets 401 / 500)
+        shell: bash
+        env:
+          A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          B: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          C: ${{ secrets.GATEWAY_GEMINI_API_KEY }}
+          D: ${{ secrets.GATEWAY_ACCESS_CODES }}
+        run: |
+          missing=""
+          [ -z "$A" ] && missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -z "$B" ] && missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -z "$C" ] && missing="$missing GATEWAY_GEMINI_API_KEY"
+          [ -z "$D" ] && missing="$missing GATEWAY_ACCESS_CODES"
+          if [ -n "$missing" ]; then echo "::error::Missing repo secrets:$missing"; exit 1; fi
+
+      - name: Deploy the Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: ${{ steps.gw.outputs.dir }}
+          secrets: |
+            GEMINI_API_KEY
+            ACCESS_CODES
+        env:
+          GEMINI_API_KEY: ${{ secrets.GATEWAY_GEMINI_API_KEY }}
+          ACCESS_CODES: ${{ secrets.GATEWAY_ACCESS_CODES }}
+
+      - name: Health check
+        shell: bash
+        run: |
+          echo "The gateway address is printed in the 'Deploy the Worker' step (https://clinix-gateway.<your-account>.workers.dev)."
+          echo "Open  <that address>/health  in a browser: it must say  \"ok\":true  and  \"keyConfigured\":true."

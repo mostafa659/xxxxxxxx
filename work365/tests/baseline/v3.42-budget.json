@@ -1,0 +1,74 @@
+{
+ "prompts": {
+  "solve": {
+   "chars": 3066,
+   "tokens": 1022
+  },
+  "lessonA": {
+   "chars": 5690,
+   "tokens": 1897
+  },
+  "lessonB": {
+   "chars": 6772,
+   "tokens": 2258
+  },
+  "lessonB_main": {
+   "chars": 6239,
+   "tokens": 2080
+  },
+  "lessonB_traps": {
+   "chars": 6006,
+   "tokens": 2002
+  },
+  "lessonX": {
+   "chars": 7635,
+   "tokens": 2545
+  },
+  "studyA": {
+   "chars": 7398,
+   "tokens": 2466
+  },
+  "studyB": {
+   "chars": 7795,
+   "tokens": 2599
+  },
+  "studyLesson": {
+   "chars": 8599,
+   "tokens": 2867
+  },
+  "studyHead": {
+   "chars": 7489,
+   "tokens": 2497
+  },
+  "studySlice": {
+   "chars": 7885,
+   "tokens": 2629
+  },
+  "studyTail": {
+   "chars": 7727,
+   "tokens": 2576
+  },
+  "ocr": {
+   "chars": 1517,
+   "tokens": 506
+  },
+  "words": {
+   "chars": 5370,
+   "tokens": 1790
+  }
+ },
+ "modes": {
+  "balanced": {
+   "solveMaxOut": 10000,
+   "writeMaxOut": 16000,
+   "writeAMaxOut": 20000,
+   "solveBudget": 4096
+  },
+  "deep": {
+   "solveMaxOut": 40000,
+   "writeMaxOut": 24000,
+   "writeAMaxOut": 24000,
+   "solveBudget": 16384
+  }
+ }
+}

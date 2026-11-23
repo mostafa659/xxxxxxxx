@@ -1,0 +1,15 @@
+{
+  "appId": "com.clinixstudy.app",
+  "appName": "ClinixStudy",
+  "webDir": "dist",
+  "backgroundColor": "#FFFFFF",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": false
+    },
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "launchFadeOutDuration": 300
+    }
+  }
+}

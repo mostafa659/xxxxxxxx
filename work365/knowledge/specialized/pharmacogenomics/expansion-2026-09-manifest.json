@@ -1,0 +1,41 @@
+{
+  "sources": [
+    {
+      "id": "fda-pgx-table-2026-09",
+      "url": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",
+      "license": "US-government public domain (17 U.S.C. §105; FDA-authored page content)",
+      "licenseVerified": true,
+      "attribution": "U.S. Food and Drug Administration. Table of Pharmacogenetic Associations. Current page accessed 2026-11-20; FDA update history lists September 10, 2026.",
+      "type": "regulator-notice",
+      "passages": [
+        {"id":"capecitabine-dpyd","text":"Capecitabine | DPYD | partial or complete DPD deficiency | Results in higher adverse reaction risk (severe, life-threatening, or fatal toxicities). Avoid use in patients with complete DPD deficiency. No dosage has proven safe in patients with complete DPD deficiency. In patients with partial DPD deficiency, individualize the dosage and modify based on tolerability and intent of treatment. Withhold or discontinue in the presence of early-onset or unusually severe toxicity."},
+        {"id":"fluorouracil-dpyd","text":"Fluorouracil | DPYD | partial or complete DPD deficiency | Results in higher adverse reaction risk (severe, life-threatening, or fatal toxicities). No dosage has proven safe in patients with complete DPD deficiency, and insufficient data are available to recommend a dosage in patients with partial DPD deficiency. Withhold or discontinue in the presence of early-onset or unusually severe toxicity."},
+        {"id":"clopidogrel-cyp2c19","text":"Clopidogrel | CYP2C19 | intermediate or poor metabolizers | Results in lower systemic active metabolite concentrations, lower antiplatelet response, and may result in higher cardiovascular risk. Consider use of another platelet P2Y12 inhibitor."},
+        {"id":"propafenone-cyp2d6-cyp3a4","text":"Propafenone | CYP2D6 | poor metabolizers | Results in higher systemic concentrations and higher adverse reaction risk (arrhythmia). Avoid use in poor metabolizers taking a CYP3A4 inhibitor."},
+        {"id":"succinylcholine-bche","text":"Succinylcholine | BCHE | intermediate or poor metabolizers | Results in higher systemic concentrations and higher adverse reaction risk (prolonged neuromuscular blockade). Avoid use in poor metabolizers. May administer test dose to assess sensitivity and administer cautiously via slow infusion."},
+        {"id":"malignant-hyperthermia-desflurane","text":"Desflurane | RYR1 and/or CACNA1S | pathogenic variant carriers | Results in higher adverse reaction risk (malignant hyperthermia). Desflurane is contraindicated in patients with known or suspected genetic susceptibility to malignant hyperthermia."},
+        {"id":"malignant-hyperthermia-isoflurane","text":"Isoflurane | RYR1 and/or CACNA1S | pathogenic variant carriers | Results in higher adverse reaction risk (malignant hyperthermia). Isoflurane is contraindicated in patients with known or suspected genetic susceptibility to malignant hyperthermia."},
+        {"id":"malignant-hyperthermia-sevoflurane","text":"Sevoflurane | RYR1 and/or CACNA1S | pathogenic variant carriers | Results in higher adverse reaction risk (malignant hyperthermia). Sevoflurane is contraindicated in patients with known or suspected genetic susceptibility to malignant hyperthermia."},
+        {"id":"malignant-hyperthermia-succinylcholine","text":"Succinylcholine | RYR1 and/or CACNA1S | pathogenic variant carriers | Results in higher adverse reaction risk (malignant hyperthermia). Succinylcholine is contraindicated in patients with known or suspected genetic susceptibility to malignant hyperthermia."},
+        {"id":"lecanemab-apoe","text":"Lecanemab-irmb | APOE | ε4/ε4 (ε4 homozygotes) | Results in higher adverse reaction risk (Amyloid Related Imaging Abnormalities, ARIA). Consider the benefit of lecanemab-irmb for the treatment of Alzheimer's disease and potential risk of serious adverse events associated with ARIA when deciding to initiate treatment with lecanemab-irmb."},
+        {"id":"donanemab-apoe","text":"Donanemab-azbt | APOE | ε4/ε4 (ε4 homozygotes) | Results in higher adverse reaction risk (Amyloid Related Imaging Abnormalities, ARIA). Consider the benefit of donanemab-azbt for the treatment of Alzheimer's disease and potential risk of serious adverse events associated with ARIA when deciding to initiate treatment with donanemab-azbt."},
+        {"id":"deuruxolitinib-cyp2c9","text":"Deuruxolitinib | CYP2C9 | poor metabolizers | Results in higher systemic concentrations and may result in higher adverse reaction risk (thrombosis). Deuruxolitinib is contraindicated in poor metabolizers."},
+        {"id":"irinotecan-ugt1a1","text":"Irinotecan | UGT1A1 | *1/*6, *1/*28 (intermediate metabolizers) or *6/*6, *6/*28, *28/*28 (poor metabolizers) | Results in higher systemic active metabolite concentrations and higher adverse reaction risk (severe or life-threatening neutropenia, severe diarrhea). Closely monitor for neutropenia during and after treatment. Consider reducing the starting dosage by at least one level in poor metabolizers and modify the dosage based on individual patient tolerance. Refer to FDA labeling for specific dosing recommendations."}
+      ]
+    },
+    {
+      "id": "cersi-pgx-ugt1a1-irinotecan-2026",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13519796/",
+      "license": "CC-BY-4.0",
+      "licenseVerified": true,
+      "attribution": "UK Centre of Excellence in Regulatory Science and Innovation in Pharmacogenomics (CERSI-PGx). UGT1A1 genotype testing for irinotecan. British Journal of Clinical Pharmacology, published online July 2, 2026; issue date September 2026.",
+      "type": "guideline",
+      "passages": [
+        {"id":"poor-metabolizer-30-percent","text":"Irinotecan dose should be reduced by 30% at Cycle 1 treatment in poor metabolizers for all indications, with doses titrated thereafter based on tolerability and neutrophil counts."},
+        {"id":"epithelial-malignancy-scope","text":"Any patient who is about to be prescribed irinotecan for an epithelial malignancy should have pharmacogenetic testing, to identify clinically relevant UGT1A1 variants, where testing is available. The lack of evidence precludes us from making any recommendation for rare malignancies such as sarcomas."},
+        {"id":"sn38-mechanism","text":"Irinotecan is hydrolysed to its active metabolite, SN-38, which is predominantly inactivated by the enzyme uridine diphosphate glucuronosyltransferase UGT1A1."},
+        {"id":"intermediate-no-dose-reduction","text":"Normal metabolizer | No dose adjustments recommended at Cycle 1. Intermediate metabolizer | No dose adjustments recommended at Cycle 1. Poor metabolizer | Initiate 30% dose reduction at Cycle 1, with doses to be titrated based on tolerability and neutrophil counts."}
+      ]
+    }
+  ]
+}

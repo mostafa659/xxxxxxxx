@@ -1,0 +1,114 @@
+name: Build APK (live shell — install once)
+
+# v3.37 · a small APK that opens the newest web build from GitHub Pages (see deploy-web.yml).
+# Run this ONCE (Actions → Build APK (live shell) → Run workflow), install the APK, and from then on every push shows up
+# when you reopen the app. Build it again only when native things change (icons, plugins, capacitor.config.json).
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Pages address of the app (empty = https://<owner>.github.io/<repo>/)"
+        required: false
+        default: ""
+
+concurrency:
+  group: apk-live
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate project folder
+        id: proj
+        shell: bash
+        run: |
+          DIR=""
+          for f in $(find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -not -path './.git/*' | awk '{print length, $0}' | sort -n | cut -d' ' -f2-); do
+            if grep -q '"name"[[:space:]]*:[[:space:]]*"clinixstudy"' "$f"; then DIR=$(dirname "$f"); break; fi
+          done
+          if [ -z "$DIR" ]; then echo "::error::package.json (name: clinixstudy) was not found"; exit 1; fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm install --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - name: Point the app window at GitHub Pages
+        working-directory: ${{ steps.proj.outputs.dir }}
+        env:
+          CAP_SERVER_URL: ${{ inputs.url != '' && inputs.url || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+        run: node scripts/live-shell.mjs
+
+      - name: Add Android platform
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npx cap add android
+
+      - name: Launch splash (brand colour + app icon)
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          RES=android/app/src/main/res
+          mkdir -p $RES/values $RES/drawable-xxxhdpi
+          cat > $RES/values/launch.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="launch_bg">#FFFFFF</color></resources>
+          XML
+          cp resources/splash_icon.png $RES/drawable-xxxhdpi/splash_icon.png
+          python3 - <<'PY'
+          import re
+          p = "android/app/src/main/res/values/styles.xml"
+          s = open(p, encoding="utf-8").read()
+          block = """<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+                  <item name="windowSplashScreenBackground">@color/launch_bg</item>
+                  <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+                  <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+                  <item name="android:background">@color/launch_bg</item>
+              </style>"""
+          s2 = re.sub(r'<style name="AppTheme\.NoActionBarLaunch".*?</style>', block, s, flags=re.S)
+          assert s2 != s, "launch style not found"
+          open(p, "w", encoding="utf-8").write(s2)
+          PY
+
+      - name: Generate app icons
+        working-directory: ${{ steps.proj.outputs.dir }}
+        continue-on-error: true
+        run: npx --yes @capacitor/assets generate --android
+
+      - name: Sync
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: ${{ steps.proj.outputs.dir }}/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: APK size report
+        working-directory: ${{ steps.proj.outputs.dir }}/android/app/build/outputs/apk/debug
+        run: |
+          ls -l app-debug.apk
+          unzip -l app-debug.apk | sort -k1 -n -r | head -15
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClinixStudy-live-apk
+          path: ${{ steps.proj.outputs.dir }}/android/app/build/outputs/apk/debug/app-debug.apk

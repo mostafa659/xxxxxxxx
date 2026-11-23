@@ -1,0 +1,6 @@
+
+> clinixstudy@3.66.0 build
+> vite build
+
+sh: 1: vite: not found
+BUILD_EXIT_CODE=127
